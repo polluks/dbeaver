@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,8 @@
  */
 package org.jkiss.dbeaver.ui.controls.resultset;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Status;
 import org.jkiss.code.NotNull;
@@ -42,13 +44,15 @@ import org.jkiss.utils.xml.SAXReader;
 import org.jkiss.utils.xml.XMLBuilder;
 import org.jkiss.utils.xml.XMLException;
 import org.xml.sax.Attributes;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
 
-import java.io.*;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.lang.reflect.Array;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.Map.Entry;
-import java.lang.reflect.Array;
 
 /**
  * Viewer columns registry
@@ -140,7 +144,7 @@ class DataFilterRegistry {
             } else {
                 DBPDataKind dataKind = getAttributeValueKind(savedConstraint.getValue());
                 DBSAttributeBase attribute = new AbstractAttribute(
-                    unquottedAttrName, dataKind.name(), 0, savedConstraint.getOrderPosition(), 0, 0, 0, false, false
+                    unquottedAttrName, dataKind.name(), 0, savedConstraint.getVisualPosition(), 0, 0, 0, false, false
                 ) {
                     @Override
                     public DBPDataKind getDataKind() {
@@ -206,10 +210,7 @@ class DataFilterRegistry {
             dataFilter.setAnyConstraint(anyConstraint);
             dataFilter.setOrder(this.order);
             dataFilter.setWhere(this.where);
-            List<DBDAttributeConstraint> offschemaConstraints = null; 
-            boolean isDocumentSource = dataContainer.getDataSource() != null && Boolean.TRUE.equals(
-                dataContainer.getDataSource().getDataSourceFeature(DBPDataSource.FEATURE_DOCUMENT_DATA_SOURCE)
-            );
+            List<DBDAttributeConstraint> offschemaConstraints = null;
             RestoredAttributesInfo restoredAttrsInfo = RestoredAttributesInfo.bindToDataSource(
                     this, dataContainer.getDataSource()
             );
@@ -224,7 +225,7 @@ class DataFilterRegistry {
                     DBSEntityAttribute attribute = ((DBSEntity) dataContainer).getAttribute(monitor, attrName); 
                     if (attribute != null) {
                         attrC = new DBDAttributeConstraint(attribute, attribute.getOrdinalPosition());
-                    } else if (savedConstraint != null && savedConstraint.hasCondition() && isDocumentSource) {
+                    } else if (savedConstraint != null) {
                         attrC = restoredAttrsInfo.restoreOffschemaConstraint(attrName, savedConstraint);
                     }
                     if (attrC != null) {
@@ -233,7 +234,7 @@ class DataFilterRegistry {
                 }
                 if (attrC != null) {
                     attrC.copyFrom(savedConstraint);
-                } else if (savedConstraint != null && savedConstraint.hasCondition() && isDocumentSource) {
+                } else if (savedConstraint != null) {
                     if (offschemaConstraints == null) {
                         offschemaConstraints = new ArrayList<>();
                     }
@@ -255,13 +256,13 @@ class DataFilterRegistry {
     private volatile ConfigSaver saver = null;
 
     public DataFilterRegistry() {
-        File columnsConfig = DBWorkbench.getPlatform().getConfigurationFile(CONFIG_FILE);
-        if (columnsConfig.exists()) {
+        Path columnsConfig = DBWorkbench.getPlatform().getLocalConfigurationFile(CONFIG_FILE);
+        if (Files.exists(columnsConfig)) {
             loadConfiguration(columnsConfig);
         }
     }
 
-    @NotNull
+    @Nullable
     public SavedDataFilter getSavedConfig(@NotNull DBSDataContainer object) {
         String objectId = makeObjectId(object);
         synchronized (savedFilters) {
@@ -297,9 +298,9 @@ class DataFilterRegistry {
         return objName.toString();
     }
 
-    private void loadConfiguration(@NotNull File configFile) {
+    private void loadConfiguration(@NotNull Path configFile) {
         savedFilters.clear();
-        try (InputStream in = new FileInputStream(configFile)) {
+        try (InputStream in = Files.newInputStream(configFile)) {
             SAXReader parser = new SAXReader(in);
             final DataFilterParser dsp = new DataFilterParser();
             parser.parse(dsp);
@@ -385,8 +386,8 @@ class DataFilterRegistry {
         }
         
         private void flushConfig() {
-            File configFile = DBWorkbench.getPlatform().getConfigurationFile(CONFIG_FILE);
-            try (OutputStream out = new FileOutputStream(configFile)) {
+            Path configFile = DBWorkbench.getPlatform().getLocalConfigurationFile(CONFIG_FILE);
+            try (OutputStream out = Files.newOutputStream(configFile)) {
                 XMLBuilder xml = new XMLBuilder(out, GeneralUtils.UTF8_ENCODING);
                 xml.setButify(true);
                 try (final XMLBuilder.Element e = xml.startElement("data-filters")) {

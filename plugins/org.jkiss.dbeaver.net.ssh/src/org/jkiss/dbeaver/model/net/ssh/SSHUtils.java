@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,8 +24,8 @@ import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ModelPreferences;
-import org.jkiss.dbeaver.model.app.DBPPlatform;
 import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
+import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.utils.RuntimeUtils;
 import org.jkiss.utils.CommonUtils;
 import org.jkiss.utils.IOUtils;
@@ -50,15 +50,14 @@ public class SSHUtils {
     private static final String DEFAULT_SSH_HOME_DIR_NAME_WIN_OLD = IConstants.SSH_OLD_DEFAULT_WIN32_HOME;
     private static final String KNOWN_SSH_HOSTS_FILE_NAME = "known_hosts";
 
-    static int findFreePort(DBPPlatform platform)
-    {
-        DBPPreferenceStore store = platform.getPreferenceStore();
+    static int findFreePort() {
+        DBPPreferenceStore store = DBWorkbench.getPlatform().getPreferenceStore();
         int minPort = store.getInt(ModelPreferences.NET_TUNNEL_PORT_MIN);
         int maxPort = store.getInt(ModelPreferences.NET_TUNNEL_PORT_MAX);
         return IOUtils.findFreePort(minPort, maxPort);
     }
 
-    public static boolean isKeyEncrypted(String privKeyPath) {
+    public static boolean isKeyFileEncrypted(String privKeyPath) {
             // Check whether this key is encrypted
         if (privKeyPath != null) {
             // Determine whether public key is encrypted

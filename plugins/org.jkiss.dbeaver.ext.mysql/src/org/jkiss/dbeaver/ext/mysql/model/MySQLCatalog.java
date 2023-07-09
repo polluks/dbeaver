@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -449,6 +449,10 @@ public class MySQLCatalog implements
         if (hasStatistics && !forceRefresh) {
             return;
         }
+        if (isSystem()) {
+            hasStatistics = true;
+            return;
+        }
         try (JDBCSession session = DBUtils.openMetaSession(monitor, this, "Load table status")) {
             try (JDBCStatement dbStat = session.createStatement()) {
                 try (JDBCResultSet dbResult = dbStat.executeQuery("SHOW TABLE STATUS FROM " + DBUtils.getQuotedIdentifier(this))) {
@@ -517,9 +521,8 @@ public class MySQLCatalog implements
     }
 
     @Override
-    public boolean isSystem()
-    {
-        return MySQLConstants.INFO_SCHEMA_NAME.equalsIgnoreCase(getName()) || MySQLConstants.PERFORMANCE_SCHEMA_NAME.equalsIgnoreCase(getName()) || MySQLConstants.MYSQL_SCHEMA_NAME.equalsIgnoreCase(getName());
+    public boolean isSystem() {
+        return getDataSource().isSystemCatalog(getName());
     }
 
     @Override
@@ -537,7 +540,12 @@ public class MySQLCatalog implements
 
         @NotNull
         @Override
-        public JDBCStatement prepareLookupStatement(@NotNull JDBCSession session, @NotNull MySQLCatalog owner, @Nullable MySQLTableBase object, @Nullable String objectName) throws SQLException {
+        public JDBCStatement prepareLookupStatement(
+            @NotNull JDBCSession session,
+            @NotNull MySQLCatalog owner,
+            @Nullable MySQLTableBase object,
+            @Nullable String objectName
+        ) throws SQLException {
             StringBuilder sql = new StringBuilder("SHOW ");
             MySQLDataSource dataSource = owner.getDataSource();
             if (session.getMetaData().getDatabaseMajorVersion() > 4) {
@@ -547,12 +555,13 @@ public class MySQLCatalog implements
             if (!session.getDataSource().getContainer().getPreferenceStore().getBoolean(ModelPreferences.META_USE_SERVER_SIDE_FILTERS)) {
                 // Client side filter
                 if (object != null || objectName != null) {
-                    sql.append(" LIKE ").append(SQLUtils.quoteString(session.getDataSource(), object != null ? object.getName() : objectName));
+                    appendTableNameCondition(session, object, objectName, sql);
                 }
             } else {
                 String tableNameCol = DBUtils.getQuotedIdentifier(dataSource, "Tables_in_" + owner.getName());
                 if (object != null || objectName != null) {
-                    sql.append(" WHERE ").append(tableNameCol).append(" LIKE ").append(SQLUtils.quoteString(session.getDataSource(), object != null ? object.getName() : objectName));
+                    sql.append(" WHERE ").append(tableNameCol);
+                    appendTableNameCondition(session, object, objectName, sql);
                     if (dataSource.supportsSequences()) {
                         sql.append(" AND Table_type <> 'SEQUENCE'");
                     }
@@ -590,6 +599,15 @@ public class MySQLCatalog implements
             }
 
             return session.prepareStatement(sql.toString());
+        }
+
+        private static void appendTableNameCondition(@NotNull JDBCSession session, @Nullable MySQLTableBase object, @Nullable String objectName, StringBuilder sql) {
+            if (objectName != null && SQLUtils.isLikePattern(objectName)) {
+                sql.append(" LIKE ");
+            } else {
+                sql.append(" = ");
+            }
+            sql.append(SQLUtils.quoteString(session.getDataSource(), object != null ? object.getName() : objectName));
         }
 
         @Override
@@ -1006,7 +1024,7 @@ public class MySQLCatalog implements
         {
             final JDBCPreparedStatement dbStat = session.prepareStatement(
                 "SELECT * FROM information_schema.EVENTS WHERE EVENT_SCHEMA=?");
-            dbStat.setString(1, DBUtils.getQuotedIdentifier(owner));
+            dbStat.setString(1, owner.getName());
             return dbStat;
         }
 

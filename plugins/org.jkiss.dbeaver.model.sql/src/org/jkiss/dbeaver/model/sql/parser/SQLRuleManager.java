@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -114,15 +114,6 @@ public class SQLRuleManager {
             ruleProvider.extendRules(dataSourceContainer, rules, TPRuleProvider.RulePosition.INITIAL);
         }
 
-        // Add rule for single-line comments.
-        for (String lineComment : dialect.getSingleLineComments()) {
-            if (lineComment.startsWith("^")) {
-                rules.add(new LineCommentRule(lineComment, commentToken, (char) 0, false, true));
-            } else {
-                rules.add(new EndOfLineRule(lineComment, commentToken, (char) 0, false, true));
-            }
-        }
-
         if (ruleProvider != null) {
             ruleProvider.extendRules(dataSourceContainer, rules, TPRuleProvider.RulePosition.CONTROL);
         }
@@ -141,10 +132,18 @@ public class SQLRuleManager {
                 log.error(e);
             }
         }
-        {
-            if (!minimalRules && syntaxManager.isVariablesEnabled()) {
+        
+        if (!minimalRules) {
+            // Keep variable rule before parameter rule (see #18354)
+            
+            if (syntaxManager.isVariablesEnabled()) {
                 // Variable rule
                 rules.add(new ScriptVariableRule(parameterToken));
+            }
+
+            // Parameter rule
+            for (String npPrefix : syntaxManager.getNamedParameterPrefixes()) {
+                rules.add(new ScriptParameterRule(syntaxManager, parameterToken, npPrefix));
             }
         }
 
@@ -178,6 +177,15 @@ public class SQLRuleManager {
         }
         if (ruleProvider != null) {
             ruleProvider.extendRules(dataSourceContainer, rules, TPRuleProvider.RulePosition.QUOTES);
+        }
+        
+        // Add rule for single-line comments.
+        for (String lineComment : dialect.getSingleLineComments()) {
+            if (lineComment.startsWith("^")) {
+                rules.add(new LineCommentRule(lineComment, commentToken, (char) 0, false, true));
+            } else {
+                rules.add(new EndOfLineRule(lineComment, commentToken, (char) 0, false, true));
+            }
         }
 
         // Add rules for multi-line comments
@@ -253,11 +261,6 @@ public class SQLRuleManager {
                 }
             }
             rules.add(wordRule);
-
-            // Parameter rule
-            for (String npPrefix : syntaxManager.getNamedParameterPrefixes()) {
-                rules.add(new ScriptParameterRule(syntaxManager, parameterToken, npPrefix));
-            }
         }
 
         if (ruleProvider != null) {

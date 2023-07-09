@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,6 +33,9 @@ import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.DBPDataSource;
+import org.jkiss.dbeaver.model.app.DBPPlatformDesktop;
+import org.jkiss.dbeaver.model.app.DBPProject;
+import org.jkiss.dbeaver.model.app.DBPWorkspaceDesktop;
 import org.jkiss.dbeaver.model.edit.*;
 import org.jkiss.dbeaver.model.navigator.*;
 import org.jkiss.dbeaver.model.navigator.fs.DBNPath;
@@ -81,6 +84,7 @@ public class NavigatorObjectsDeleter {
 
     private final Set<Option> supportedOptions;
     private final Set<Option> enabledOptions = new HashSet<>();
+    private boolean deleteWarningShowed;
 
     private NavigatorObjectsDeleter(IWorkbenchWindow window, List<?> selection, boolean selectedFromNavigator, boolean supportsShowViewScript,
                                     boolean supportsDeleteContents, Set<Option> supportedOptions) {
@@ -200,11 +204,16 @@ public class NavigatorObjectsDeleter {
                         ((IFolder)resource).delete(true, true, monitor);
                     } else if (resource instanceof IProject) {
                         // Delete project
-                        DBWorkbench.getPlatform().getGlobalEventManager().fireGlobalEvent(
+                        DBPPlatformDesktop.getInstance().getGlobalEventManager().fireGlobalEvent(
                             DBTTaskRegistry.EVENT_BEFORE_PROJECT_DELETE,
                             Map.of(DBTTaskRegistry.EVENT_PARAM_PROJECT, resource.getName())
                         );
-                        ((IProject) resource).delete(deleteContent, true, monitor);
+                        DBPWorkspaceDesktop workspace = DBPPlatformDesktop.getInstance().getWorkspace();
+                        DBPProject project = workspace.getProject((IProject) resource);
+                        if (project == null) {
+                            throw new DBException("Project '" + resource.getName() + "' is not recognized as databae project");
+                        }
+                        workspace.deleteProject(project, deleteContent);
                     } else if (resource != null) {
                         resource.delete(IResource.FORCE | IResource.KEEP_HISTORY, monitor);
                     }
@@ -217,14 +226,14 @@ public class NavigatorObjectsDeleter {
         }.schedule();
     }
 
-    private void deleteDatabaseNode(final DBNDatabaseNode node) {
+    private void deleteDatabaseNode(@NotNull final DBNDatabaseNode node) {
         try {
             if (!(node.getParentNode() instanceof DBNContainer)) {
                 throw new DBException("Node '" + node + "' doesn't have a container");
             }
             final DBSObject object = node.getObject();
             if (object == null) {
-                throw new DBException("Can't delete node with null object");
+                throw new DBException("Can't delete node with null object (" + node.getClass().getSimpleName() + ":" + node.getNodeName() + ")");
             }
             final DBEObjectMaker objectMaker = DBWorkbench.getPlatform().getEditorsRegistry().getObjectManager(object.getClass(), DBEObjectMaker.class);
             if (objectMaker == null) {
@@ -254,13 +263,14 @@ public class NavigatorObjectsDeleter {
                 final NavigatorHandlerObjectBase.ObjectSaver deleter = new NavigatorHandlerObjectBase.ObjectSaver(commandTarget.getContext(), deleteOptions);
                 tasksToExecute.add(deleter);
             }
-            if (commandTarget.getEditor() != null && selectedFromNavigator) {
+            if (commandTarget.getEditor() != null && selectedFromNavigator && !deleteWarningShowed) {
                 UIUtils.getActiveWorkbenchWindow().getActivePage().activate(commandTarget.getEditor());
                 DBWorkbench.getPlatformUI().showMessageBox(
                     UINavigatorMessages.actions_navigator_persist_delete_in_the_editor_title,
                     NLS.bind(UINavigatorMessages.actions_navigator_persist_delete_in_the_editor_message, commandTarget.getEditor().getTitle()),
                     false
                 );
+                deleteWarningShowed = true;
             }
         } catch (Throwable e) {
             DBWorkbench.getPlatformUI().showError(

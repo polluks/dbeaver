@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -58,9 +58,9 @@ public abstract class GenericTableBase extends JDBCTable<GenericDataSource, Gene
 
     private String tableType;
     private boolean isSystem;
+    private boolean isUtility;
     private String description;
     private Long rowCount;
-    private List<? extends GenericTrigger> triggers;
     private final String tableCatalogName;
     private final String tableSchemaName;
 
@@ -81,6 +81,7 @@ public abstract class GenericTableBase extends JDBCTable<GenericDataSource, Gene
 
         final GenericMetaModel metaModel = container.getDataSource().getMetaModel();
         this.isSystem = metaModel.isSystemTable(this);
+        this.isUtility = metaModel.isUtilityTable(this);
 
         boolean mergeEntities = container.getDataSource().isMergeEntities();
         if (mergeEntities && dbResult != null) {
@@ -133,6 +134,10 @@ public abstract class GenericTableBase extends JDBCTable<GenericDataSource, Gene
 
     public void setSystem(boolean system) {
         isSystem = system;
+    }
+
+    public boolean isUtility() {
+        return isUtility;
     }
 
     @Property(viewable = true, order = 2)
@@ -277,6 +282,7 @@ public abstract class GenericTableBase extends JDBCTable<GenericDataSource, Gene
 
     @Override
     public DBSObject refreshObject(@NotNull DBRProgressMonitor monitor) throws DBException {
+        this.getContainer().getTableTriggerCache().clearObjectCache(this);
         this.getContainer().getIndexCache().clearObjectCache(this);
         this.getContainer().getConstraintKeysCache().clearObjectCache(this);
         this.getContainer().getForeignKeysCache().clearObjectCache(this);
@@ -489,31 +495,14 @@ public abstract class GenericTableBase extends JDBCTable<GenericDataSource, Gene
     @Nullable
     @Association
     public List<? extends GenericTrigger> getTriggers(@NotNull DBRProgressMonitor monitor) throws DBException {
-        if (triggers == null) {
-            GenericStructContainer parentObject = getParentObject();
-            if (parentObject != null) {
-                TableTriggerCache tableTriggerCache = parentObject.getTableTriggerCache();
-                if (tableTriggerCache != null) {
-                    triggers = tableTriggerCache.getObjects(monitor, parentObject, this);
-                }
-            } else {
-                loadTriggers(monitor);
+        GenericStructContainer parentObject = getParentObject();
+        if (parentObject != null) {
+            TableTriggerCache tableTriggerCache = parentObject.getTableTriggerCache();
+            if (tableTriggerCache != null) {
+                return tableTriggerCache.getObjects(monitor, parentObject, this);
             }
         }
-        return triggers;
-    }
-
-    private void loadTriggers(DBRProgressMonitor monitor) throws DBException {
-        triggers = getDataSource().getMetaModel().loadTriggers(monitor, getContainer(), this);
-        if (triggers == null) {
-            triggers = new ArrayList<>();
-        } else {
-            DBUtils.orderObjects(triggers);
-        }
-    }
-
-    public List<? extends GenericTrigger> getTriggerCache() {
-        return triggers;
+        return null;
     }
 
     public boolean supportUniqueIndexes() {

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -94,7 +94,7 @@ public class PostgreStructValueHandler extends JDBCStructValueHandler {
         }
         try {
             if (object == null) {
-                return new JDBCCompositeStatic(session, structType, new JDBCStructImpl(structType.getTypeName(), null, ""));
+                return new JDBCCompositeStatic(session, structType, null);
             } else if (object instanceof JDBCCompositeStatic) {
                 return copy ? ((JDBCCompositeStatic) object).cloneValue(session.getProgressMonitor()) : object;
             } else {
@@ -121,7 +121,7 @@ public class PostgreStructValueHandler extends JDBCStructValueHandler {
             for (DBSAttributeBase attribute : composite.getAttributes()) {
                 final DBDValueHandler handler = DBUtils.findValueHandler(composite.getDataType().getDataSource(), attribute);
                 final Object item = composite.getAttributeValue(attribute);
-                final String member = getStructMemberDisplayString(attribute, handler, item);
+                final String member = getStructMemberDisplayString(attribute, handler, item, format);
 
                 output.add(member);
             }
@@ -136,15 +136,15 @@ public class PostgreStructValueHandler extends JDBCStructValueHandler {
     private static String getStructMemberDisplayString(
         @NotNull DBSTypedObject type,
         @NotNull DBDValueHandler handler,
-        @Nullable Object value
-    ) {
+        @Nullable Object value,
+        DBDDisplayFormat format) {
         if (DBUtils.isNullValue(value)) {
             return "";
         }
 
         final String string = handler.getValueDisplayString(type, value, DBDDisplayFormat.NATIVE);
 
-        if (isQuotingRequired(string)) {
+        if (format == DBDDisplayFormat.NATIVE && isQuotingRequired(string)) {
             return '"' + string.replace("\"", "\"\"") + '"';
         }
 

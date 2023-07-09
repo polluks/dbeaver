@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package org.jkiss.dbeaver.ext.clickhouse.model;
 
 import org.jkiss.code.NotNull;
+import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.ext.clickhouse.ClickhouseTypeParser;
 import org.jkiss.dbeaver.ext.generic.model.GenericTableBase;
 import org.jkiss.dbeaver.ext.generic.model.GenericTableColumn;
@@ -40,8 +41,13 @@ public class ClickhouseTableColumn extends GenericTableColumn {
     }
 
     @Override
-    public void setFullTypeName(String fullTypeName) {
+    public void setFullTypeName(String fullTypeName) throws DBException {
         this.fullTypeName = fullTypeName;
+        if (fullTypeName.toUpperCase().contains("ARRAY")) {
+            setTypeName(fullTypeName);
+        } else {
+            super.setFullTypeName(fullTypeName);
+        }
     }
 
     @NotNull

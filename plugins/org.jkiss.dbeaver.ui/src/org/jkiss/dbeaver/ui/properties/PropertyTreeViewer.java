@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,6 +36,8 @@ import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.*;
+import org.eclipse.ui.PlatformUI;
+import org.eclipse.ui.themes.ITheme;
 import org.eclipse.ui.views.properties.IPropertySource2;
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
@@ -52,6 +54,7 @@ import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.runtime.properties.*;
 import org.jkiss.dbeaver.ui.DefaultViewerToolTipSupport;
 import org.jkiss.dbeaver.ui.UIElementAlignment;
+import org.jkiss.dbeaver.ui.UIFonts;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.controls.ObjectViewerRenderer;
 import org.jkiss.dbeaver.ui.controls.bool.BooleanMode;
@@ -59,6 +62,7 @@ import org.jkiss.dbeaver.ui.controls.bool.BooleanStyleDecorator;
 import org.jkiss.dbeaver.ui.internal.UIMessages;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.dbeaver.utils.RuntimeUtils;
+import org.jkiss.utils.ArrayUtils;
 import org.jkiss.utils.BeanUtils;
 import org.jkiss.utils.CommonUtils;
 
@@ -81,6 +85,8 @@ public class PropertyTreeViewer extends TreeViewer {
     }
 
     private static final String CATEGORY_GENERAL = UIMessages.ui_properties_tree_viewer_category_general;
+    private static final int NAME_COLUMN_WIDTH = 100;
+    private static final int VALUE_COLUMN_WIDTH = 300;
 
     private boolean expandSingleRoot = true;
     private boolean namesEditable = false;
@@ -99,6 +105,7 @@ public class PropertyTreeViewer extends TreeViewer {
     private ExpandMode expandMode = ExpandMode.ALL;
 
     private final List<IPropertyChangeListener> propertyListeners = new ArrayList<>();
+    private final IPropertyChangeListener themeChangeListener;
 
     public PropertyTreeViewer(Composite parent, int style)
     {
@@ -117,7 +124,6 @@ public class PropertyTreeViewer extends TreeViewer {
         treeControl.setHeaderVisible(true);
         //treeControl.setLinesVisible(true);
         treeControl.addListener(SWT.PaintItem, new PaintListener());
-        this.boldFont = UIUtils.makeBoldFont(treeControl.getFont());
 
         new DefaultViewerToolTipSupport(this);
 
@@ -151,8 +157,7 @@ public class PropertyTreeViewer extends TreeViewer {
 
         renderer = new ObjectViewerRenderer(this) {
             @Override
-            public Object getCellValue(Object element, int columnIndex)
-            {
+            public Object getCellValue(Object element, int columnIndex) {
                 final TreeNode node = (TreeNode) element;
                 if (columnIndex == 0) {
                     return node.category != null ?
@@ -164,16 +169,25 @@ public class PropertyTreeViewer extends TreeViewer {
             }
 
             @Override
-            public boolean isHyperlink(Object cellValue)
-            {
+            public boolean isHyperlink(Object element, Object cellValue) {
+                if (element instanceof TreeNode) {
+                    DBPPropertyDescriptor property = ((TreeNode) element).property;
+                    if (property instanceof ObjectPropertyDescriptor && ((ObjectPropertyDescriptor) property).isHref()) {
+                        return true;
+                    }
+                }
                 return cellValue instanceof DBSObject;
             }
 
             @Override
-            public void navigateHyperlink(Object cellValue)
-            {
+            public void navigateHyperlink(Object cellValue) {
                 if (cellValue instanceof DBSObject) {
                     DBWorkbench.getPlatformUI().openEntityEditor((DBSObject) cellValue);
+                } else {
+                    String url = CommonUtils.toString(cellValue);
+                    if (url != null && url.contains("://")) {
+                        UIUtils.openWebBrowser(url);
+                    }
                 }
             }
 
@@ -183,6 +197,33 @@ public class PropertyTreeViewer extends TreeViewer {
                 return UIElementAlignment.LEFT;
             }
         };
+
+        this.themeChangeListener = e -> {
+            final ITheme theme = PlatformUI.getWorkbench().getThemeManager().getCurrentTheme();
+            boldFont = theme.getFontRegistry().getBold(UIFonts.DBEAVER_FONTS_MAIN_FONT);
+            getControl().setFont(theme.getFontRegistry().get(UIFonts.DBEAVER_FONTS_MAIN_FONT));
+            refresh();
+        };
+        this.themeChangeListener.propertyChange(null);
+        treeControl.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseDoubleClick(MouseEvent e) {
+                TreeItem[] selection = treeControl.getSelection();
+                if (selection.length > 0) {
+                    TreeItem item = selection[0];
+                    Object itemData = item.getData();
+                    if (itemData instanceof TreeNode) {
+                        Object propertyValue = getPropertyValue((TreeNode) itemData);
+                        if (renderer.isHyperlink(itemData, propertyValue)) {
+                            renderer.navigateHyperlink(propertyValue);
+                        }
+                    }
+                }
+            }
+        });
+
+        PlatformUI.getWorkbench().getThemeManager().addPropertyChangeListener(themeChangeListener);
+        getControl().addDisposeListener(e -> PlatformUI.getWorkbench().getThemeManager().removePropertyChangeListener(themeChangeListener));
     }
 
     public boolean isNamesEditable() {
@@ -273,6 +314,32 @@ public class PropertyTreeViewer extends TreeViewer {
                 tree.setRedraw(true);
             }
         });
+    }
+
+    /**
+     * Change size of columns if their width are smaller
+     * First column will be smaller then others because usually it's just a name
+     */
+    public void changeColumnsWidth() {
+        Tree tree = getTree();
+        if (tree != null && !tree.isDisposed()) {
+            UIUtils.asyncExec(() -> {
+                tree.setRedraw(false);
+                TreeColumn[] columns = tree.getColumns();
+                if (!ArrayUtils.isEmpty(columns) && columns.length > 1) {
+                    for (int i = 0; i < columns.length; i++) {
+                        if (i == 0) {
+                            if (columns[0].getWidth() < NAME_COLUMN_WIDTH) {
+                                columns[0].setWidth(NAME_COLUMN_WIDTH);
+                            }
+                        } else if (columns[i].getWidth() < VALUE_COLUMN_WIDTH) {
+                            columns[i].setWidth(VALUE_COLUMN_WIDTH);
+                        }
+                    }
+                }
+                tree.setRedraw(true);
+            });
+        }
     }
 
     private Map<String, TreeNode> loadTreeNodes(@Nullable DBRProgressMonitor monitor, TreeNode parent, DBPPropertySource propertySource)
@@ -438,21 +505,23 @@ public class PropertyTreeViewer extends TreeViewer {
                     selectedColumn = -1;
                     if (newPropertiesAllowed) {
                         TreeItem[] allItems = treeControl.getItems();
-                        TreeItem lastItem = allItems[allItems.length - 1];
-                        if (lastItem.getData() instanceof TreeNode) {
-                            TreeNode lastNode = (TreeNode) lastItem.getData();
-                            if (!CommonUtils.isEmpty(lastNode.children)) {
-                                lastNode = lastNode.children.get(lastNode.children.size() - 1);
+                        if (allItems.length > 0) {
+                            TreeItem lastItem = allItems[allItems.length - 1];
+                            if (lastItem.getData() instanceof TreeNode) {
+                                TreeNode lastNode = (TreeNode) lastItem.getData();
+                                if (!CommonUtils.isEmpty(lastNode.children)) {
+                                    lastNode = lastNode.children.get(lastNode.children.size() - 1);
+                                }
+                                if (lastNode.property != null && CommonUtils.isEmpty(lastNode.property.getDisplayName())) {
+                                    return;
+                                }
+                                if (lastNode.parent != null) lastNode = lastNode.parent;
+                                addProperty(lastNode, new PropertyDescriptor(lastNode.category, "prop" + lastNode.children.size(), "", "", false, String.class, "", null), true);
+                                allItems = treeControl.getItems();
+                                TreeItem newItem = allItems[allItems.length - 1];
+                                treeControl.setSelection(newItem);
+                                selectedColumn = UIUtils.getColumnAtPos(newItem, e.x, e.y);
                             }
-                            if (lastNode.property != null && CommonUtils.isEmpty(lastNode.property.getDisplayName())) {
-                                return;
-                            }
-                            if (lastNode.parent != null) lastNode = lastNode.parent;
-                            addProperty(lastNode, new PropertyDescriptor(lastNode.category, "prop" + lastNode.children.size(), "", "", false, String.class, "", null), true);
-                            allItems = treeControl.getItems();
-                            TreeItem newItem = allItems[allItems.length - 1];
-                            treeControl.setSelection(newItem);
-                            selectedColumn = UIUtils.getColumnAtPos(newItem, e.x, e.y);
                         }
                     }
                 }
@@ -984,7 +1053,7 @@ public class PropertyTreeViewer extends TreeViewer {
                         } else {
                             return "";
                         }
-                    } else if (propertyValue == null || renderer.isHyperlink(propertyValue)) {
+                    } else if (propertyValue == null || renderer.isHyperlink(node, propertyValue)) {
                         return ""; //$NON-NLS-1$
                     } else if (isHidePropertyValue(node.property)) {
                         // Mask value

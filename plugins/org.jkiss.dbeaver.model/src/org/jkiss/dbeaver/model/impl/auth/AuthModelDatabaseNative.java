@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -77,7 +77,13 @@ public class AuthModelDatabaseNative<CREDENTIALS extends AuthModelDatabaseNative
     }
 
     @Override
-    public Object initAuthentication(@NotNull DBRProgressMonitor monitor, @NotNull DBPDataSource dataSource, CREDENTIALS credentials, DBPConnectionConfiguration configuration, @NotNull Properties connectProps) throws DBException {
+    public Object initAuthentication(
+        @NotNull DBRProgressMonitor monitor,
+        @NotNull DBPDataSource dataSource,
+        @NotNull CREDENTIALS credentials,
+        @NotNull DBPConnectionConfiguration configuration,
+        @NotNull Properties connectProps
+    ) throws DBException {
         String userName = credentials.getUserName();
         String userPassword = credentials.getUserPassword();
 
@@ -117,8 +123,12 @@ public class AuthModelDatabaseNative<CREDENTIALS extends AuthModelDatabaseNative
     }
 
     @Override
-    public void refreshCredentials(@NotNull DBRProgressMonitor monitor, @NotNull DBPDataSourceContainer dataSource, @NotNull DBPConnectionConfiguration configuration, @NotNull CREDENTIALS credentials) throws DBException {
+    public void refreshCredentials(
+        @NotNull DBRProgressMonitor monitor,
+        @NotNull DBPDataSourceContainer dataSource,
+        @NotNull DBPConnectionConfiguration configuration,
+        @NotNull CREDENTIALS credentials
+    ) throws DBException {
         // do nothing
     }
-
 }

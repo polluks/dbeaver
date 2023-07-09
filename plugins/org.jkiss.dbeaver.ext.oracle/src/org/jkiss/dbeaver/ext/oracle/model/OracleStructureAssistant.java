@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -305,9 +305,9 @@ public class OracleStructureAssistant implements DBSStructureAssistant<OracleExe
             dbStat.setFetchSize(DBConstants.METADATA_FETCH_SIZE);
             try (JDBCResultSet dbResult = dbStat.executeQuery()) {
                 while (!session.getProgressMonitor().isCanceled() && objects.size() < params.getMaxResults() && dbResult.next()) {
-                    final String schemaName = JDBCUtils.safeGetString(dbResult, "OWNER");
-                    final String objectName = JDBCUtils.safeGetString(dbResult, "OBJECT_NAME");
-                    final String objectTypeName = JDBCUtils.safeGetString(dbResult, "OBJECT_TYPE");
+                    final String schemaName = JDBCUtils.safeGetString(dbResult, OracleConstants.COL_OWNER);
+                    final String objectName = JDBCUtils.safeGetString(dbResult, OracleConstants.COLUMN_OBJECT_NAME);
+                    final String objectTypeName = JDBCUtils.safeGetString(dbResult, OracleConstants.COLUMN_OBJECT_TYPE);
                     final OracleObjectType objectType = OracleObjectType.getByType(objectTypeName);
                     if (objectType != null && objectType.isBrowsable() && oracleObjectTypes.contains(objectType)) {
                         OracleSchema objectSchema = this.dataSource.getSchema(session.getProgressMonitor(), schemaName);

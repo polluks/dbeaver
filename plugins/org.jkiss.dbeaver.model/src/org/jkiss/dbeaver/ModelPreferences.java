@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ import org.jkiss.dbeaver.model.virtual.DBVEntity;
 import org.jkiss.dbeaver.registry.formatter.DataFormatterProfile;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.dbeaver.utils.PrefUtils;
+import org.jkiss.utils.CommonUtils;
 import org.osgi.framework.Bundle;
 
 import java.util.Arrays;
@@ -40,11 +41,45 @@ import java.util.Locale;
  */
 public final class ModelPreferences
 {
+    public enum SeparateConnectionBehavior {
+        DEFAULT("Default"),
+        ALWAYS("Always"),
+        NEVER("Never");
+        
+        private final String title;
+        
+        SeparateConnectionBehavior(String title) {
+            this.title = title;
+        }
+        
+        public String getTitle() {
+            return title;
+        }
+        
+        /**
+         * Convert value to SeparateConnectionBehavior option
+         */
+        public static SeparateConnectionBehavior parse(String value) {
+            if ("true".equalsIgnoreCase(value)) {
+                return DEFAULT;
+            } else if ("false".equalsIgnoreCase(value)) {
+                return NEVER;
+            } else {
+                return CommonUtils.valueOf(SeparateConnectionBehavior.class, value, DEFAULT);
+            }
+        }
+    }
+    
     public static final String PLUGIN_ID = "org.jkiss.dbeaver.model";
     public static final String CLIENT_TIMEZONE = "java.client.timezone";
+    public static final String CLIENT_BROWSER = "swt.client.browser";
+
+    public static final String PROP_USE_WIN_TRUST_STORE_TYPE = "connections.useWinTrustStoreType"; //$NON-NLS-1$
 
     public static final String NOTIFICATIONS_ENABLED = "notifications.enabled"; //$NON-NLS-1$
     public static final String NOTIFICATIONS_CLOSE_DELAY_TIMEOUT = "notifications.closeDelay"; //$NON-NLS-1$
+
+    public static final String DICTIONARY_MAX_ROWS = "dictionary.max.rows";
 
     public static final String QUERY_ROLLBACK_ON_ERROR = "query.rollback-on-error"; //$NON-NLS-1$
 
@@ -177,7 +212,7 @@ public final class ModelPreferences
         // Notifications
         PrefUtils.setDefaultPreferenceValue(store, ModelPreferences.NOTIFICATIONS_ENABLED, true);
         PrefUtils.setDefaultPreferenceValue(store, ModelPreferences.NOTIFICATIONS_CLOSE_DELAY_TIMEOUT, 3000L);
-
+        PrefUtils.setDefaultPreferenceValue(store, ModelPreferences.DICTIONARY_MAX_ROWS, 200);
         // Common
         PrefUtils.setDefaultPreferenceValue(store, QUERY_ROLLBACK_ON_ERROR, false);
         PrefUtils.setDefaultPreferenceValue(store, EXECUTE_RECOVER_ENABLED, true);
@@ -185,7 +220,7 @@ public final class ModelPreferences
         PrefUtils.setDefaultPreferenceValue(store, EXECUTE_CANCEL_CHECK_TIMEOUT, 0);
         PrefUtils.setDefaultPreferenceValue(store, DEFAULT_CONNECTION_NAME_PATTERN, GeneralUtils.variablePattern(DBPConnectionConfiguration.VAR_HOST_OR_DATABASE));
         PrefUtils.setDefaultPreferenceValue(store, CLIENT_TIMEZONE, DBConstants.DEFAULT_TIMEZONE);
-
+        PrefUtils.setDefaultPreferenceValue(store, CLIENT_BROWSER, "");
         PrefUtils.setDefaultPreferenceValue(store, CONNECTION_OPEN_TIMEOUT, 0);
         PrefUtils.setDefaultPreferenceValue(store, CONNECTION_VALIDATION_TIMEOUT, 10000);
         PrefUtils.setDefaultPreferenceValue(store, CONNECTION_CLOSE_TIMEOUT, 5000);
@@ -197,7 +232,7 @@ public final class ModelPreferences
         PrefUtils.setDefaultPreferenceValue(store, QUERY_REMOVE_TRAILING_DELIMITER, true);
 
         PrefUtils.setDefaultPreferenceValue(store, MEMORY_CONTENT_MAX_SIZE, 10000);
-        PrefUtils.setDefaultPreferenceValue(store, META_SEPARATE_CONNECTION, true);
+        PrefUtils.setDefaultPreferenceValue(store, META_SEPARATE_CONNECTION, SeparateConnectionBehavior.DEFAULT.name());
         PrefUtils.setDefaultPreferenceValue(store, META_CASE_SENSITIVE, false);
         PrefUtils.setDefaultPreferenceValue(store, META_USE_SERVER_SIDE_FILTERS, true);
 
@@ -273,14 +308,16 @@ public final class ModelPreferences
         PrefUtils.setDefaultPreferenceValue(store, UI_DRIVERS_HOME, "");
         PrefUtils.setDefaultPreferenceValue(store, UI_DRIVERS_SOURCES, "https://dbeaver.io/files/jdbc/");
 
+        PrefUtils.setDefaultPreferenceValue(store, PROP_USE_WIN_TRUST_STORE_TYPE, true);
+
         PrefUtils.setDefaultPreferenceValue(store, ModelPreferences.NAVIGATOR_SHOW_FOLDER_PLACEHOLDERS, true);
         PrefUtils.setDefaultPreferenceValue(store, ModelPreferences.NAVIGATOR_SORT_ALPHABETICALLY, false);
         PrefUtils.setDefaultPreferenceValue(store, ModelPreferences.NAVIGATOR_SORT_FOLDERS_FIRST, true);
 
         PrefUtils.setDefaultPreferenceValue(store, ModelPreferences.TRANSACTIONS_SMART_COMMIT, false);
         PrefUtils.setDefaultPreferenceValue(store, ModelPreferences.TRANSACTIONS_SMART_COMMIT_RECOVER, true);
-        PrefUtils.setDefaultPreferenceValue(store, ModelPreferences.TRANSACTIONS_AUTO_CLOSE_ENABLED, false);
-        PrefUtils.setDefaultPreferenceValue(store, ModelPreferences.TRANSACTIONS_AUTO_CLOSE_TTL, 15 * 60);
+        PrefUtils.setDefaultPreferenceValue(store, ModelPreferences.TRANSACTIONS_AUTO_CLOSE_ENABLED, true);
+        PrefUtils.setDefaultPreferenceValue(store, ModelPreferences.TRANSACTIONS_AUTO_CLOSE_TTL, 30 * 60);
         PrefUtils.setDefaultPreferenceValue(store, ModelPreferences.TRANSACTIONS_SHOW_NOTIFICATIONS, true);
 
         PrefUtils.setDefaultPreferenceValue(store, ModelPreferences.DICTIONARY_COLUMN_DIVIDER, " ");

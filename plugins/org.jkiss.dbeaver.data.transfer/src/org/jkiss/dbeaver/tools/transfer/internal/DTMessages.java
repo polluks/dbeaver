@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  * Copyright (C) 2011-2012 Eugene Fradkin (eugene.fradkin@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -47,6 +47,7 @@ public class DTMessages extends NLS {
 	public static String data_transfer_wizard_output_group_general;
 	public static String data_transfer_wizard_output_group_progress;
 	public static String data_transfer_wizard_output_label_copy_to_clipboard;
+	public static String data_transfer_wizard_output_label_global_settings;
 	public static String data_transfer_wizard_output_label_use_single_file;
 	public static String data_transfer_wizard_output_label_use_single_file_tip;
 	public static String data_transfer_wizard_output_label_directory;
@@ -68,6 +69,7 @@ public class DTMessages extends NLS {
 	public static String data_transfer_wizard_output_event_processor_error_incomplete_configuration;
 	public static String data_transfer_wizard_output_name;
 	public static String data_transfer_wizard_output_title;
+	public static String data_transfer_wizard_output_export_to_external_storage_link;
 	public static String data_transfer_wizard_settings_binaries_item_inline;
 	public static String data_transfer_wizard_settings_binaries_item_save_to_file;
 	public static String data_transfer_wizard_settings_binaries_item_set_to_null;
@@ -109,6 +111,8 @@ public class DTMessages extends NLS {
 	public static String data_transfer_db_consumer_existing_table_description;
 	public static String data_transfer_db_consumer_new_table;
 	public static String data_transfer_db_consumer_new_table_description;
+    public static String data_transfer_db_consumer_button_configure;
+    public static String data_transfer_db_consumer_button_configure_description;
 	public static String data_transfer_db_consumer_column_mappings;
 	public static String data_transfer_db_consumer_column_mappings_description;
 	public static String data_transfer_db_consumer_ddl;
@@ -160,6 +164,21 @@ public class DTMessages extends NLS {
 	public static String data_transfer_task_handler_unexpected_error_message;
 	public static String data_transfer_task_handler_resoring_referential_integrity_unexpected_error_title;
 	public static String data_transfer_task_handler_resoring_referential_integrity_unexpected_error_message;
+
+    public static String data_transfer_file_conflict_confirm_override_title;
+    public static String data_transfer_file_conflict_confirm_override_message;
+    public static String data_transfer_blob_file_conflict_title;
+    public static String data_transfer_file_conflict_ask_title;
+    public static String data_transfer_file_conflict_ask_message;
+    public static String data_transfer_file_conflict_ask;
+    public static String data_transfer_file_conflict_cancel;
+    public static String data_transfer_file_conflict_override;
+    public static String data_transfer_file_conflict_fix_name;
+    public static String data_transfer_file_conflict_append;
+    public static String data_transfer_file_conflict_behavior_setting;
+    public static String data_transfer_blob_file_conflict_behavior_setting;
+    public static String data_transfer_file_conflict_behavior_apply_to_all;
+    public static String data_transfer_file_conflict_behavior_apply_to_all_for_current_object;
 
 	public static String data_transfer_summary_title;
 

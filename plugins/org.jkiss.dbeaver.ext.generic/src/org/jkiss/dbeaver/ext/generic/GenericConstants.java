@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ public class GenericConstants {
     public static final String PARAM_QUERY_SET_ACTIVE_DB = "query-set-active-db";
     public static final String PARAM_ACTIVE_ENTITY_TYPE = "active-entity-type";
     public static final String PARAM_SUPPORTS_REFERENCES = "supports-references";
+    public static final String PARAM_SUPPORTS_DELIMITER_IN_VIEWS = "supports-delimiter-in-views";
     public static final String PARAM_SUPPORTS_INDEXES = "supports-indexes";
     public static final String PARAM_SUPPORTS_CONSTRAINTS = "supports-table-constraints";
     public static final String PARAM_SUPPORTS_VIEWS = "supports-views";
@@ -45,6 +46,8 @@ public class GenericConstants {
     public static final String PARAM_OMIT_SINGLE_CATALOG = "omit-single-catalog";
     public static final String PARAM_OMIT_SINGLE_SCHEMA = "omit-single-schema";
     public static final String PARAM_OMIT_CATALOG_NAME = "omit-catalog-name";
+    public static final String PARAM_STORED_UNQUOTED_CASE = "stored-unquoted-case";
+    public static final String PARAM_STORED_QUOTED_CASE = "stored-quoted-case";
     public static final String PARAM_SCHEMA_FILTER_ENABLED = "schema-filters-enabled";
     public static final String PARAM_ALL_OBJECTS_PATTERN = "all-objects-pattern";
     public static final String PARAM_SCRIPT_DELIMITER = "script-delimiter";
@@ -68,6 +71,8 @@ public class GenericConstants {
     public static final String PARAM_SUPPORTS_CATALOG_SELECTION = "supports-catalog-selection";
     public static final String PARAM_SUPPORTS_SCHEMA_SELECTION = "supports-schema-selection";
     public static final String PARAM_SUPPORTS_MULTI_INSERT = "supports-multi-insert";
+    public static final String PARAM_SUPPORTS_EMBEDDED_DATABASE_CREATION = "supports-embedded-database-creation";
+    public static final String PARAM_IDENTIFIER_QUOTES = "identifier-quotes";
 
     public static final String PARAM_NATIVE_FORMAT_TIMESTAMP = "native-format-timestamp";
     public static final String PARAM_NATIVE_FORMAT_TIME = "native-format-time";
@@ -103,4 +108,5 @@ public class GenericConstants {
     public static final String TABLE_TYPE_TABLE = "TABLE";
 
     public static final String BASE_CONSTRAINT_NAME = "new_key";
+
 }

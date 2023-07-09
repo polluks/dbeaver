@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,8 @@
  */
 package org.jkiss.dbeaver.model.qm.meta;
 
-import org.jkiss.code.Nullable;
-import org.jkiss.dbeaver.model.app.DBPProject;
 import org.jkiss.dbeaver.model.connection.DBPConnectionConfiguration;
 import org.jkiss.dbeaver.model.exec.*;
-import org.jkiss.dbeaver.model.sql.SQLDialect;
 import org.jkiss.utils.CommonUtils;
 
 /**
@@ -28,50 +25,83 @@ import org.jkiss.utils.CommonUtils;
  */
 public class QMMConnectionInfo extends QMMObject {
 
-    private final DBPProject project;
+    @Include
+    private final QMMProjectInfo projectInfo;
+    @Include
     private final String containerId;
-    private final String driverId;
+
     private String containerName;
-    @Nullable
-    private DBPConnectionConfiguration connectionConfiguration;
+    private final String driverId;
+    private String connectionUserName;
+    private String connectionUrl;
+    @Include
     private String instanceId;
+    @Include
     private String contextName;
-    @Nullable
-    private SQLDialect sqlDialect;
     private boolean transactional;
 
-    private QMMStatementInfo statementStack;
-    private QMMStatementExecuteInfo executionStack;
-    private QMMTransactionInfo transaction;
+    private transient QMMStatementInfo statementStack;
+    private transient QMMStatementExecuteInfo executionStack;
+    private transient QMMTransactionInfo transaction;
     //private Throwable stack;
 
     public QMMConnectionInfo(DBCExecutionContext context, boolean transactional) {
-        this.project = context.getDataSource().getContainer().getProject();
+        super(QMMetaObjectType.CONNECTION_INFO);
         this.containerId = context.getDataSource().getContainer().getId();
         this.driverId = context.getDataSource().getContainer().getDriver().getFullId();
 
+        this.projectInfo = new QMMProjectInfo(context.getDataSource().getContainer().getProject());
         initFromContext(context, transactional);
+    }
+
+    private QMMConnectionInfo(Builder builder) {
+        super(QMMetaObjectType.CONNECTION_INFO, builder.openTime, builder.closeTime);
+        projectInfo = builder.projectInfo;
+        containerId = builder.containerId;
+        driverId = builder.driverId;
+        containerName = builder.containerName;
+        connectionUserName = builder.connectionUserName;
+        connectionUrl = builder.connectionUrl;
+        instanceId = builder.instanceId;
+        contextName = builder.contextName;
+        transactional = builder.transactional;
+        statementStack = builder.statementStack;
+        executionStack = builder.executionStack;
+        transaction = builder.transaction;
     }
 
     private void initFromContext(DBCExecutionContext context, boolean transactional) {
         this.containerName = context.getDataSource().getContainer().getName();
-        this.connectionConfiguration = context.getDataSource().getContainer().getConnectionConfiguration();
+        var connectionConfiguration = context.getDataSource().getContainer().getConnectionConfiguration();
+        this.connectionUserName = connectionConfiguration.getUserName();
+        this.connectionUrl = connectionConfiguration.getUrl();
         this.instanceId = context.getOwnerInstance().getName();
         this.contextName = context.getContextName();
-        this.sqlDialect = context.getDataSource().getSQLDialect();
         this.transactional = transactional;
         if (transactional) {
             this.transaction = new QMMTransactionInfo(this, null);
         }
     }
 
-    public QMMConnectionInfo(long openTime, long closeTime, String containerId, String containerName, String driverId, DBPConnectionConfiguration connectionConfiguration, String instanceID, String contextName, boolean transactional) {
-        super(openTime, closeTime);
-        this.project = null;
+    public QMMConnectionInfo(
+        long openTime,
+        long closeTime,
+        QMMProjectInfo projectInfo,
+        String containerId,
+        String containerName,
+        String driverId,
+        DBPConnectionConfiguration connectionConfiguration,
+        String instanceID,
+        String contextName,
+        boolean transactional)
+    {
+        super(QMMetaObjectType.CONNECTION_INFO, openTime, closeTime);
+        this.projectInfo = projectInfo;
         this.containerId = containerId;
         this.containerName = containerName;
         this.driverId = driverId;
-        this.connectionConfiguration = connectionConfiguration;
+        this.connectionUserName = connectionConfiguration.getUserName();
+        this.connectionUrl = connectionConfiguration.getUrl();
         this.instanceId = instanceID;
         this.contextName = contextName;
         this.transactional = transactional;
@@ -204,11 +234,13 @@ public class QMMConnectionInfo extends QMMObject {
             final QMMTransactionSavepointInfo savepoint =
                 isTransactional() && getTransaction() != null ?
                     getTransaction().getCurrentSavepoint() : null;
+            var sqlDialect = statement.getSession().getDataSource().getSQLDialect();
             return this.executionStack = new QMMStatementExecuteInfo(
                 stat,
                 savepoint,
                 queryString,
-                this.executionStack);
+                this.executionStack,
+                sqlDialect);
         } else {
             return null;
         }
@@ -244,8 +276,8 @@ public class QMMConnectionInfo extends QMMObject {
         return exec;
     }
 
-    public DBPProject getProject() {
-        return project;
+    public QMMProjectInfo getProjectInfo() {
+        return projectInfo;
     }
 
     public String getContainerId() {
@@ -258,10 +290,6 @@ public class QMMConnectionInfo extends QMMObject {
 
     public String getDriverId() {
         return driverId;
-    }
-
-    public DBPConnectionConfiguration getConnectionConfiguration() {
-        return connectionConfiguration;
     }
 
     public String getInstanceId() {
@@ -287,8 +315,12 @@ public class QMMConnectionInfo extends QMMObject {
         return transactional;
     }
 
-    public SQLDialect getSQLDialect() {
-        return sqlDialect;
+    public String getConnectionUserName() {
+        return connectionUserName;
+    }
+
+    public String getConnectionUrl() {
+        return connectionUrl;
     }
 
     @Override
@@ -306,5 +338,103 @@ public class QMMConnectionInfo extends QMMObject {
         return
             CommonUtils.equalObjects(containerId, si.containerId) &&
             CommonUtils.equalObjects(contextName, si.contextName);
+    }
+
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public static final class Builder {
+        private QMMProjectInfo projectInfo;
+        private String containerId;
+        private String driverId;
+        private String containerName;
+        private String connectionUserName;
+        private String connectionUrl;
+        private String instanceId;
+        private long openTime;
+        private long closeTime;
+        private String contextName;
+        private boolean transactional;
+        private QMMStatementInfo statementStack;
+        private QMMStatementExecuteInfo executionStack;
+        private QMMTransactionInfo transaction;
+
+        public Builder() {
+        }
+
+        public Builder setProjectInfo(QMMProjectInfo projectInfo) {
+            this.projectInfo = projectInfo;
+            return this;
+        }
+
+        public Builder setContainerId(String containerId) {
+            this.containerId = containerId;
+            return this;
+        }
+
+        public Builder setDriverId(String driverId) {
+            this.driverId = driverId;
+            return this;
+        }
+
+        public Builder setContainerName(String containerName) {
+            this.containerName = containerName;
+            return this;
+        }
+
+        public Builder setConnectionUserName(String connectionUserName) {
+            this.connectionUserName = connectionUserName;
+            return this;
+        }
+
+        public Builder setConnectionUrl(String url) {
+            this.connectionUrl = url;
+            return this;
+        }
+
+        public Builder setInstanceId(String instanceId) {
+            this.instanceId = instanceId;
+            return this;
+        }
+
+        public Builder setOpenTime(long openTime) {
+            this.openTime = openTime;
+            return this;
+        }
+
+        public Builder setCloseTime(long closeTime) {
+            this.closeTime = closeTime;
+            return this;
+        }
+
+        public Builder setContextName(String contextName) {
+            this.contextName = contextName;
+            return this;
+        }
+
+        public Builder setTransactional(boolean transactional) {
+            this.transactional = transactional;
+            return this;
+        }
+
+        public Builder setStatementStack(QMMStatementInfo statementStack) {
+            this.statementStack = statementStack;
+            return this;
+        }
+
+        public Builder setExecutionStack(QMMStatementExecuteInfo executionStack) {
+            this.executionStack = executionStack;
+            return this;
+        }
+
+        public Builder setTransaction(QMMTransactionInfo transaction) {
+            this.transaction = transaction;
+            return this;
+        }
+
+        public QMMConnectionInfo build() {
+            return new QMMConnectionInfo(this);
+        }
     }
 }

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,8 +22,8 @@ public class EditorsMessages extends NLS {
 	private static final String BUNDLE_NAME = "org.jkiss.dbeaver.ui.editors.internal.EditorsResources"; //$NON-NLS-1$
 
 	public static String dialog_struct_attribute_edit_page_header_edit_attribute;
-	public static String dialog_struct_attribute_edit_page_label_text_name;
-	public static String dialog_struct_attribute_edit_page_label_text_properties;
+	public static String dialog_struct_label_text_name;
+	public static String dialog_struct_label_text_properties;
 	public static String dialog_struct_columns_select_error_load_columns_message;
 	public static String dialog_struct_columns_select_error_load_columns_title;
 	public static String dialog_struct_columns_select_group_columns;
@@ -59,6 +59,10 @@ public class EditorsMessages extends NLS {
 	public static String dialog_struct_edit_index_label_type;
 
 	public static String dialog_struct_edit_dictionary_tip;
+	public static String dialog_struct_edit_dictionary_custom_criteria;
+	public static String dialog_struct_edit_dictionary_custom_criteria_tip;
+	public static String dialog_struct_edit_dictionary_column_delimiter;
+	public static String dialog_struct_edit_dictionary_column_delimiter_tip;
 
 	public static String dialog_struct_columns_select_column;
 	public static String dialog_struct_columns_type;
@@ -81,6 +85,8 @@ public class EditorsMessages extends NLS {
 	public static String database_editor_command_refresh_name;
 	public static String database_editor_command_refresh_tip;
 
+	public static String database_editor_project;
+
 	public static String  file_dialog_select_files;
 	public static String file_dialog_save_failed;
 	public static String file_dialog_save_as_file;
@@ -95,6 +101,9 @@ public class EditorsMessages extends NLS {
 	public static String edit_constraints_expression_text;
 	public static String selector_select_all_text;
 	public static String selector_clear_all_text;
+
+    public static String progress_editor_initializing_text;
+    public static String progress_editor_uninitialized_text;
 
 	static {
 		// initialize resource bundle

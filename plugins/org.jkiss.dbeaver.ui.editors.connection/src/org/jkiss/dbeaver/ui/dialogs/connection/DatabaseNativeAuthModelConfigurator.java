@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -155,7 +155,9 @@ public class DatabaseNativeAuthModelConfigurator implements IObjectPropertyConfi
         UIServiceSecurity serviceSecurity = DBWorkbench.getService(UIServiceSecurity.class);
         boolean supportsPasswordView = serviceSecurity != null;
 
-        Composite panel = UIUtils.createComposite(passPlaceholder, supportsPasswordView ? 2 : 1);
+        int colCount = 1;
+        if (supportsPasswordView) colCount++;
+        Composite panel = UIUtils.createComposite(passPlaceholder, colCount);
         GridData gd = new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING);
         panel.setLayoutData(gd);
 
@@ -182,7 +184,6 @@ public class DatabaseNativeAuthModelConfigurator implements IObjectPropertyConfi
                 }
             });
         }
-
     }
 
     protected String getPasswordFieldLabel() {
@@ -190,31 +191,22 @@ public class DatabaseNativeAuthModelConfigurator implements IObjectPropertyConfi
     }
 
     private void showPasswordText(UIServiceSecurity serviceSecurity) {
-        Composite passContainer = passwordText.getParent();
         boolean passHidden = (passwordText.getStyle() & SWT.PASSWORD) == SWT.PASSWORD;
         if (passHidden) {
             if (!serviceSecurity.validatePassword(
-                dataSource.getProject().getSecureStorage(),
+                dataSource.getProject(),
                 "Enter project password",
-                "Enter project master password to unlock connection password view",
+                "Enter project password to unlock connection password view",
                 true))
             {
                 return;
             }
         }
 
-        Object layoutData = passwordText.getLayoutData();
-        String curValue = passwordText.getText();
-        passwordText.dispose();
-
-        if (passHidden) {
-            passwordText = new Text(passContainer, SWT.BORDER);
-        } else {
-            passwordText = new Text(passContainer, SWT.PASSWORD | SWT.BORDER);
-        }
-        passwordText.setLayoutData(layoutData);
-        passwordText.setText(curValue);
-        passContainer.layout(true, true);
+        passwordText = UIUtils.recreateTextControl(
+            passwordText,
+            passHidden ? SWT.BORDER : SWT.BORDER | SWT.PASSWORD
+        );
     }
 
 }

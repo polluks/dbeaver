@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -264,11 +264,18 @@ public abstract class BaseTextEditor extends AbstractDecoratedTextEditor impleme
 
     }
 
-    public void saveToExternalFile()
-    {
+    public void saveToExternalFile() {
+        saveToExternalFile(null);
+    }
+
+    public void saveToExternalFile(@Nullable String currentDirectory) {
         IEditorInput editorInput = getEditorInput();
         IFile curFile = EditorUtils.getFileFromInput(editorInput);
         String fileName = curFile == null ? null : curFile.getName();
+
+        if (CommonUtils.isNotEmpty(currentDirectory)) {
+            DialogUtils.setCurDialogFolder(currentDirectory);
+        }
 
         final IDocument document = getDocument();
         final File saveFile = DialogUtils.selectFileForSave(getSite().getShell(), EditorsMessages.file_dialog_save_as_file, new String[]{"*.sql", "*.txt", "*", "*.*"}, fileName);

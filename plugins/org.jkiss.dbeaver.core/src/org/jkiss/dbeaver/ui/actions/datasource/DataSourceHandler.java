@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBeaverPreferences;
 import org.jkiss.dbeaver.Log;
-import org.jkiss.dbeaver.core.DBeaverActivator;
+import org.jkiss.dbeaver.core.CoreFeatures;
 import org.jkiss.dbeaver.model.DBPDataSource;
 import org.jkiss.dbeaver.model.DBPDataSourceContainer;
 import org.jkiss.dbeaver.model.DBPDataSourceTask;
@@ -59,6 +59,7 @@ import org.jkiss.dbeaver.utils.RuntimeUtils;
 import org.jkiss.utils.ArrayUtils;
 
 import java.lang.reflect.InvocationTargetException;
+import java.util.Map;
 
 public class DataSourceHandler {
     private static final Log log = Log.getLog(DataSourceHandler.class);
@@ -75,30 +76,31 @@ public class DataSourceHandler {
     public static void connectToDataSource(
         @Nullable DBRProgressMonitor monitor,
         @NotNull DBPDataSourceContainer dataSourceContainer,
-        @Nullable final DBRProgressListener onFinish) {
+        @Nullable final DBRProgressListener onFinish
+    ) {
         if (dataSourceContainer instanceof DataSourceDescriptor && !dataSourceContainer.isConnected()) {
             final DataSourceDescriptor dataSourceDescriptor = (DataSourceDescriptor) dataSourceContainer;
-            if (!ArrayUtils.isEmpty(Job.getJobManager().find(dataSourceDescriptor))) {
+            Job[] connectJobs = Job.getJobManager().find(dataSourceDescriptor);
+            if (!ArrayUtils.isEmpty(connectJobs)) {
                 // Already connecting/disconnecting - just return
+                if (monitor != null && connectJobs.length == 1) {
+                    try {
+                        connectJobs[0].join(0, monitor.getNestedMonitor());
+                    } catch (InterruptedException e) {
+                        log.debug(e);
+                    }
+                }
                 return;
             }
 
+            CoreFeatures.CONNECTION_OPEN.use(Map.of(
+                "driver", dataSourceContainer.getDriver().getPreconfiguredId()
+            ));
             final ConnectJob connectJob = new ConnectJob(dataSourceDescriptor);
             final JobChangeAdapter jobChangeAdapter = new JobChangeAdapter() {
                 @Override
                 public void done(IJobChangeEvent event) {
                     IStatus result = connectJob.getConnectStatus();
-                    if (result.isOK()) {
-                        if (!dataSourceDescriptor.isSavePassword()) {
-                            // Rest password back to null
-                            // TODO: to be correct we need to reset password info.
-                            // but we need a password to open isolated contexts (e.g. for data export)
-                            // Currently it is not possible to ask for password from isolation context opening
-                            // procedure. We need to do something here...
-                            //dataSourceDescriptor.getConnectionConfiguration().setUserName(oldName);
-                            //dataSourceDescriptor.getConnectionConfiguration().setUserPassword(oldPassword);
-                        }
-                    }
                     if (onFinish != null) {
                         onFinish.onTaskFinished(result);
                     } else if (!result.isOK()) {
@@ -136,12 +138,7 @@ public class DataSourceHandler {
                 // Schedule in UI because connect may be initiated during application startup
                 // and UI is still not initiated. In this case no progress dialog will appear
                 // to be sure run in UI async
-                UIUtils.asyncExec(new Runnable() {
-                    @Override
-                    public void run() {
-                        connectJob.schedule();
-                    }
-                });
+                UIUtils.asyncExec(connectJob::schedule);
             }
         }
     }
@@ -166,6 +163,11 @@ public class DataSourceHandler {
                 // Already connecting/disconnecting - just return
                 return;
             }
+
+            CoreFeatures.CONNECTION_CLOSE.use(Map.of(
+                "driver", dataSourceContainer.getDriver().getPreconfiguredId()
+            ));
+
             final DisconnectJob disconnectJob = new DisconnectJob(dataSourceDescriptor);
             disconnectJob.addJobChangeListener(new JobChangeAdapter() {
                 @Override
@@ -328,8 +330,7 @@ public class DataSourceHandler {
 
         @Override
         public void run() {
-            result = ConfirmationDialog.showConfirmDialog(
-                DBeaverActivator.getCoreResourceBundle(),
+            result = ConfirmationDialog.confirmAction(
                 null,
                 this.isReconnect ? DBeaverPreferences.CONFIRM_TXN_RECONNECT : DBeaverPreferences.CONFIRM_TXN_DISCONNECT,
                 ConfirmationDialog.QUESTION_WITH_CANCEL,

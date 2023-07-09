@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 
 package org.jkiss.dbeaver.model.sql;
 
+import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.schema.Database;
 import net.sf.jsqlparser.schema.Table;
@@ -47,6 +48,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * SQLQuery
@@ -78,6 +80,7 @@ public class SQLQuery implements SQLScriptElement {
     private List<SQLSelectItem> selectItems;
     private String queryTitle;
     private String extraErrorMessage;
+    private List<String> allSelectEntitiesNames = new ArrayList<>();
 
     public SQLQuery(@Nullable DBPDataSource dataSource, @NotNull String text) {
         this(dataSource, text, 0, text.length());
@@ -163,13 +166,16 @@ public class SQLQuery implements SQLScriptElement {
                             fillSingleSource((Table) fromItem);
                         }
                     }
+                    if (!CommonUtils.isEmpty(plainSelect.getJoins()) && fromItem instanceof Table) {
+                        createTargetName(plainSelect, (Table) fromItem);
+                    }
                     // Extract select items info
-                    final List<SelectItem> items = plainSelect.getSelectItems();
-                    if (items != null && !items.isEmpty()) {
-                        selectItems = new ArrayList<>();
-                        for (SelectItem item : items) {
-                            selectItems.add(new SQLSelectItem(this, item));
-                        }
+                    final List<SQLSelectItem> items = CommonUtils.safeList(plainSelect.getSelectItems()).stream()
+                        .filter(this::isValidSelectItem)
+                        .map(item -> new SQLSelectItem(this, item))
+                        .collect(Collectors.toList());
+                    if (!items.isEmpty()) {
+                        selectItems = items;
                     }
                 }
             } else if (statement instanceof Insert) {
@@ -207,6 +213,25 @@ public class SQLQuery implements SQLScriptElement {
             this.parseError = e;
             //log.debug("Error parsing SQL query [" + query + "]:" + CommonUtils.getRootCause(e).getMessage());
         }
+    }
+
+    private boolean isValidSelectItem(@NotNull SelectItem item) {
+        // Workaround for JSQLParser not respecting the `#` comment in MySQL and treating them as valid values
+        if (item instanceof SelectExpressionItem && dataSource != null) {
+            final Expression expr = ((SelectExpressionItem) item).getExpression();
+            if (expr instanceof Column) {
+                final String name = CommonUtils.trim(((Column) expr).getColumnName());
+                if (CommonUtils.isNotEmpty(name)) {
+                    for (String comment : dataSource.getSQLDialect().getSingleLineComments()) {
+                        if (name.startsWith(comment)) {
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+
+        return true;
     }
 
     private boolean isPotentiallySingleSourceSelect(PlainSelect plainSelect) {
@@ -295,6 +320,35 @@ public class SQLQuery implements SQLScriptElement {
             }
         }
         return -1;
+    }
+
+    /**
+     * Sometime we want to know all source containers names from the query if it is Select statement and it has JOINs.
+     * For the data transfer target file name, as example.
+     * Contains only entities names without schema/catalog identifiers.
+     *
+     * @param plainSelect plain Select class
+     */
+    private void createTargetName(@NotNull PlainSelect plainSelect, @NotNull Table fromItem) {
+        String fromItemName = fromItem.getName();
+        if (CommonUtils.isNotEmpty(fromItemName)) {
+            allSelectEntitiesNames.add(fromItemName);
+        }
+        List<Join> joins = plainSelect.getJoins();
+        for (Join join : joins) {
+            FromItem rightItem = join.getRightItem();
+            if (rightItem instanceof Table) {
+                String name = ((Table) rightItem).getName();
+                if (CommonUtils.isNotEmpty(name)) {
+                    allSelectEntitiesNames.add(name);
+                }
+            }
+        }
+    }
+
+    @NotNull
+    public List<String> getAllSelectEntitiesNames() {
+        return allSelectEntitiesNames;
     }
 
     @NotNull

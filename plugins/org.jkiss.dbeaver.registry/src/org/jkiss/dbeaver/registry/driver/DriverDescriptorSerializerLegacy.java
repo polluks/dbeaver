@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package org.jkiss.dbeaver.registry.driver;
 
 import org.jkiss.dbeaver.Log;
+import org.jkiss.dbeaver.ModelPreferences;
 import org.jkiss.dbeaver.model.DBPImage;
 import org.jkiss.dbeaver.model.connection.DBPDriverLibrary;
 import org.jkiss.dbeaver.model.connection.DBPNativeClientLocation;
@@ -24,33 +25,57 @@ import org.jkiss.dbeaver.model.connection.LocalNativeClientLocation;
 import org.jkiss.dbeaver.registry.DataSourceProviderDescriptor;
 import org.jkiss.dbeaver.registry.DataSourceProviderRegistry;
 import org.jkiss.dbeaver.registry.RegistryConstants;
+import org.jkiss.dbeaver.registry.VersionUtils;
 import org.jkiss.dbeaver.registry.maven.MavenArtifactReference;
+import org.jkiss.dbeaver.runtime.DBWorkbench;
+import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.utils.CommonUtils;
 import org.jkiss.utils.xml.SAXListener;
 import org.jkiss.utils.xml.SAXReader;
 import org.jkiss.utils.xml.XMLBuilder;
 import org.xml.sax.Attributes;
 
-import java.io.File;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * DriverDescriptorSerializerLegacy
  */
-@Deprecated
 public class DriverDescriptorSerializerLegacy extends DriverDescriptorSerializer {
+
+    public static final String DRIVERS_FILE_NAME = "drivers.xml"; //$NON-NLS-1$
 
     private static final Log log = Log.getLog(DriverDescriptorSerializerLegacy.class);
 
-    private DriverDescriptor driver;
-
-    DriverDescriptorSerializerLegacy(DriverDescriptor driver) {
-        this.driver = driver;
+    public void serializeDrivers(OutputStream os, List<DataSourceProviderDescriptor> providers) throws IOException {
+        XMLBuilder xml = new XMLBuilder(os, GeneralUtils.UTF8_ENCODING);
+        xml.setButify(true);
+        xml.startElement(RegistryConstants.TAG_DRIVERS);
+        for (DataSourceProviderDescriptor provider : providers) {
+            if (provider.isTemporary()) {
+                continue;
+            }
+            List<DriverDescriptor> drivers = provider.getDrivers().stream().filter(DriverDescriptor::isModified).collect(Collectors.toList());
+            drivers.removeIf(driverDescriptor -> driverDescriptor.getReplacedBy() != null);
+            if (drivers.isEmpty()) {
+                continue;
+            }
+            xml.startElement(RegistryConstants.TAG_PROVIDER);
+            xml.addAttribute(RegistryConstants.ATTR_ID, provider.getId());
+            for (DriverDescriptor driver : drivers) {
+                serializeDriver(xml, driver, false);
+            }
+            xml.endElement();
+        }
+        xml.endElement();
+        xml.flush();
     }
 
-    public void serialize(XMLBuilder xml, boolean export)
+    private void serializeDriver(XMLBuilder xml, DriverDescriptor driver, boolean export)
             throws IOException {
         Map<String, String> pathSubstitutions = getPathSubstitutions();
 
@@ -101,6 +126,9 @@ public class DriverDescriptorSerializerLegacy extends DriverDescriptorSerializer
             if (!driver.isInstantiable()) {
                 xml.addAttribute(RegistryConstants.ATTR_INSTANTIABLE, driver.isInstantiable());
             }
+            if (!driver.isSupportsDistributedMode()) {
+                xml.addAttribute(RegistryConstants.ATTR_SUPPORTS_DISTRIBUTED_MODE, driver.isSupportsDistributedMode());
+            }
 
             // Libraries
             for (DBPDriverLibrary lib : driver.getDriverLibraries()) {
@@ -125,7 +153,7 @@ public class DriverDescriptorSerializerLegacy extends DriverDescriptorSerializer
                             xml.addAttribute("load-optional-dependencies", true);
                         }
                     }
-                    //xml.addAttribute(RegistryConstants.ATTR_CUSTOM, lib.isCustom());
+
                     List<DriverDescriptor.DriverFileInfo> files = driver.getResolvedFiles().get(lib);
                     if (files != null) {
                         for (DriverDescriptor.DriverFileInfo file : files) {
@@ -135,10 +163,17 @@ public class DriverDescriptorSerializerLegacy extends DriverDescriptorSerializer
                                     continue;
                                 }
                                 xml.addAttribute(RegistryConstants.ATTR_ID, file.getId());
+                                // check if we need to store local file in storage
+
                                 if (!CommonUtils.isEmpty(file.getVersion())) {
                                     xml.addAttribute(RegistryConstants.ATTR_VERSION, file.getVersion());
                                 }
-                                xml.addAttribute(RegistryConstants.ATTR_PATH, substitutePathVariables(pathSubstitutions, file.getFile().getAbsolutePath()));
+                                xml.addAttribute(
+                                    RegistryConstants.ATTR_PATH,
+                                    substitutePathVariables(pathSubstitutions, file.getFile().toString()));
+                                if (file.getFileCRC() != 0) {
+                                    xml.addAttribute("crc", Long.toHexString(file.getFileCRC()));
+                                }
                             }
                         }
                     }
@@ -174,7 +209,7 @@ public class DriverDescriptorSerializerLegacy extends DriverDescriptorSerializer
             }
 
             // Properties
-            for (Map.Entry<String, Object> propEntry : driver.getCustomConnectionProperties().entrySet()) {
+            for (Map.Entry<String, Object> propEntry : driver.getConnectionProperties().entrySet()) {
                 if (!CommonUtils.equalObjects(propEntry.getValue(), driver.getDefaultConnectionProperties().get(propEntry.getKey()))) {
                     try (XMLBuilder.Element e1 = xml.startElement(RegistryConstants.TAG_PROPERTY)) {
                         xml.addAttribute(RegistryConstants.ATTR_NAME, propEntry.getKey());
@@ -191,6 +226,8 @@ public class DriverDescriptorSerializerLegacy extends DriverDescriptorSerializer
         DataSourceProviderDescriptor curProvider;
         DriverDescriptor curDriver;
         DBPDriverLibrary curLibrary;
+        boolean isLibraryUpgraded = false;
+        boolean isDistributed = DBWorkbench.isDistributed();
 
         public DriversParser(boolean provided) {
             this.providedDrivers = provided;
@@ -215,6 +252,7 @@ public class DriverDescriptorSerializerLegacy extends DriverDescriptorSerializer
                 }
                 case RegistryConstants.TAG_DRIVER: {
                     curDriver = null;
+                    String idAttr = atts.getValue(RegistryConstants.ATTR_ID);
                     if (curProvider == null) {
                         String providerId = atts.getValue(RegistryConstants.ATTR_PROVIDER);
                         if (!CommonUtils.isEmpty(providerId)) {
@@ -224,11 +262,10 @@ public class DriverDescriptorSerializerLegacy extends DriverDescriptorSerializer
                             }
                         }
                         if (curProvider == null) {
-                            log.warn("Driver outside of datasource provider");
+                            log.warn("Driver '" + idAttr + "' outside of datasource provider");
                             return;
                         }
                     }
-                    String idAttr = atts.getValue(RegistryConstants.ATTR_ID);
                     curDriver = curProvider.getDriver(idAttr);
                     if (curDriver == null) {
                         curDriver = new DriverDescriptor(curProvider, idAttr);
@@ -262,6 +299,10 @@ public class DriverDescriptorSerializerLegacy extends DriverDescriptorSerializer
                         curDriver.setUseURL((
                             CommonUtils.getBoolean(atts.getValue(RegistryConstants.ATTR_USE_URL_TEMPLATE), true)));
                     }
+                    if (atts.getValue(RegistryConstants.ATTR_SUPPORTS_DISTRIBUTED_MODE) != null) {
+                        curDriver.setSupportsDistributedMode((
+                            CommonUtils.getBoolean(atts.getValue(RegistryConstants.ATTR_SUPPORTS_DISTRIBUTED_MODE), true)));
+                    }
                     curDriver.setModified(true);
                     String disabledAttr = atts.getValue(RegistryConstants.ATTR_DISABLED);
                     if (CommonUtils.getBoolean(disabledAttr)) {
@@ -271,9 +312,11 @@ public class DriverDescriptorSerializerLegacy extends DriverDescriptorSerializer
                 }
                 case RegistryConstants.TAG_LIBRARY: {
                     if (curDriver == null) {
-                        log.warn("Library outside of driver");
+                        log.warn("Library outside of driver (" + atts.getValue(RegistryConstants.ATTR_PATH) + ")");
                         return;
                     }
+                    isLibraryUpgraded = false;
+
                     DBPDriverLibrary.FileType type;
                     String typeStr = atts.getValue(RegistryConstants.ATTR_TYPE);
                     if (CommonUtils.isEmpty(typeStr)) {
@@ -288,14 +331,14 @@ public class DriverDescriptorSerializerLegacy extends DriverDescriptorSerializer
                     boolean custom = CommonUtils.getBoolean(atts.getValue(RegistryConstants.ATTR_CUSTOM), true);
                     String version = atts.getValue(RegistryConstants.ATTR_VERSION);
                     DBPDriverLibrary lib = curDriver.getDriverLibrary(path);
-                    if (!providedDrivers && !custom && lib == null) {
+                    if (!isDistributed && !providedDrivers && !custom && lib == null) {
                         // Perhaps this library isn't included in driver bundle
                         // Or this is predefined library from some previous version - as it wasn't defined in plugin.xml
                         // so let's just skip it
                         //log.debug("Skip obsolete custom library '" + path + "'");
                         return;
                     }
-                    if(providedDrivers && lib == null && !(curDriver.getDriverLibraries().isEmpty())){
+                    if (providedDrivers && lib == null && !(curDriver.getDriverLibraries().isEmpty())){
                         curDriver.disabledAllDefaultLibraries();
                     }
                     String disabledAttr = atts.getValue(RegistryConstants.ATTR_DISABLED);
@@ -305,7 +348,17 @@ public class DriverDescriptorSerializerLegacy extends DriverDescriptorSerializer
                         lib = DriverLibraryAbstract.createFromPath(curDriver, type, path, version);
                         curDriver.addDriverLibrary(lib, false);
                     } else if (!CommonUtils.isEmpty(version)) {
-                        lib.setPreferredVersion(version);
+                        // Overwrite version only if it is higher than the original one
+                        String preferredVersion = CommonUtils.toString(lib.getPreferredVersion(), "0");
+                        int versionMatch = VersionUtils.compareVersions(version, preferredVersion);
+                        if (versionMatch > 0) {
+                            // Version in config higher than in bundles. Probably a manual update - just overwrite it.
+                            lib.setPreferredVersion(version);
+                        } else if (versionMatch < 0 && DBWorkbench.getPlatform().getPreferenceStore().getBoolean(ModelPreferences.UI_DRIVERS_VERSION_UPDATE)) {
+                            // Version in config is lower than in bundle. Probably it came from product version update - just reset it.
+                            lib.resetVersion();
+                            isLibraryUpgraded = true;
+                        }
                     }
                     if (lib instanceof DriverLibraryMavenArtifact) {
                         ((DriverLibraryMavenArtifact) lib).setIgnoreDependencies(CommonUtils.toBoolean(atts.getValue("ignore-dependencies")));
@@ -315,7 +368,7 @@ public class DriverDescriptorSerializerLegacy extends DriverDescriptorSerializer
                     break;
                 }
                 case RegistryConstants.TAG_FILE: {
-                    if (curDriver != null && curLibrary != null) {
+                    if (curDriver != null && curLibrary != null && !isLibraryUpgraded) {
                         String path = atts.getValue(RegistryConstants.ATTR_PATH);
                         if (path != null) {
                             path = replacePathVariables(path);
@@ -326,7 +379,14 @@ public class DriverDescriptorSerializerLegacy extends DriverDescriptorSerializer
                                         atts.getValue(CommonUtils.notEmpty(RegistryConstants.ATTR_ID)),
                                         atts.getValue(CommonUtils.notEmpty(RegistryConstants.ATTR_VERSION)),
                                         curLibrary.getType(),
-                                        new File(path));
+                                        Path.of(path));
+                                String crcString = atts.getValue("crc");
+                                if (!CommonUtils.isEmpty(crcString)) {
+                                    long crc = Long.parseLong(crcString, 16);
+                                    if (crc != 0) {
+                                        info.setFileCRC(crc);
+                                    }
+                                }
                                 curDriver.addLibraryFile(curLibrary, info);
                             }
                         }

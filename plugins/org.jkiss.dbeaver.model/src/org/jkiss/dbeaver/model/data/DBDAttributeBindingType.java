@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -145,7 +145,8 @@ public class DBDAttributeBindingType extends DBDAttributeBindingNested implement
                 if (collection.getItemCount() > itemIndex) {
                     ownerValue = collection.getItem(itemIndex);
                 } else {
-                    log.debug("Collection index out of bounds: " + itemIndex);
+                    // FIXME: Is always caused by arrays of structures. They are not supported now
+                    log.trace("Collection index out of bounds: " + itemIndex);
                     return null;
                 }
             }
@@ -154,6 +155,8 @@ public class DBDAttributeBindingType extends DBDAttributeBindingNested implement
             return ((DBDComposite) ownerValue).getAttributeValue(attribute);
         } else if (ownerValue instanceof Map) {
             return ((Map<?, ?>) ownerValue).get(getName());
+        } else if (ownerValue == null) {
+            return null;
         }
 
         DBDAttributeBinding parent = getParent(1);

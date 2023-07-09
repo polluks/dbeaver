@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@
 
 package org.jkiss.dbeaver.model.qm;
 
-import org.jkiss.dbeaver.model.auth.SMSessionPersistent;
 import org.jkiss.dbeaver.model.qm.meta.QMMObject;
 
 /**
@@ -26,12 +25,12 @@ import org.jkiss.dbeaver.model.qm.meta.QMMObject;
 public class QMMetaEvent implements QMEvent {
     protected final QMMObject object;
     protected final QMEventAction action;
-    protected final SMSessionPersistent qmAppSessionPersistent;
+    protected String sessionId;
 
-    public QMMetaEvent(QMMObject object, QMEventAction action, SMSessionPersistent qmAppSessionPersistent) {
+    public QMMetaEvent(QMMObject object, QMEventAction action, String sessionId) {
         this.object = object;
         this.action = action;
-        this.qmAppSessionPersistent = qmAppSessionPersistent;
+        this.sessionId = sessionId;
     }
 
     public QMMObject getObject() {
@@ -42,8 +41,12 @@ public class QMMetaEvent implements QMEvent {
         return action;
     }
 
-    public SMSessionPersistent getQmAppSessionPersistent() {
-        return qmAppSessionPersistent;
+    public String getSessionId() {
+        return sessionId;
+    }
+
+    public void setSessionId(String sessionId) {
+        this.sessionId = sessionId;
     }
 
     @Override

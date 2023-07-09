@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,9 +42,10 @@ class GridColumnRenderer extends AbstractRenderer {
     public static final Image IMAGE_ASTERISK = DBeaverIcons.getImage(UIIcon.SORT_UNKNOWN);
     public static final Image IMAGE_DESC = DBeaverIcons.getImage(UIIcon.SORT_INCREASE);
     public static final Image IMAGE_ASC = DBeaverIcons.getImage(UIIcon.SORT_DECREASE);
-    public static final Image IMAGE_FILTER = DBeaverIcons.getImage(UIIcon.FILTER_SMALL);
+    public static final Image IMAGE_FILTER = DBeaverIcons.getImage(UIIcon.DROP_DOWN);
 
     public static final int SORT_WIDTH = IMAGE_DESC.getBounds().width;
+    public static final int SORT_HEIGHT = IMAGE_DESC.getBounds().height;
     public static final int FILTER_WIDTH = IMAGE_FILTER.getBounds().width;
 
     // The border was disabled because it looked goofy
@@ -84,23 +85,20 @@ class GridColumnRenderer extends AbstractRenderer {
 
     public void paint(GC gc, Rectangle bounds, boolean selected, boolean hovering, IGridColumn element) {
 
-        boolean hasFilters = grid.getContentProvider().isElementSupportsFilter(element);
+        IGridContentProvider contentProvider = grid.getContentProvider();
+        boolean hasFilters = contentProvider.isElementSupportsFilter(element);
 
-        //GridColumn col = grid.getColumnByElement(cell.col);
-        //AbstractRenderer arrowRenderer = col.getSortRenderer();
-        int sortOrder = grid.getContentProvider().getSortOrder(element);
-        final Rectangle sortBounds = getSortControlBounds();
+        int sortOrder = contentProvider.getSortOrder(element);
+        boolean showSortIconAlways = contentProvider.isElementSupportsSort(element);
+        boolean showSortIcon = showSortIconAlways || sortOrder > 0;
+        final Rectangle sortBounds = showSortIcon ? getSortControlBounds() : null;
         final Rectangle filterBounds = getFilterControlBounds();
 
         boolean flat = true;
         boolean drawSelected = false;
 
-        if (selected || hovering) {
-            gc.setBackground(grid.getContentProvider().getCellHeaderSelectionBackground(element));
-        } else {
-            gc.setBackground(grid.getContentProvider().getCellHeaderBackground(element));
-        }
-        gc.setForeground(grid.getContentProvider().getCellHeaderForeground(element));
+        gc.setBackground(grid.getLabelProvider().getHeaderBackground(element, selected || hovering));
+        gc.setForeground(grid.getLabelProvider().getHeaderForeground(element, selected || hovering));
 
         gc.fillRectangle(bounds.x, bounds.y, bounds.width, bounds.height);
 
@@ -121,7 +119,7 @@ class GridColumnRenderer extends AbstractRenderer {
 
         int width = bounds.width - x;
 
-        if (sortOrder == SWT.NONE) {
+        if (sortOrder <= 0) {
             width -= RIGHT_MARGIN;
         } else {
             width -= ARROW_MARGIN + sortBounds.width;
@@ -146,36 +144,6 @@ class GridColumnRenderer extends AbstractRenderer {
             gc.setClipping(bounds.x + x + pushedDrawingOffset, y + pushedDrawingOffset, width, grid.fontMetrics.getHeight());
             gc.drawString(text, bounds.x + x + pushedDrawingOffset, y + pushedDrawingOffset, isTransparent);
             gc.setClipping((Rectangle) null);
-        }
-
-        if (sortOrder != SWT.NONE) {
-            if (drawSelected) {
-                sortBounds.x = bounds.x + bounds.width - ARROW_MARGIN - sortBounds.width + 1;
-                sortBounds.y = y;
-            } else {
-                sortBounds.x = bounds.x + bounds.width - ARROW_MARGIN - sortBounds.width;
-                sortBounds.y = y;
-            }
-            sortBounds.x += IMAGE_SPACING;
-            paintSort(gc, sortBounds, sortOrder);
-        }
-
-        if (hasFilters) {
-            gc.drawImage(IMAGE_FILTER,
-                bounds.x + bounds.width - filterBounds.width -
-                    (sortOrder != SWT.NONE ? IMAGE_SPACING + sortBounds.width + 1 : ARROW_MARGIN),
-                y);
-        }
-
-        {
-            // Draw column description
-            String text = getColumnDescription(element);
-            if (!CommonUtils.isEmpty(text)) {
-                y += TOP_MARGIN + grid.fontMetrics.getHeight();
-                text = UITextUtils.getShortString(grid.fontMetrics, text, width);
-                gc.setFont(grid.normalFont);
-                gc.drawString(text, bounds.x + x + pushedDrawingOffset, y + pushedDrawingOffset, isTransparent);
-            }
         }
 
         // Draw border
@@ -214,19 +182,49 @@ class GridColumnRenderer extends AbstractRenderer {
             }
 
         } else {
-            gc.setForeground(grid.getContentProvider().getCellHeaderBorder(null));
+            gc.setForeground(grid.getLabelProvider().getHeaderBorder(element));
             gc.drawLine(bounds.x + bounds.width - 1, bounds.y, bounds.x + bounds.width - 1, bounds.y + bounds.height - 1);
             gc.drawLine(bounds.x, bounds.y + bounds.height - 1, bounds.x + bounds.width - 1, bounds.y + bounds.height - 1);
+        }
+
+        // Sort icon
+        if (showSortIcon) {
+            sortBounds.x = bounds.x + bounds.width - sortBounds.width - filterBounds.width - IMAGE_SPACING;
+            sortBounds.y = y;
+            if (drawSelected) {
+                sortBounds.x++;
+            }
+            paintSort(gc, sortBounds, sortOrder, showSortIconAlways);
+        }
+
+        // Drop-down icon
+        if (hasFilters) {
+            gc.drawImage(IMAGE_FILTER, bounds.x + bounds.width - filterBounds.width - IMAGE_SPACING, y);
+            // (sortOrder != SWT.NONE ? IMAGE_SPACING + sortBounds.width + 1 : ARROW_MARGIN)
+        }
+
+
+        {
+            // Draw column description
+            String text = getColumnDescription(element);
+            if (!CommonUtils.isEmpty(text)) {
+                y += TOP_MARGIN + grid.fontMetrics.getHeight();
+                text = UITextUtils.getShortString(grid.fontMetrics, text, width);
+                gc.setFont(grid.normalFont);
+                gc.drawString(text, bounds.x + x + pushedDrawingOffset, y + pushedDrawingOffset, isTransparent);
+            }
         }
 
         gc.setFont(grid.normalFont);
     }
 
-    public static void paintSort(GC gc, Rectangle bounds, int sort)
+    public static void paintSort(GC gc, Rectangle bounds, int sort, boolean forcePaintDefault)
     {
         switch (sort) {
             case SWT.DEFAULT:
-                gc.drawImage(IMAGE_ASTERISK, bounds.x, bounds.y);
+                if (forcePaintDefault) {
+                    gc.drawImage(IMAGE_ASTERISK, bounds.x, bounds.y);
+                }
                 break;
             case SWT.UP:
                 gc.drawImage(IMAGE_ASC, bounds.x, bounds.y);

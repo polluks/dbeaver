@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ import org.jkiss.dbeaver.model.DBIcon;
 import org.jkiss.dbeaver.model.DBPDataSource;
 import org.jkiss.dbeaver.model.DBPImage;
 import org.jkiss.dbeaver.model.impl.AbstractDescriptor;
+import org.jkiss.dbeaver.model.navigator.DBNDataSource;
 import org.jkiss.dbeaver.model.navigator.DBNNode;
 import org.jkiss.dbeaver.model.navigator.DBNUtils;
 import org.jkiss.dbeaver.utils.GeneralUtils;
@@ -190,6 +191,9 @@ public abstract class DBXTreeNode
 
     public boolean hasChildren(DBNNode context, boolean navigable)
     {
+        if (context instanceof DBNDataSource) {
+            return true;
+        }
         if (CommonUtils.isEmpty(children)) {
             return recursiveLink != null && recursiveLink.hasChildren(context, navigable);
         }

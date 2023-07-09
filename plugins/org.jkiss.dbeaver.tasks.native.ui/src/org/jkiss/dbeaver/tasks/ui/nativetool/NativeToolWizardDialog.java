@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  * Copyright (C) 2011-2012 Eugene Fradkin (eugene.fradkin@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,7 +46,7 @@ public class NativeToolWizardDialog extends TaskConfigurationWizardDialog {
 
     public NativeToolWizardDialog(IWorkbenchWindow window, TaskConfigurationWizard wizard) {
         super(window, wizard);
-        setShellStyle(SWT.CLOSE | SWT.MAX | SWT.MIN | SWT.TITLE | SWT.BORDER | SWT.RESIZE | getDefaultOrientation());
+        setShellStyle(SWT.CLOSE | SWT.MAX | SWT.TITLE | SWT.BORDER | SWT.RESIZE | getDefaultOrientation());
         setHelpAvailable(false);
         setFinishButtonLabel(UIMessages.button_start);
     }
@@ -143,7 +143,9 @@ public class NativeToolWizardDialog extends TaskConfigurationWizardDialog {
         protected void okPressed() {
             String selectedHome = homesSelector.getSelectedHome();
             dataSource.getConnectionConfiguration().setClientHomeId(selectedHome);
-            dataSource.persistConfiguration();
+            if (!dataSource.persistConfiguration()) {
+                return;
+            }
             super.okPressed();
         }
     }

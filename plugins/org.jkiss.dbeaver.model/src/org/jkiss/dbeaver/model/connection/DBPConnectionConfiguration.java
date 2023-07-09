@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.DBPObject;
+import org.jkiss.dbeaver.model.access.DBAAuthCredentials;
 import org.jkiss.dbeaver.model.access.DBAAuthModel;
 import org.jkiss.dbeaver.model.impl.auth.AuthModelDatabaseNative;
 import org.jkiss.dbeaver.model.net.DBWHandlerConfiguration;
@@ -29,6 +30,7 @@ import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.runtime.IVariableResolver;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.dbeaver.utils.SystemVariablesResolver;
+import org.jkiss.utils.ArrayUtils;
 import org.jkiss.utils.CommonUtils;
 
 import java.util.*;
@@ -49,7 +51,7 @@ public class DBPConnectionConfiguration implements DBPObject {
     public static final String VARIABLE_DATASOURCE = "datasource";
     public static final String VAR_PROJECT_PATH = "project.path";
     public static final String VAR_PROJECT_NAME = "project.name";
-    public static final String VAR_HOST_OR_DATABASE   = "host_or_database";
+    public static final String VAR_HOST_OR_DATABASE = "host_or_database";
 
     public static final String VARIABLE_DATE = "date";
 
@@ -59,14 +61,11 @@ public class DBPConnectionConfiguration implements DBPObject {
         {VARIABLE_SERVER, "target server name"},
         {VARIABLE_DATABASE, "target database name"},
         {VARIABLE_USER, "database user name"},
-        {VARIABLE_PASSWORD, "database password (plain)"},
         {VARIABLE_URL, "connection URL"},
         {VARIABLE_CONN_TYPE, "connection type"},
         {VARIABLE_DATASOURCE, "datasource"},
-
         {VAR_PROJECT_PATH, "project path"},
         {VAR_PROJECT_NAME, "project name"},
-
         {VARIABLE_DATE, "current date"},
 
         {SystemVariablesResolver.VAR_WORKSPACE, "workspace path"},
@@ -77,6 +76,12 @@ public class DBPConnectionConfiguration implements DBPObject {
         {SystemVariablesResolver.VAR_APP_VERSION, "application version"},
         {SystemVariablesResolver.VAR_LOCAL_IP, "local IP address"},
     };
+
+    public static final String[][] INTERNAL_CONNECT_VARIABLES = ArrayUtils.concatArrays(
+        CONNECT_VARIABLES,
+        new String[][]{
+            {VARIABLE_PASSWORD, "database password (plain)"},
+        });
 
     private static final Log log = Log.getLog(DBPConnectionConfiguration.class);
 
@@ -103,6 +108,7 @@ public class DBPConnectionConfiguration implements DBPObject {
     private final List<DBWHandlerConfiguration> handlers;
     private final DBPConnectionBootstrap bootstrap;
     private DBPConnectionType connectionType;
+    private DBPDriverConfigurationType configurationType;
     private String connectionColor;
     private int keepAliveInterval;
     private int closeIdleInterval;
@@ -112,6 +118,7 @@ public class DBPConnectionConfiguration implements DBPObject {
 
     public DBPConnectionConfiguration() {
         this.connectionType = DBPConnectionType.DEFAULT_TYPE;
+        this.configurationType = DBPDriverConfigurationType.MANUAL;
         this.properties = new LinkedHashMap<>();
         this.providerProperties = new LinkedHashMap<>();
         this.events = new LinkedHashMap<>();
@@ -135,6 +142,7 @@ public class DBPConnectionConfiguration implements DBPObject {
         this.authModelId = info.authModelId;
         this.authProperties = info.authProperties == null ? null : new LinkedHashMap<>(info.authProperties);
         this.connectionType = info.connectionType;
+        this.configurationType = info.configurationType;
         this.properties = new LinkedHashMap<>(info.properties);
         this.providerProperties = new LinkedHashMap<>(info.providerProperties);
         this.runtimeAttributes = new HashMap<>(info.runtimeAttributes);
@@ -315,28 +323,34 @@ public class DBPConnectionConfiguration implements DBPObject {
     }
 
     public void setHandlers(@NotNull List<DBWHandlerConfiguration> handlers) {
-        this.handlers.clear();
-        this.handlers.addAll(handlers);
+        synchronized (this.handlers) {
+            this.handlers.clear();
+            this.handlers.addAll(handlers);
+        }
     }
 
     public void updateHandler(DBWHandlerConfiguration handler) {
-        for (int i = 0; i < handlers.size(); i++) {
-            if (handlers.get(i).getId().equals(handler.getId())) {
-                handlers.set(i, handler);
-                return;
+        synchronized (handlers) {
+            for (int i = 0; i < handlers.size(); i++) {
+                if (handlers.get(i).getId().equals(handler.getId())) {
+                    handlers.set(i, handler);
+                    return;
+                }
             }
+            this.handlers.add(handler);
         }
-        this.handlers.add(handler);
     }
 
     @Nullable
     public DBWHandlerConfiguration getHandler(String id) {
-        for (DBWHandlerConfiguration cfg : handlers) {
-            if (cfg.getId().equals(id)) {
-                return cfg;
+        synchronized (handlers) {
+            for (DBWHandlerConfiguration cfg : handlers) {
+                if (cfg.getId().equals(id)) {
+                    return cfg;
+                }
             }
+            return null;
         }
-        return null;
     }
 
     ////////////////////////////////////////////////////
@@ -348,6 +362,15 @@ public class DBPConnectionConfiguration implements DBPObject {
 
     public void setConnectionType(DBPConnectionType connectionType) {
         this.connectionType = connectionType;
+    }
+
+    @NotNull
+    public DBPDriverConfigurationType getConfigurationType() {
+        return configurationType;
+    }
+
+    public void setConfigurationType(@NotNull DBPDriverConfigurationType configurationType) {
+        this.configurationType = configurationType;
     }
 
     /**
@@ -418,7 +441,7 @@ public class DBPConnectionConfiguration implements DBPObject {
     }
 
     @NotNull
-    public DBAAuthModel getAuthModel() {
+    public <T extends DBAAuthCredentials> DBAAuthModel<T> getAuthModel() {
         if (!CommonUtils.isEmpty(authModelId)) {
             DBPAuthModelDescriptor authModelDesc = getAuthModelDescriptor(authModelId);
             if (authModelDesc != null) {
@@ -467,7 +490,11 @@ public class DBPConnectionConfiguration implements DBPObject {
         if (authProperties == null) {
             authProperties = new HashMap<>();
         }
-        this.authProperties.put(name, value);
+        if (value == null) {
+            this.authProperties.remove(name);
+        } else {
+            this.authProperties.put(name, value);
+        }
     }
 
     ///////////////////////////////////////////////////////////
@@ -492,6 +519,7 @@ public class DBPConnectionConfiguration implements DBPObject {
                 CommonUtils.equalOrEmptyStrings(this.userName, source.userName) &&
                 CommonUtils.equalOrEmptyStrings(this.userPassword, source.userPassword) &&
                 CommonUtils.equalOrEmptyStrings(this.url, source.url) &&
+                CommonUtils.equalObjects(this.configurationType, source.configurationType) &&
                 CommonUtils.equalObjects(this.clientHomeId, source.clientHomeId) &&
                 CommonUtils.equalObjects(this.configProfileName, source.configProfileName) &&
                 CommonUtils.equalObjects(this.authModelId, source.authModelId) &&

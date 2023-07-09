@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,6 +43,8 @@ import org.jkiss.utils.ByteNumberFormat;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -57,7 +59,7 @@ public abstract class DBNPathBase extends DBNNode implements DBNNodeWithResource
 
     private static final DBNNode[] EMPTY_NODES = new DBNNode[0];
 
-    private final ByteNumberFormat numberFormat = new ByteNumberFormat(ByteNumberFormat.BinaryPrefix.ISO);
+    private final ByteNumberFormat numberFormat = new ByteNumberFormat();
 
     private DBNNode[] children;
     private DBPImage resImage;
@@ -103,7 +105,7 @@ public abstract class DBNPathBase extends DBNNode implements DBNNodeWithResource
     // Path's file name may be null (e.g. forFS root folder)
     // Then try to extract it from URI or from toString
     private String getFileName() {
-        return NIOResource.getPathFileNameOrHost(getPath());
+        return URLDecoder.decode(NIOResource.getPathFileNameOrHost(getPath()), StandardCharsets.UTF_8);
     }
 
     @Override
@@ -378,8 +380,7 @@ public abstract class DBNPathBase extends DBNNode implements DBNNodeWithResource
             NIOFileSystemRoot root = new NIOFileSystemRoot(
                 getOwnerProject().getEclipseProject(),
                 fsRoot,
-                fsRoot.getFileSystem().getType() + "/" + fsRoot.getFileSystem().getId() + "/" + fsRoot.getId(),
-                rootPath
+                fsRoot.getFileSystem().getType() + "/" + fsRoot.getFileSystem().getId() + "/" + fsRoot.getRootId()
             );
             Path path = getPath();
             IResource resource;

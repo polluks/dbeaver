@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  * Copyright (C) 2019 Dmitriy Dubson (ddubson@pivotal.io)
  * Copyright (C) 2019 Gavin Shaw (gshaw@pivotal.io)
  * Copyright (C) 2019 Zach Marcin (zmarcin@pivotal.io)
@@ -20,8 +20,10 @@
  */
 package org.jkiss.dbeaver.ext.greenplum.model;
 
+import org.jkiss.code.NotNull;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
+import org.jkiss.dbeaver.ext.postgresql.PostgreUtils;
 import org.jkiss.dbeaver.ext.postgresql.model.PostgreDataSource;
 import org.jkiss.dbeaver.model.DBPDataSourceContainer;
 import org.jkiss.dbeaver.model.DBUtils;
@@ -38,6 +40,9 @@ public class GreenplumDataSource extends PostgreDataSource {
     private static final Log log = Log.getLog(GreenplumDataSource.class);
 
     private Version gpVersion;
+    private Boolean supportsFmterrtblColumn;
+    private Boolean supportsRelstorageColumn;
+    private Boolean hasAccessToExttable;
 
     public GreenplumDataSource(DBRProgressMonitor monitor, DBPDataSourceContainer container) throws DBException {
         super(monitor, container);
@@ -67,5 +72,30 @@ public class GreenplumDataSource extends PostgreDataSource {
             return false;
         }
         return true;
+    }
+
+    boolean isHasAccessToExttable(@NotNull JDBCSession session) {
+        if (hasAccessToExttable == null) {
+            hasAccessToExttable = PostgreUtils.isMetaObjectExists(session, "pg_exttable", "*");
+        }
+        return hasAccessToExttable;
+    }
+
+    boolean isServerSupportFmterrtblColumn(@NotNull JDBCSession session) {
+        if (supportsFmterrtblColumn == null) {
+            if (!isHasAccessToExttable(session)) {
+                supportsFmterrtblColumn = false;
+            } else {
+                supportsFmterrtblColumn = PostgreUtils.isMetaObjectExists(session, "pg_exttable", "fmterrtbl");
+            }
+        }
+        return supportsFmterrtblColumn;
+    }
+
+    boolean isServerSupportRelstorageColumn(@NotNull JDBCSession session) {
+        if (supportsRelstorageColumn == null) {
+            supportsRelstorageColumn = PostgreUtils.isMetaObjectExists(session, "pg_class", "relstorage");
+        }
+        return supportsRelstorageColumn;
     }
 }

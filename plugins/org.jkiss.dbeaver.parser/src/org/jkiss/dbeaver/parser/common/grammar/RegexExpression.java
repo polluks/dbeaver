@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,6 +30,10 @@ public class RegexExpression extends TerminalExpression {
         super(pattern);
     }
 
+    public RegexExpression(String tag, String pattern) {
+        super(tag, pattern);
+    }
+    
     @Override
     protected <T, R> R applyImpl(ExpressionVisitor<T, R> visitor, T arg) {
         return visitor.visitRegex(this, arg);

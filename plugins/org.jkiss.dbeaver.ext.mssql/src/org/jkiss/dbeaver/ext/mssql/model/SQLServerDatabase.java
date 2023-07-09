@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,6 +35,7 @@ import org.jkiss.dbeaver.model.meta.Property;
 import org.jkiss.dbeaver.model.meta.PropertyLength;
 import org.jkiss.dbeaver.model.preferences.DBPPropertySource;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
+import org.jkiss.dbeaver.model.runtime.VoidProgressMonitor;
 import org.jkiss.dbeaver.model.struct.DBSObject;
 import org.jkiss.dbeaver.model.struct.DBSObjectFilter;
 import org.jkiss.dbeaver.model.struct.rdb.DBSCatalog;
@@ -71,10 +72,15 @@ public class SQLServerDatabase
 
     private Long databaseTotalSize;
 
-    SQLServerDatabase(JDBCSession session, SQLServerDataSource dataSource, JDBCResultSet resultSet) {
+    SQLServerDatabase(
+        @NotNull JDBCSession session,
+        @NotNull SQLServerDataSource dataSource,
+        @NotNull JDBCResultSet resultSet,
+        @NotNull String name
+    ) {
         this.dataSource = dataSource;
         this.databaseId = JDBCUtils.safeGetLong(resultSet, "database_id");
-        this.name = JDBCUtils.safeGetString(resultSet, "name");
+        this.name = name;
         //this.description = JDBCUtils.safeGetString(resultSet, "description");
 
         this.persisted = true;
@@ -146,7 +152,9 @@ public class SQLServerDatabase
 
     @Override
     public boolean isSystem() {
-        return ArrayUtils.contains(SQLServerConstants.SYSTEM_DATABASES, name);
+        SQLServerDatabase defaultDatabase = dataSource.getDefaultDatabase(new VoidProgressMonitor());
+        return ArrayUtils.contains(SQLServerConstants.SYSTEM_DATABASES, name)
+            && !CommonUtils.equalObjects(this, defaultDatabase);
     }
 
     public DataTypeCache getDataTypesCache() {
@@ -241,7 +249,7 @@ public class SQLServerDatabase
             } else {
                 statement = "SELECT ss.*, tt.type_table_object_id FROM " + SQLServerUtils.getSystemTableName(database, "types") +
                     " ss\nLEFT JOIN " + SQLServerUtils.getSystemTableName(database, "table_types") + " tt ON\n" +
-                    "ss.name = tt.name" +
+                    "ss.name = tt.name AND ss.user_type_id = tt.user_type_id" +
                     "\nWHERE ss.is_user_defined = 1";
             }
             return session.prepareStatement(statement);

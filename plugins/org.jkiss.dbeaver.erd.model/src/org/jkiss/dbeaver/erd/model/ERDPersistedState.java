@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,8 +30,6 @@ import org.w3c.dom.Element;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -78,12 +76,12 @@ public class ERDPersistedState {
     public static final String TAG_NOTES = "notes";
     public static final String TAG_NOTE = "note";
 
-    public static List<DBPDataSourceContainer> extractContainers(DBPProject project, Path resource)
+    public static List<DBPDataSourceContainer> extractContainers(DBPProject project, InputStream is)
         throws IOException, XMLException, DBException
     {
         List<DBPDataSourceContainer> containers = new ArrayList<>();
 
-        try (InputStream is = Files.newInputStream(resource)) {
+        {
             final Document document = XMLUtils.parseDocument(is);
             final Element diagramElem = document.getDocumentElement();
 

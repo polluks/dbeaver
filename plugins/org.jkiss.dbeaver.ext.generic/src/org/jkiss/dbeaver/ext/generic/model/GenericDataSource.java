@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -117,6 +117,12 @@ public class GenericDataSource extends JDBCDataSource implements DBPTermProvider
         this.metaModel = metaModel;
         this.dataTypeCache = metaModel.createDataTypeCache(this);
         this.tableTypeCache = new TableTypeCache();
+    }
+
+    @NotNull
+    @Override
+    public GenericDataSource getDataSource() {
+        return this;
     }
 
     @Override
@@ -346,10 +352,8 @@ public class GenericDataSource extends JDBCDataSource implements DBPTermProvider
         return schemas == null ? null : schemas.getCachedObject(name);
     }
 
-    @NotNull
-    @Override
-    public GenericDataSource getDataSource() {
-        return this;
+    public SimpleObjectCache getSchemaCache() {
+        return schemas;
     }
 
     @Override
@@ -527,7 +531,7 @@ public class GenericDataSource extends JDBCDataSource implements DBPTermProvider
                     List<GenericSchema> tmpSchemas = metaModel.loadSchemas(session, this, null);
                     if (tmpSchemas != null) {
                         this.schemas = new SimpleObjectCache<>();
-                        this.schemas.setCaseSensitive(getSQLDialect().storesUnquotedCase() == DBPIdentifierCase.MIXED);
+                        this.schemas.setCaseSensitive(getSQLDialect().storesUnquotedCase() != DBPIdentifierCase.MIXED);
                         this.schemas.setCache(tmpSchemas);
                     }
                 } catch (Throwable e) {
@@ -715,7 +719,7 @@ public class GenericDataSource extends JDBCDataSource implements DBPTermProvider
     public void cacheStructure(@NotNull DBRProgressMonitor monitor, int scope) throws DBException {
         if (!CommonUtils.isEmpty(catalogs)) {
             for (GenericCatalog catalog : catalogs) catalog.cacheStructure(monitor, scope);
-        } else if (!schemas.isEmpty()) {
+        } else if (schemas != null && !schemas.isEmpty()) {
             for (GenericSchema schema : schemas.getCachedObjects()) schema.cacheStructure(monitor, scope);
         } else if (structureContainer != null) {
             structureContainer.cacheStructure(monitor, scope);

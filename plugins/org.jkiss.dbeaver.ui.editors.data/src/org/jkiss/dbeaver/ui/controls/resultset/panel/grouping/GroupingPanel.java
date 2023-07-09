@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -128,7 +128,9 @@ public class GroupingPanel implements IResultSetPanel {
 
     @Override
     public void activatePanel() {
+        getGroupingResultsContainer();
         refresh(false);
+        groupingPlaceholder.layout(true, true);
     }
 
     @Override
@@ -143,6 +145,9 @@ public class GroupingPanel implements IResultSetPanel {
 
     @Override
     public void refresh(boolean force) {
+        if (!force) {
+            return;
+        }
         // Here we can refresh grouping (makes sense if source query was modified with some conditions)
         // Or just clear it (if brand new query was executed)
         GroupingResultsContainer groupingResultsContainer = getGroupingResultsContainer();
@@ -185,7 +190,7 @@ public class GroupingPanel implements IResultSetPanel {
 
     static class EditColumnsAction extends GroupingAction {
         EditColumnsAction(GroupingResultsContainer resultsContainer) {
-            super(resultsContainer, ResultSetMessages.controls_resultset_grouping_edit, DBeaverIcons.getImageDescriptor(UIIcon.OBJ_ADD));
+            super(resultsContainer, ResultSetMessages.controls_resultset_grouping_edit, DBeaverIcons.getImageDescriptor(UIIcon.ADD));
         }
 
         @Override
@@ -203,7 +208,7 @@ public class GroupingPanel implements IResultSetPanel {
 
     static class DeleteColumnAction extends GroupingAction {
         DeleteColumnAction(GroupingResultsContainer resultsContainer) {
-            super(resultsContainer, ResultSetMessages.controls_resultset_grouping_remove_column, DBeaverIcons.getImageDescriptor(UIIcon.ACTION_OBJECT_DELETE));
+            super(resultsContainer, ResultSetMessages.controls_resultset_grouping_remove_column, DBeaverIcons.getImageDescriptor(UIIcon.DELETE));
         }
 
         @Override
@@ -229,7 +234,7 @@ public class GroupingPanel implements IResultSetPanel {
 
     static class ClearGroupingAction extends GroupingAction {
         ClearGroupingAction(GroupingResultsContainer resultsContainer) {
-            super(resultsContainer, ResultSetMessages.controls_resultset_grouping_clear, DBeaverIcons.getImageDescriptor(UIIcon.ERASE));
+            super(resultsContainer, ResultSetMessages.controls_resultset_grouping_clear, DBeaverIcons.getImageDescriptor(UIIcon.CANCEL));
         }
 
         @Override
@@ -299,7 +304,7 @@ public class GroupingPanel implements IResultSetPanel {
                 return;
             }
             dataSource.getContainer().getPreferenceStore().setValue(ResultSetPreferences.RS_GROUPING_DEFAULT_SORTING, newValue);
-            dataSource.getContainer().getRegistry().flushConfig();
+            dataSource.getContainer().persistConfiguration();
             try {
                 getGroupingResultsContainer().rebuildGrouping();
             } catch (DBException e) {

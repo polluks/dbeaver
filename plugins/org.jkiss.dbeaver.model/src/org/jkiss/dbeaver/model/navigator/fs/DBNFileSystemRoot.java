@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -92,7 +92,7 @@ public class DBNFileSystemRoot extends DBNPathBase implements DBNLazyNode
     public Path getPath() {
         if (path == null) {
             try {
-                path = root.getPath(new VoidProgressMonitor());
+                path = root.getRootPath(new VoidProgressMonitor());
             } catch (DBException e) {
                 log.error(e);
                 return Path.of(".nonexistentfolder");

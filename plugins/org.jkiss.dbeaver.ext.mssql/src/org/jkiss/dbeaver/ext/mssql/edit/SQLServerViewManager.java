@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -97,7 +97,8 @@ public class SQLServerViewManager extends SQLServerBaseTableManager<SQLServerVie
     {
         SQLServerDatabase procDatabase = view.getContainer().getDatabase();
         SQLServerDatabase defaultDatabase = ((SQLServerExecutionContext)executionContext).getDefaultCatalog();
-        if (defaultDatabase != procDatabase) {
+        boolean addUse = defaultDatabase != null && procDatabase != null && defaultDatabase != procDatabase;
+        if (addUse) {
             actions.add(new SQLDatabasePersistAction("Set current database", "USE " + DBUtils.getQuotedIdentifier(procDatabase), false)); //$NON-NLS-2$
         }
 
@@ -113,7 +114,7 @@ public class SQLServerViewManager extends SQLServerBaseTableManager<SQLServerVie
                 break;
         }
 
-        if (defaultDatabase != procDatabase) {
+        if (addUse) {
             actions.add(new SQLDatabasePersistAction("Set current database ", "USE " + DBUtils.getQuotedIdentifier(defaultDatabase), false)); //$NON-NLS-2$
         }
     }

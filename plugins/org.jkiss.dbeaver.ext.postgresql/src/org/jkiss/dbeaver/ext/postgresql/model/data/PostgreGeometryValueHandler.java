@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -221,9 +221,18 @@ public class PostgreGeometryValueHandler extends JDBCAbstractValueHandler {
             result.setSRID(srid);
 
             return new DBGeometry(result);
-        } catch (Throwable ignored) {
-            // May happen when geometry value was stored inside composite
-            return makeGeometryFromWKB(geometry);
+        } catch (Throwable e) {
+            try {
+                // May happen when geometry value was stored inside composite
+                return makeGeometryFromWKB(geometry);
+            } catch (Throwable ignored) {
+                // Throw the original exception instead
+            }
+            if (e instanceof RuntimeException) {
+                throw (RuntimeException) e;
+            } else {
+                throw new DBCException(e.getMessage(), e);
+            }
         }
     }
 

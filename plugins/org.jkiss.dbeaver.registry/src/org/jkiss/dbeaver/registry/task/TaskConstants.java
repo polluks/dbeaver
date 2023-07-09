@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,11 @@
  */
 package org.jkiss.dbeaver.registry.task;
 
-class TaskConstants {
+public class TaskConstants {
 
     static final String TEMPORARY_ID = "#temp";
-    static final String CONFIG_FILE = "tasks.json";
-    static final String TASK_STATS_FOLDER = "task-stats";
+    public static final String CONFIG_FILE = "tasks.json";
+    public static final String TASK_STATS_FOLDER = "task-stats";
     static final String TASKS_FOLDERS_TAG = "##tasksFolders";
 
     static final String TAG_TASK = "task";

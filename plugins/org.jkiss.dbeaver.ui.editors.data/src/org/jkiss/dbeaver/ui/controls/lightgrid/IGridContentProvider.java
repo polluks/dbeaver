@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -57,18 +57,16 @@ public interface IGridContentProvider extends IContentProvider {
     @NotNull
     Object[] getElements(boolean horizontal);
 
-    boolean hasChildren(Object element);
+    boolean hasChildren(@NotNull IGridItem item);
 
     @Nullable
-    Object[] getChildren(Object element);
-
-    boolean isCollectionElement(@NotNull IGridItem item);
+    Object[] getChildren(@NotNull IGridItem item);
 
     /**
      * Return for collection cell values returns size of collection.
      * Called for all cells of columns for which isCollectionElement() returns true.
      */
-    int getCollectionSize(IGridColumn column, IGridRow row);
+    int getCollectionSize(@NotNull IGridColumn colElement, @NotNull IGridRow rowElement);
 
     int getSortOrder(@Nullable IGridColumn element);
 
@@ -81,6 +79,8 @@ public interface IGridContentProvider extends IContentProvider {
     boolean isElementSupportsSort(@Nullable IGridColumn element);
 
     boolean isElementReadOnly(IGridColumn element);
+
+    boolean isElementExpandable(@NotNull IGridItem item);
 
     boolean isGridReadOnly();
 
@@ -102,18 +102,6 @@ public interface IGridContentProvider extends IContentProvider {
      *
      */
     Object getCellValue(IGridColumn colElement, IGridRow rowElement, boolean formatString);
-
-    @Nullable
-    Color getCellHeaderForeground(Object element);
-
-    @Nullable
-    Color getCellHeaderBackground(Object element);
-
-    @Nullable
-    Color getCellHeaderSelectionBackground(Object element);
-
-    @NotNull
-    Color getCellHeaderBorder(@Nullable Object element);
 
     @NotNull
     String getCellLinkText(IGridColumn colElement, IGridRow rowElement);

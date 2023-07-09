@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,8 +28,10 @@ import org.jkiss.dbeaver.model.exec.jdbc.JDBCSession;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCDataSource;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCSQLDialect;
 import org.jkiss.dbeaver.model.sql.SQLConstants;
-import org.jkiss.dbeaver.model.sql.parser.rules.SQLVariableRule;
+import org.jkiss.dbeaver.model.sql.SQLDialectDDLExtension;
+import org.jkiss.dbeaver.model.sql.SQLDialectSchemaController;
 import org.jkiss.dbeaver.model.sql.parser.rules.SQLMultiWordRule;
+import org.jkiss.dbeaver.model.sql.parser.rules.SQLVariableRule;
 import org.jkiss.dbeaver.model.sql.parser.tokens.SQLTokenType;
 import org.jkiss.dbeaver.model.struct.DBSTypedObject;
 import org.jkiss.dbeaver.model.struct.rdb.DBSProcedure;
@@ -40,36 +42,31 @@ import org.jkiss.dbeaver.model.text.parser.TPTokenDefault;
 import org.jkiss.utils.ArrayUtils;
 import org.jkiss.utils.CommonUtils;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-import java.util.Locale;
+import java.util.*;
 
-public class SQLServerDialect extends JDBCSQLDialect implements TPRuleProvider {
+public class SQLServerDialect extends JDBCSQLDialect implements TPRuleProvider, SQLDialectDDLExtension, SQLDialectSchemaController {
 
     private static final String[][] TSQL_BEGIN_END_BLOCK = new String[][]{
         {SQLConstants.BLOCK_BEGIN, SQLConstants.BLOCK_END}
     };
+    public static final String AUTO_INCREMENT_KEYWORD = "IDENTITY";
 
     private static String[] SQLSERVER_EXTRA_KEYWORDS = new String[]{
-            "LOGIN",
-            "TOP",
-            "SYNONYM",
-            "PERSISTED"
+        "LOGIN",
+        "TOP",
+        "SYNONYM",
+        "PERSISTED"
     };
 
     private static final String[][] SQLSERVER_QUOTE_STRINGS = {
-            {"[", "]"},
-            {"\"", "\""},
+        {"[", "]"},
+        {"\"", "\""},
     };
     private static final String[][] SYBASE_LEGACY_QUOTE_STRINGS = {
         {"\"", "\""},
     };
 
-
-    private static String[] EXEC_KEYWORDS =  { "CALL", "EXEC", "EXECUTE" };
+    private static String[] EXEC_KEYWORDS = {"CALL", "EXEC", "EXECUTE"};
 
     private static String[] PLAIN_TYPE_NAMES = {
         SQLServerConstants.TYPE_GEOGRAPHY,
@@ -79,24 +76,24 @@ public class SQLServerDialect extends JDBCSQLDialect implements TPRuleProvider {
     };
 
     private static String[] SQLSERVER_FUNCTIONS_DATETIME = new String[]{
-            "CURRENT_TIMEZONE",
-            "DATEPART",
-            "DATEADD",
-            "DATEDIFF",
-            "DATEDIFF_BIG",
-            "DATEFROMPARTS",
-            "DATENAME",
-            "DATETIMEFROMPARTS",
-            "EOMONTH",
-            "GETDATE",
-            "GETUTCDATE",
-            "ISDATE",
-            "SYSDATETIMEOFFSET",
-            "SYSUTCDATETIME",
-            "SMALLDATETIMEFROMPARTS",
-            "SWITCHOFFSET",
-            "TIMEFROMPARTS",
-            "TODATETIMEOFFSET"
+        "CURRENT_TIMEZONE",
+        "DATEPART",
+        "DATEADD",
+        "DATEDIFF",
+        "DATEDIFF_BIG",
+        "DATEFROMPARTS",
+        "DATENAME",
+        "DATETIMEFROMPARTS",
+        "EOMONTH",
+        "GETDATE",
+        "GETUTCDATE",
+        "ISDATE",
+        "SYSDATETIMEOFFSET",
+        "SYSUTCDATETIME",
+        "SMALLDATETIMEFROMPARTS",
+        "SWITCHOFFSET",
+        "TIMEFROMPARTS",
+        "TODATETIMEOFFSET"
     };
 
     private JDBCDataSource dataSource;
@@ -195,7 +192,12 @@ public class SQLServerDialect extends JDBCSQLDialect implements TPRuleProvider {
     }
 
     @Override
-    public String getColumnTypeModifiers(@NotNull DBPDataSource dataSource, @NotNull DBSTypedObject column, @NotNull String typeName, @NotNull DBPDataKind dataKind) {
+    public String getColumnTypeModifiers(
+        @NotNull DBPDataSource dataSource,
+        @NotNull DBSTypedObject column,
+        @NotNull String typeName,
+        @NotNull DBPDataKind dataKind
+    ) {
         String lowerTypeName = typeName.toLowerCase(Locale.ENGLISH); // Workaround for generic data types
         if (dataKind == DBPDataKind.DATETIME || lowerTypeName.equals(SQLServerConstants.TYPE_DATETIMEOFFSET)) {
             // The datetimeoffset is the DATE type with the String data kind. Uses scale for the length property as other DATE types.
@@ -233,10 +235,10 @@ public class SQLServerDialect extends JDBCSQLDialect implements TPRuleProvider {
                 default:
                     return null;
             }
-        } else if (ArrayUtils.contains(PLAIN_TYPE_NAMES , typeName)) {
+        } else if (ArrayUtils.contains(PLAIN_TYPE_NAMES, typeName)) {
             return null;
         } else if (dataKind == DBPDataKind.NUMERIC &&
-                (SQLServerConstants.TYPE_NUMERIC.equals(lowerTypeName) || SQLServerConstants.TYPE_DECIMAL.equals(lowerTypeName))) {
+            (SQLServerConstants.TYPE_NUMERIC.equals(lowerTypeName) || SQLServerConstants.TYPE_DECIMAL.equals(lowerTypeName))) {
             // numeric and decimal - are synonyms in sql server
             // The numeric precision has a range from 1 to 38. The default precision is 38.
             // The scale has a range from 0 to p (precision). The scale can be specified only if the precision is specified. By default, the scale is zero
@@ -261,13 +263,18 @@ public class SQLServerDialect extends JDBCSQLDialect implements TPRuleProvider {
     }
 
     @Override
-    public void generateStoredProcedureCall(StringBuilder sql, DBSProcedure proc, Collection<? extends DBSProcedureParameter> parameters) {
+    public void generateStoredProcedureCall(
+        StringBuilder sql, 
+        DBSProcedure proc, 
+        Collection<? extends DBSProcedureParameter> parameters,
+        boolean castParams
+    ) {
         List<DBSProcedureParameter> inParameters = new ArrayList<>();
         int maxParamLength = getMaxParameterLength(parameters, inParameters);
         String schemaName = proc.getContainer().getParentObject().getName();
         sql.append("USE [").append(schemaName).append("]\n");
-        sql.append("GO\n\n");
-        sql.append("DECLARE	@return_value int\n\n");
+        //sql.append("GO\n\n");
+        sql.append("DECLARE @return_value int\n\n");
         sql.append("EXEC\t@return_value = [").append(proc.getContainer().getName()).append("].[").append(proc.getName()).append("]\n");
         for (int i = 0; i < inParameters.size(); i++) {
             String name = inParameters.get(i).getName();
@@ -277,12 +284,12 @@ public class SQLServerDialect extends JDBCSQLDialect implements TPRuleProvider {
             } else {
                 sql.append(" ");
             }
-            int width = maxParamLength + 70 - name.length()/2;
+            int width = maxParamLength + 70 - name.length() / 2;
             String typeName = inParameters.get(i).getParameterType().getFullTypeName();
             sql.append(CommonUtils.fixedLengthString("-- put the " + name + " parameter value instead of '?' (" + typeName + ")\n", width));
         }
         sql.append("\nSELECT\t'Return Value' = @return_value\n\n");
-        sql.append("GO\n\n");
+        //sql.append("GO\n\n");
     }
 
     @Override
@@ -357,5 +364,64 @@ public class SQLServerDialect extends JDBCSQLDialect implements TPRuleProvider {
     @Override
     public boolean supportsAliasInConditions() {
         return false;
+    }
+
+    @Nullable
+    @Override
+    public String getAutoIncrementKeyword() {
+        return AUTO_INCREMENT_KEYWORD;
+    }
+
+    @Override
+    public boolean supportsCreateIfExists() {
+        return false;
+    }
+
+    @NotNull
+    @Override
+    public String getTimestampDataType() {
+        return SQLServerConstants.TYPE_DATETIME;
+    }
+
+    @NotNull
+    @Override
+    public String getBigIntegerType() {
+        return SQLServerConstants.TYPE_BIGINT;
+    }
+
+    @NotNull
+    @Override
+    public String getClobDataType() {
+        return SQLServerConstants.TYPE_VARCHAR + "(max)";
+    }
+
+    @NotNull
+    @Override
+    public String getUuidDataType() {
+        return SQLServerConstants.TYPE_UNIQUEIDENTIFIER;
+    }
+
+    @NotNull
+    @Override
+    public String getBooleanDataType() {
+        return SQLServerConstants.TYPE_BIT;
+    }
+
+    @Override
+    public boolean needsDefaultDataTypes() {
+        return false;
+    }
+
+    @NotNull
+    @Override
+    public String getSchemaExistQuery(@NotNull String schemaName) {
+        // version is at least 2005
+        return "SELECT 1 FROM sys.schemas WHERE name = " + getQuotedString(schemaName);
+    }
+
+    @NotNull
+    @Override
+    public String getCreateSchemaQuery(@NotNull String schemaName) {
+        return "CREATE SCHEMA " + schemaName;
     }
 }

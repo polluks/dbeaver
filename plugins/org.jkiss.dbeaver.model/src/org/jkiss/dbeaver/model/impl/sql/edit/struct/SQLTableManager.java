@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
  */
 package org.jkiss.dbeaver.model.impl.sql.edit.struct;
 
+import org.jkiss.code.NotNull;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.model.DBPDataSource;
 import org.jkiss.dbeaver.model.DBPScriptObject;
@@ -32,6 +33,7 @@ import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.sql.SQLUtils;
 import org.jkiss.dbeaver.model.struct.*;
 import org.jkiss.dbeaver.model.struct.rdb.*;
+import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.utils.CommonUtils;
 
@@ -181,8 +183,14 @@ public abstract class SQLTableManager<OBJECT_TYPE extends DBSEntity, CONTAINER_T
     {
         List<DBEPersistAction> actions = new ArrayList<>();
 
-        final DBERegistry editorsRegistry = table.getDataSource().getContainer().getPlatform().getEditorsRegistry();
+        final DBERegistry editorsRegistry = DBWorkbench.getPlatform().getEditorsRegistry();
         SQLObjectEditor<DBSEntityAttribute, OBJECT_TYPE> tcm = getObjectEditor(editorsRegistry, DBSEntityAttribute.class);
+        /*
+         * FIXME: We have a pretty major problem with inheritance and managers
+         * FIXME: we search for constraint manager by class which is also a parent
+         * FIXME: for indexes and foreign keys this may lead to incorrect manager provided for key
+         * Temporary workaround - provide primary key before indexes and foreign keys in getChildTypes
+         */
         SQLObjectEditor<DBSEntityConstraint, OBJECT_TYPE> pkm = getObjectEditor(editorsRegistry, DBSEntityConstraint.class);
         SQLObjectEditor<DBSTableForeignKey, OBJECT_TYPE> fkm = getObjectEditor(editorsRegistry, DBSTableForeignKey.class);
         SQLObjectEditor<DBSTableIndex, OBJECT_TYPE> im = getObjectEditor(editorsRegistry, DBSTableIndex.class);
@@ -212,7 +220,7 @@ public abstract class SQLTableManager<OBJECT_TYPE extends DBSEntity, CONTAINER_T
             return actions.toArray(new DBEPersistAction[0]);
         }
 
-        if (table.isPersisted() && isIncludeDropInDDL()) {
+        if (table.isPersisted() && isIncludeDropInDDL(table)) {
             actions.add(new SQLDatabasePersistActionComment(table.getDataSource(), "Drop table"));
             for (DBEPersistAction delAction : new ObjectDeleteCommand(table, ModelMessages.model_jdbc_delete_object).getPersistActions(monitor, executionContext, options)) {
                 String script = delAction.getScript();
@@ -269,9 +277,7 @@ public abstract class SQLTableManager<OBJECT_TYPE extends DBSEntity, CONTAINER_T
         if (fkm != null && !CommonUtils.getOption(options, DBPScriptObject.OPTION_DDL_SKIP_FOREIGN_KEYS)) {
             try {
                 for (DBSEntityAssociation foreignKey : CommonUtils.safeCollection(table.getAssociations(monitor))) {
-                    if (!(foreignKey instanceof DBSTableForeignKey) ||
-                        skipObject(foreignKey))
-                    {
+                    if (!(foreignKey instanceof DBSTableForeignKey) || skipObject(foreignKey)) {
                         continue;
                     }
                     command.aggregateCommand(fkm.makeCreateCommand((DBSTableForeignKey) foreignKey, options));
@@ -312,7 +318,7 @@ public abstract class SQLTableManager<OBJECT_TYPE extends DBSEntity, CONTAINER_T
         return !DBUtils.isHiddenObject(index) && !DBUtils.isInheritedObject(index);
     }
 
-    protected boolean isIncludeDropInDDL() {
+    protected boolean isIncludeDropInDDL(@NotNull OBJECT_TYPE table) {
         return true;
     }
 

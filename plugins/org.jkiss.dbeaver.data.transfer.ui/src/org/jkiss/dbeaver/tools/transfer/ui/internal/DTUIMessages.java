@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  * Copyright (C) 2011-2012 Eugene Fradkin (eugene.fradkin@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -66,7 +66,7 @@ public class DTUIMessages extends NLS {
 	public static String database_consumer_wizard_on_duplicate_key_insert_method_text;
 	public static String database_consumer_wizard_link_label_replace_method_wiki;
 	public static String database_consumer_wizard_label_replace_method_not_supported;
-	
+
 	public static String columns_mapping_dialog_shell_text;
 	public static String columns_mapping_dialog_composite_label_text_source_container;
 	public static String columns_mapping_dialog_composite_label_text_source_entity;
@@ -167,6 +167,8 @@ public class DTUIMessages extends NLS {
 	public static String database_consumer_page_mapping_message_error_mapping_new_table;
 	public static String database_consumer_page_mapping_title_target_DDL;
 	public static String database_consumer_page_mapping_message_error_generating_target_DDL;
+    public static String database_consumer_page_mapping_title_target_table;
+    public static String database_consumer_page_mapping_message_error_generating_target_table;
 	public static String database_producer_page_input_objects_title_assign_error;
 	public static String database_producer_page_input_objects_message_error_reading_container_objects;
 	public static String database_producer_page_input_objects_error_message_auto_assign_failed;
@@ -194,6 +196,14 @@ public class DTUIMessages extends NLS {
 	public static String sql_script_task_page_settings_error_message_you_must_select_script_execute;
 	public static String sql_script_task_page_settings_error_message_you_must_select_connection;
 
+    public static String page_configure_metadata_title;
+    public static String page_configure_table_properties_tab_title;
+    public static String page_configure_table_DDL_button_persist;
+    public static String page_configure_table_DDL_button_copy;
+	public static String page_configure_table_properties_text;
+    public static String page_configure_table_properties_no_properties;
+    public static String page_configure_table_properties_info_text;
+
 	public static String value_format_selector_value;
 	public static String value_format_selector_display;
 	public static String value_format_selector_editable;
@@ -202,6 +212,10 @@ public class DTUIMessages extends NLS {
 	public static String data_transfer_event_processor_execute_command_command;
 	public static String data_transfer_event_processor_execute_command_working_directory;
 	public static String data_transfer_event_processor_execute_command_working_directory_title;
+
+	public static String pref_data_transfer_options_title;
+	public static String pref_data_transfer_options_fallback_directory;
+	public static String pref_data_transfer_options_fallback_directory_tip;
 
 	static {
 		// initialize resource bundle

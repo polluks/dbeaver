@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -71,6 +71,11 @@ public class FireBirdMetaModel extends GenericMetaModel
     @Override
     public String getViewDDL(DBRProgressMonitor monitor, GenericView sourceObject, Map<String, Object> options) throws DBException {
         return FireBirdUtils.getViewSource(monitor, sourceObject);
+    }
+
+    @Override
+    public boolean supportsEqualFunctionsAndProceduresNames() {
+        return true;
     }
 
     @Override
@@ -244,6 +249,11 @@ public class FireBirdMetaModel extends GenericMetaModel
             }
         }
         return null;
+    }
+
+    @Override
+    public boolean isTrimObjectNames() {
+        return true;
     }
 
     @Override

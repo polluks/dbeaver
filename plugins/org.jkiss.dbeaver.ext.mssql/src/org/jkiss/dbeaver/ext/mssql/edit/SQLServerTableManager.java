@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,8 +29,11 @@ import org.jkiss.dbeaver.model.impl.sql.edit.SQLObjectEditor;
 import org.jkiss.dbeaver.model.impl.sql.edit.SQLStructEditor;
 import org.jkiss.dbeaver.model.messages.ModelMessages;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
+import org.jkiss.dbeaver.model.struct.DBSEntityConstraint;
+import org.jkiss.dbeaver.model.struct.DBSEntityConstraintType;
 import org.jkiss.dbeaver.model.struct.DBSObject;
 import org.jkiss.dbeaver.model.struct.rdb.DBSTableIndex;
+import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.utils.CommonUtils;
 
 import java.util.Collection;
@@ -117,13 +120,25 @@ public class SQLServerTableManager extends SQLServerBaseTableManager<SQLServerTa
     }
 
     @Override
-    protected boolean isIncludeIndexInDDL(DBRProgressMonitor monitor, DBSTableIndex index) throws DBException {
+    protected boolean isIncludeIndexInDDL(@NotNull DBRProgressMonitor monitor, @NotNull DBSTableIndex index) throws DBException {
+        Collection<? extends DBSEntityConstraint> constraints = index.getTable().getConstraints(monitor);
+        if (constraints.size() > 0 && index.isUnique()) {
+            for (DBSEntityConstraint constraint : constraints) {
+                if (constraint instanceof SQLServerTableUniqueKey
+                    && constraint.getConstraintType() == DBSEntityConstraintType.UNIQUE_KEY
+                    && ((SQLServerTableUniqueKey) constraint).getIndex() == index
+                ) {
+                   return false;
+                }
+            }
+        }
+        
         return !index.isPrimary() && super.isIncludeIndexInDDL(monitor, index);
     }
 
     protected void addExtraDDLCommands(DBRProgressMonitor monitor, SQLServerTableBase table, Map<String, Object> options, SQLStructEditor.StructCreateCommand createCommand) {
         SQLObjectEditor<SQLServerTableCheckConstraint, SQLServerTableBase> ccm = getObjectEditor(
-            table.getDataSource().getContainer().getPlatform().getEditorsRegistry(),
+            DBWorkbench.getPlatform().getEditorsRegistry(),
             SQLServerTableCheckConstraint.class);
         if (ccm != null) {
             try {
@@ -142,4 +157,23 @@ public class SQLServerTableManager extends SQLServerBaseTableManager<SQLServerTa
         }
     }
 
+    @Override
+    protected void addObjectExtraActions(
+        DBRProgressMonitor monitor,
+        DBCExecutionContext executionContext,
+        List<DBEPersistAction> actionList,
+        NestedObjectCommand<SQLServerTableBase, PropertyHandler> command,
+        Map<String, Object> options
+    ) throws DBException {
+        super.addObjectExtraActions(monitor, executionContext, actionList, command, options);
+        SQLServerTableBase tableBase = command.getObject();
+        if (!tableBase.isPersisted()) {
+            // Column comments for the newly created table
+            for (SQLServerTableColumn column : CommonUtils.safeCollection(tableBase.getAttributes(monitor))) {
+                if (!CommonUtils.isEmpty(column.getDescription())) {
+                    SQLServerTableColumnManager.addColumnCommentAction(actionList, column, false);
+                }
+            }
+        }
+    }
 }

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
  */
 package org.jkiss.dbeaver.tools.transfer;
 
+import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.model.data.DBDDataReceiver;
@@ -58,6 +59,17 @@ public interface IDataTransferConsumer<SETTINGS extends IDataTransferSettings, P
      */
     void finishTransfer(DBRProgressMonitor monitor, boolean last);
 
+    /**
+     * Finishes this transfer
+     *
+     * @param monitor   monitor
+     * @param exception an exception caught during transfer, or {@code null} if transfer was successful
+     * @param last      called in the very end of all transfers
+     */
+    default void finishTransfer(@NotNull DBRProgressMonitor monitor, @Nullable Exception exception, boolean last) {
+        finishTransfer(monitor, last);
+    }
+
     // Target object. May be null or target database object (table)
     @Nullable
     Object getTargetObject();
@@ -65,4 +77,9 @@ public interface IDataTransferConsumer<SETTINGS extends IDataTransferSettings, P
     // If not null then this consumer is a fake one which must be replaced by explicit target consumers on configuration stage
     @Nullable
     Object getTargetObjectContainer();
+
+    /**
+     * Set non-persistent parameters for data transfer execution which is shared between consumers of the task
+     */
+    default void setRuntimeParameters(@Nullable Object runtimeParameters) { }
 }

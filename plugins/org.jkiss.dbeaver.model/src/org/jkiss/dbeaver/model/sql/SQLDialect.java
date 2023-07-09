@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import org.jkiss.dbeaver.model.DBPKeywordType;
 import org.jkiss.dbeaver.model.data.DBDBinaryFormatter;
 import org.jkiss.dbeaver.model.data.DBDDataFilter;
 import org.jkiss.dbeaver.model.exec.DBCLogicalOperator;
+import org.jkiss.dbeaver.model.impl.sql.SQLDialectQueryGenerator;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.sql.parser.EmptyTokenPredicateSet;
 import org.jkiss.dbeaver.model.sql.parser.SQLTokenPredicateSet;
@@ -36,7 +37,6 @@ import org.jkiss.utils.Pair;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.Set;
 
 /**
  * SQL dialect
@@ -57,6 +57,9 @@ public interface SQLDialect {
         PLAIN,
         INSERT_ALL
     }
+
+    @NotNull
+    SQLDialectQueryGenerator getQueryGenerator();
 
     @NotNull
     String getDialectId();
@@ -116,11 +119,11 @@ public interface SQLDialect {
      *         SQL92 keywords
      */
     @NotNull
-    Set<String> getReservedWords();
+    Collection<String> getReservedWords();
     @NotNull
-    Set<String> getFunctions();
+    Collection<String> getFunctions();
     @NotNull
-    Set<String> getDataTypes(@Nullable DBPDataSource dataSource);
+    Collection<String> getDataTypes(@Nullable DBPDataSource dataSource);
     @Nullable
     DBPKeywordType getKeywordType(@NotNull String word);
     @NotNull
@@ -267,6 +270,13 @@ public interface SQLDialect {
         return true;
     }
 
+    /**
+     * Checks whether dialect supports alias for queries with HAVING syntax.
+     */
+    default boolean supportsAliasInHaving() {
+        return true;
+    }
+
     boolean supportsTableDropCascade();
 
     boolean supportsOrderByIndex();
@@ -325,6 +335,8 @@ public interface SQLDialect {
     boolean mustBeQuoted(@NotNull String str, boolean forceCaseSensitive);
 
     String getUnquotedIdentifier(String identifier);
+
+    String getUnquotedIdentifier(String identifier, boolean unescapeQuotesInsideIdentifier);
 
     boolean isQuotedString(String string);
 
@@ -415,6 +427,12 @@ public interface SQLDialect {
     String getDualTableName();
 
     /**
+     * Returns true if the comments need to be removed from the statement if
+     * they are right before the block declaration
+     */
+    boolean isStripCommentsBeforeBlocks();
+
+    /**
      * Returns true if query is definitely transactional. Otherwise returns false, however it still may be transactional.
      * You need to check query results to ensure that it is not transactional.
      */
@@ -437,7 +455,15 @@ public interface SQLDialect {
      */
     String formatStoredProcedureCall(DBPDataSource dataSource, String sqlText);
 
-    void generateStoredProcedureCall(StringBuilder sql, DBSProcedure proc, Collection<? extends DBSProcedureParameter> parameters);
+    /**
+     * Generates stored procedure call. Parameters (optionally) can be surrounded by cast(:param as paramType).
+     */
+    void generateStoredProcedureCall(
+        StringBuilder sql, 
+        DBSProcedure proc, 
+        Collection<? extends DBSProcedureParameter> parameters,
+        boolean castParams
+    );
 
     boolean isDisableScriptEscapeProcessing();
 

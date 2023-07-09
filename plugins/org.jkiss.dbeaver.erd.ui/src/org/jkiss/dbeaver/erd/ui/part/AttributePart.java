@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,13 @@
  */
 package org.jkiss.dbeaver.erd.ui.part;
 
-import org.eclipse.draw2dl.ChopboxAnchor;
-import org.eclipse.draw2dl.ConnectionAnchor;
-import org.eclipse.draw2dl.IFigure;
-import org.eclipse.gef3.*;
-import org.eclipse.gef3.tools.DragEditPartsTracker;
+import org.eclipse.draw2d.ChopboxAnchor;
+import org.eclipse.draw2d.ConnectionAnchor;
+import org.eclipse.draw2d.IFigure;
+import org.eclipse.gef.*;
+import org.eclipse.gef.tools.DragEditPartsTracker;
+import org.eclipse.osgi.util.NLS;
+import org.eclipse.swt.accessibility.AccessibleEvent;
 import org.eclipse.swt.graphics.Color;
 import org.jkiss.dbeaver.erd.model.*;
 import org.jkiss.dbeaver.erd.ui.ERDUIConstants;
@@ -53,6 +55,7 @@ public class AttributePart extends NodePart {
     public static final String PROP_CHECKED = "CHECKED";
 
     private ERDHighlightingHandle associatedRelationsHighlighing = null;
+    private AccessibleGraphicalEditPart accPart;
 
     public AttributePart() {
 
@@ -145,13 +148,15 @@ public class AttributePart extends NodePart {
      */
     @Override
     protected void createEditPolicies() {
-        if (isLayoutEnabled()) {
-            if (getEditPolicy(EditPolicy.CONTAINER_ROLE) == null && isColumnDragAndDropSupported()) {
-                installEditPolicy(EditPolicy.CONTAINER_ROLE, new AttributeConnectionEditPolicy(this));
-                installEditPolicy(EditPolicy.PRIMARY_DRAG_ROLE, new AttributeDragAndDropEditPolicy(this));
+        if (!getEditor().isReadOnly()) {
+            if (isLayoutEnabled()) {
+                if (getEditPolicy(EditPolicy.CONTAINER_ROLE) == null && isColumnDragAndDropSupported()) {
+                    installEditPolicy(EditPolicy.CONTAINER_ROLE, new AttributeConnectionEditPolicy(this));
+                    installEditPolicy(EditPolicy.PRIMARY_DRAG_ROLE, new AttributeDragAndDropEditPolicy(this));
+                }
             }
+            getDiagram().getModelAdapter().installPartEditPolicies(this);
         }
-        getDiagram().getModelAdapter().installPartEditPolicies(this);
     }
 
     @Override
@@ -286,5 +291,19 @@ public class AttributePart extends NodePart {
     @Override
     public ConnectionAnchor getTargetConnectionAnchor(Request request) {
         return new ChopboxAnchor(getFigure());
+    }
+
+    @Override
+    protected AccessibleEditPart getAccessibleEditPart() {
+        if (this.accPart == null) {
+            this.accPart = new AccessibleGraphicalEditPart() {
+                public void getName(AccessibleEvent e) {
+                    e.result = NLS.bind(ERDUIMessages.erd_accessibility_attribute_part,
+                        ERDUIUtils.getFullAttributeLabel(getDiagram(), getAttribute(), true, true));
+                }
+            };
+        }
+
+        return this.accPart;
     }
 }

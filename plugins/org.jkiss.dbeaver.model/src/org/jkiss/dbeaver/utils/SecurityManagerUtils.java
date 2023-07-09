@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,6 +27,8 @@ import java.io.FilePermission;
 import java.lang.reflect.ReflectPermission;
 import java.net.NetPermission;
 import java.net.SocketPermission;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -99,14 +101,14 @@ public class SecurityManagerUtils {
         var driverFilesPermissions = new ArrayList<Permission>();
         var driverLibraries = driver.getDriverLibraries();
         for (DBPDriverLibrary driverLibrary : driverLibraries) {
-            File libraryFile = driverLibrary.getLocalFile();
+            Path libraryFile = driverLibrary.getLocalFile();
             if (libraryFile == null) {
                 continue;
             }
             //We need different permissions to work with a file by relative path and by absolute
-            String relativeFilePath = libraryFile.getPath();
-            String absoluteFilePath = libraryFile.getAbsolutePath();
-            if (libraryFile.isDirectory()) {
+            String relativeFilePath = libraryFile.toString();
+            String absoluteFilePath = libraryFile.toAbsolutePath().toString();
+            if (Files.isDirectory(libraryFile)) {
                 driverFilesPermissions.add(new FilePermission(relativeFilePath, "read")); // access to directory
                 driverFilesPermissions.add(new FilePermission(absoluteFilePath, "read"));
                 absoluteFilePath += (File.separator + "*"); //access to all files in directory

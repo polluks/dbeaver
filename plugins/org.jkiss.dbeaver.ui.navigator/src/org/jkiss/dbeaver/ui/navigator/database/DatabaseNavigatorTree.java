@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -174,7 +174,9 @@ public class DatabaseNavigatorTree extends Composite implements INavigatorListen
                         }
                         @Override
                         public IStatus runInUIThread(IProgressMonitor monitor) {
-                            tree.redraw();
+                            if (!tree.isDisposed()) {
+                                tree.redraw();
+                            }
                             return Status.OK_STATUS;
                         }
                     }.schedule(200);
@@ -244,7 +246,7 @@ public class DatabaseNavigatorTree extends Composite implements INavigatorListen
 
     @NotNull
     protected DatabaseNavigatorLabelProvider createLabelProvider(DatabaseNavigatorTree tree) {
-        return new DatabaseNavigatorLabelProvider(tree.treeViewer);
+        return new DatabaseNavigatorLabelProvider(tree);
     }
 
     public boolean isFilterShowConnected() {
@@ -747,6 +749,8 @@ public class DatabaseNavigatorTree extends Composite implements INavigatorListen
         private final INavigatorFilter filter;
         private boolean hasPattern = false;
         private TextMatcherExt matcher;
+        private TextMatcherExt matcherShort;
+        private String[] dotPattern;
 
         TreeFilter(INavigatorFilter filter) {
             setIncludeLeadingWildcard(true);
@@ -767,6 +771,7 @@ public class DatabaseNavigatorTree extends Composite implements INavigatorListen
         @Override
         public void setPattern(String patternString) {
             this.hasPattern = !CommonUtils.isEmpty(patternString);
+            this.dotPattern = null;
             if (patternString != null) {
                 String pattern = patternString;
                 if (!patternString.endsWith(" ")) {
@@ -774,6 +779,17 @@ public class DatabaseNavigatorTree extends Composite implements INavigatorListen
                 }
                 pattern = "*" + pattern;
                 this.matcher = new TextMatcherExt(pattern, true, false);
+                this.dotPattern = patternString.split("\\.");
+                if (dotPattern.length == 2) {
+                    String patternShort = dotPattern[1];
+                    if (!patternShort.endsWith(" ")) {
+                        patternShort = patternShort + "*";
+                    }
+                    patternShort = "*" + patternShort;
+                    this.matcherShort = new TextMatcherExt(patternShort, true, false);
+                } else {
+                    this.dotPattern = null;
+                }   
             } else {
                 super.setPattern(null);
             }
@@ -838,8 +854,52 @@ public class DatabaseNavigatorTree extends Composite implements INavigatorListen
             if (!needToMatch) {
                 return true;
             }
-
-            return super.isLeafMatch(viewer, element);
+            String labelText = ((ILabelProvider) ((ContentViewer) viewer).getLabelProvider()).getText(element);
+            if (labelText == null) {
+                return false;
+            }
+            return isPatternMatched(labelText, element);
+        }
+        
+        private boolean isPatternMatched(String labelText, Object element) {
+            boolean patternMatched = wordMatches(labelText);
+            if (!patternMatched) { // pattern is not matched - so we'll check, maybe format is schema.object
+                if (dotPattern != null) {
+                    Object item = null;
+                    if (element instanceof DBNDatabaseItem) {
+                        item = ((DBNDatabaseItem) element).getParentNode();
+                    }
+                    boolean schemaMatched = false;
+                    while (item != null) {
+                        if (item instanceof DBNDatabaseFolder) {
+                            item = ((DBNDatabaseFolder) item).getParentNode();
+                        } else if (item instanceof DBNDatabaseItem) {
+                            DBSObject obj = ((DBNDatabaseItem) item).getObject();
+                            if (obj instanceof DBSStructContainer) {
+                                String name = ((DBSStructContainer) obj).getName();
+                                if (name != null) {
+                                    schemaMatched = name.equalsIgnoreCase(dotPattern[0]);
+                                }
+                                break;
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    if (schemaMatched) {
+                        return matcherShort.match(labelText);
+                    }
+                    return false;
+                }
+            }
+            if (!patternMatched) { // Analyze description too
+                if (element instanceof DBNDatabaseItem) {
+                    DBSObject obj = ((DBNDatabaseItem) element).getObject();                    
+                    labelText = ((DBSObject) obj).getDescription();
+                    patternMatched = wordMatches(labelText);
+                }
+            }
+            return patternMatched;
         }
 
         private boolean hasVisibleConnections(Viewer viewer, DBNLocalFolder folder) {

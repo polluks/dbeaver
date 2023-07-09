@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package org.jkiss.dbeaver.model.net.ssh;
 
 import com.jcraft.jsch.*;
+import org.eclipse.osgi.util.NLS;
 import org.jkiss.code.NotNull;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
@@ -36,6 +37,7 @@ import org.jkiss.utils.CommonUtils;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -44,6 +46,8 @@ import java.util.stream.Collectors;
  * SSH tunnel
  */
 public class SSHImplementationJsch extends SSHImplementationAbstract {
+    private static final String CHANNEL_TYPE_SFTP = "sftp";
+
     private static final Log log = Log.getLog(SSHImplementationJsch.class);
 
     private transient JSch jsch;
@@ -76,7 +80,7 @@ public class SSHImplementationJsch extends SSHImplementationAbstract {
                 }
             } else if (auth.getType() == AuthType.AGENT) {
                 log.debug("Creating identity repository");
-                jsch.setIdentityRepository(new DBeaverIdentityRepository(this, getAgentData()));
+                jsch.setIdentityRepository(agentIdentityRepository);
             }
 
             try {
@@ -94,13 +98,14 @@ public class SSHImplementationJsch extends SSHImplementationAbstract {
                 UserInfo userInfo = null;
                 JSCHUserInfoPromptProvider userInfoPromptProvider = GeneralUtils.adapt(this, JSCHUserInfoPromptProvider.class);
                 if (userInfoPromptProvider != null) {
-                    userInfo = userInfoPromptProvider.createUserInfoPrompt(auth, session);
+                    userInfo = userInfoPromptProvider.createUserInfoPrompt(host, session);
                 }
                 if (userInfo == null) {
                     userInfo = new JschUserInfo(auth);
                 }
 
                 session.setUserInfo(userInfo);
+                session.setHostKeyAlias(host.getHostname());
                 setupHostKeyVerification(session, configuration);
                 session.setServerAliveInterval(configuration.getIntProperty(SSHConstants.PROP_ALIVE_INTERVAL));
                 session.setTimeout(configuration.getIntProperty(SSHConstants.PROP_CONNECT_TIMEOUT));
@@ -160,6 +165,10 @@ public class SSHImplementationJsch extends SSHImplementationAbstract {
             return;
         }
         RuntimeUtils.runTask(monitor1 -> {
+            Session[] sessions = this.sessions;
+            if (ArrayUtils.isEmpty(sessions)) {
+                return;
+            }
             for (Session session : sessions) {
                 if (session != null && session.isConnected()) {
                     session.disconnect();
@@ -194,8 +203,61 @@ public class SSHImplementationJsch extends SSHImplementationAbstract {
         }
         if (!isAlive) {
             closeTunnel(monitor);
-            initTunnel(monitor, DBWorkbench.getPlatform(), savedConfiguration, savedConnectionInfo);
+            initTunnel(monitor, savedConfiguration, savedConnectionInfo);
         }
+    }
+
+    @Override
+    public void getFile(
+        @NotNull String src,
+        @NotNull OutputStream dst,
+        @NotNull DBRProgressMonitor monitor
+    ) throws DBException, IOException {
+        final ChannelSftp channel = openSftpChannel();
+
+        try {
+            channel.get(src, dst, new SftpProgressMonitorAdapter(monitor));
+        } catch (SftpException e) {
+            throw new IOException("Error downloading file through SFTP channel", e);
+        } finally {
+            channel.disconnect();
+        }
+    }
+
+    @Override
+    public void putFile(
+        @NotNull InputStream src,
+        @NotNull String dst,
+        @NotNull DBRProgressMonitor monitor
+    ) throws DBException, IOException {
+        final ChannelSftp channel = openSftpChannel();
+
+        try {
+            channel.put(src, dst, new SftpProgressMonitorAdapter(monitor));
+        } catch (SftpException e) {
+            throw new IOException("Error uploading file through SFTP channel", e);
+        } finally {
+            channel.disconnect();
+        }
+    }
+
+    @NotNull
+    private ChannelSftp openSftpChannel() throws DBException, IOException {
+        final Session[] sessions = this.sessions;
+        final ChannelSftp channel;
+
+        if (ArrayUtils.isEmpty(sessions)) {
+            throw new DBException("No active session available");
+        }
+
+        try {
+            channel = (ChannelSftp) sessions[sessions.length - 1].openChannel(CHANNEL_TYPE_SFTP);
+            channel.connect();
+        } catch (JSchException e) {
+            throw new IOException("Error opening SFTP channel", e);
+        }
+
+        return channel;
     }
 
     private void addIdentityKeyValue(String keyValue, String password) throws JSchException {
@@ -207,10 +269,10 @@ public class SSHImplementationJsch extends SSHImplementationAbstract {
         }
     }
 
-    private void addIdentityKeyFile(DBRProgressMonitor monitor, DBPDataSourceContainer dataSource, File key, String password) throws IOException, JSchException {
+    private void addIdentityKeyFile(DBRProgressMonitor monitor, DBPDataSourceContainer dataSource, Path key, String password) throws IOException, JSchException {
         String header;
 
-        try (BufferedReader reader = new BufferedReader(new FileReader(key))) {
+        try (BufferedReader reader = Files.newBufferedReader(key)) {
             header = reader.readLine();
         }
 
@@ -224,10 +286,10 @@ public class SSHImplementationJsch extends SSHImplementationAbstract {
             log.debug("Attempting to convert an unsupported key into suitable format");
 
             String id = dataSource != null ? dataSource.getId() : "profile";
-            File dir = DBWorkbench.getPlatform().getTempFolder(monitor, "openssh-pkey");
-            File tmp = new File(dir, id + ".pem");
+            Path dir = DBWorkbench.getPlatform().getTempFolder(monitor, "openssh-pkey");
+            Path tmp = dir.resolve(id + ".pem");
 
-            Files.copy(key.toPath(), tmp.toPath(), StandardCopyOption.COPY_ATTRIBUTES, StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(key, tmp, StandardCopyOption.COPY_ATTRIBUTES, StandardCopyOption.REPLACE_EXISTING);
 
             password = CommonUtils.notEmpty(password);
 
@@ -242,7 +304,7 @@ public class SSHImplementationJsch extends SSHImplementationAbstract {
                     "-P", password,
                     "-N", password,
                     "-m", "PEM",
-                    "-f", tmp.getAbsolutePath(),
+                    "-f", tmp.toAbsolutePath().toString(),
                     "-q")
                 .start();
 
@@ -267,8 +329,10 @@ public class SSHImplementationJsch extends SSHImplementationAbstract {
             } catch (InterruptedException e) {
                 throw new IOException(e);
             } finally {
-                if (!tmp.delete()) {
-                    log.debug("Failed to delete private key file");
+                try {
+                    Files.delete(tmp);
+                } catch (IOException e) {
+                    log.debug("Failed to delete private key file", e);
                 }
             }
         } else {
@@ -276,11 +340,11 @@ public class SSHImplementationJsch extends SSHImplementationAbstract {
         }
     }
 
-    private void addIdentityKey0(File key, String password) throws JSchException {
+    private void addIdentityKey0(Path key, String password) throws JSchException {
         if (!CommonUtils.isEmpty(password)) {
-            jsch.addIdentity(key.getAbsolutePath(), password);
+            jsch.addIdentity(key.toAbsolutePath().toString(), password);
         } else {
-            jsch.addIdentity(key.getAbsolutePath());
+            jsch.addIdentity(key.toAbsolutePath().toString());
         }
     }
 
@@ -357,6 +421,35 @@ public class SSHImplementationJsch extends SSHImplementationAbstract {
             }
             log.debug("SSH " + levelStr + ": " + message);
 
+        }
+    }
+
+    private static class SftpProgressMonitorAdapter implements SftpProgressMonitor {
+        private final DBRProgressMonitor delegate;
+
+        public SftpProgressMonitorAdapter(@NotNull DBRProgressMonitor delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public void init(int op, String src, String dst, long max) {
+            if (op == PUT) {
+                delegate.beginTask(NLS.bind("Upload file ''{0}'' -> ''{1}''", src, dst), (int) max);
+            } else {
+                delegate.beginTask(NLS.bind("Download file ''{0}'' -> ''{1}''", src, dst), (int) max);
+            }
+        }
+
+        @Override
+        public boolean count(long count) {
+            delegate.worked((int) count);
+
+            return !delegate.isCanceled();
+        }
+
+        @Override
+        public void end() {
+            delegate.done();
         }
     }
 }

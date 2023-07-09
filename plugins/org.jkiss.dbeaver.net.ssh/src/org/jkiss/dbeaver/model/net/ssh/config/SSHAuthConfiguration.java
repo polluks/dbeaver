@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,12 +20,12 @@ import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.model.net.ssh.SSHConstants;
 
-import java.io.File;
+import java.nio.file.Path;
 
 public class SSHAuthConfiguration {
     private final SSHConstants.AuthType type;
     private final String password;
-    private final File keyFile;
+    private final Path keyFile;
     private final String keyValue;
     private final boolean savePassword;
 
@@ -37,7 +37,7 @@ public class SSHAuthConfiguration {
         this.savePassword = savePassword;
     }
 
-    private SSHAuthConfiguration(@NotNull SSHConstants.AuthType type, @Nullable File keyFile, @Nullable String password, boolean savePassword) {
+    private SSHAuthConfiguration(@NotNull SSHConstants.AuthType type, @Nullable Path keyFile, @Nullable String password, boolean savePassword) {
         this.type = type;
         this.password = password;
         this.keyFile = keyFile;
@@ -59,7 +59,7 @@ public class SSHAuthConfiguration {
     }
 
     @NotNull
-    public static SSHAuthConfiguration usingKey(@NotNull File key, @Nullable String passphrase, boolean savePassword) {
+    public static SSHAuthConfiguration usingKey(@NotNull Path key, @Nullable String passphrase, boolean savePassword) {
         return new SSHAuthConfiguration(SSHConstants.AuthType.PUBLIC_KEY, key, passphrase, savePassword);
     }
 
@@ -84,7 +84,7 @@ public class SSHAuthConfiguration {
     }
 
     @Nullable
-    public File getKeyFile() {
+    public Path getKeyFile() {
         return keyFile;
     }
 

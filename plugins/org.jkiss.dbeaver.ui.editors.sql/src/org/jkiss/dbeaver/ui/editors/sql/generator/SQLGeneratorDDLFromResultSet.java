@@ -1,6 +1,6 @@
 /*
 * DBeaver - Universal Database Manager
-* Copyright (C) 2010-2022 DBeaver Corp and others
+* Copyright (C) 2010-2023 DBeaver Corp and others
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -39,6 +39,8 @@ import org.jkiss.dbeaver.ui.controls.resultset.ResultSetDataContainerOptions;
 import org.jkiss.dbeaver.ui.editors.sql.internal.SQLEditorMessages;
 import org.jkiss.utils.ArrayUtils;
 
+import java.util.Collections;
+
 public class SQLGeneratorDDLFromResultSet extends SQLGenerator<IResultSetController> {
 
     @Override
@@ -52,7 +54,7 @@ public class SQLGeneratorDDLFromResultSet extends SQLGenerator<IResultSetControl
     ) throws DBException {
         ResultSetDataContainer dataContainer = new ResultSetDataContainer(object, new ResultSetDataContainerOptions());
         DatabaseMappingContainer mapping = new DatabaseMappingContainer(new DatabaseConsumerSettings(), dataContainer);
-        mapping.refreshMappingType(monitor, DatabaseMappingType.create, true);
+        mapping.refreshMappingType(monitor, DatabaseMappingType.create, true, true);
         
         DBPDataSource dataSource = object.getDataContainer().getDataSource();
         if (dataSource.getInfo().isDynamicMetadata()) {
@@ -80,7 +82,12 @@ public class SQLGeneratorDDLFromResultSet extends SQLGenerator<IResultSetControl
         }
         
         DBCExecutionContext executionContext = DBUtils.getDefaultContext(dataSource, true);
-        DBEPersistAction[] ddl = DatabaseTransferUtils.generateTargetTableDDL(monitor, executionContext, objContainer, mapping);
+        DBEPersistAction[] ddl = DatabaseTransferUtils.generateTargetTableDDL(
+            monitor,
+            executionContext,
+            objContainer,
+            mapping,
+            Collections.emptyMap());
 
         if (ArrayUtils.isEmpty(ddl)) {
             sql.append(SQLEditorMessages.sql_generator_no_ddl_text);

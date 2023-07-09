@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -149,6 +149,20 @@ public class SQLServerTableColumnManager extends SQLTableColumnManager<SQLServer
     }
 
     @Override
+    protected void addObjectCreateActions(
+        DBRProgressMonitor monitor,
+        DBCExecutionContext executionContext,
+        List<DBEPersistAction> actions,
+        ObjectCreateCommand command,
+        Map<String, Object> options
+    ) {
+        super.addObjectCreateActions(monitor, executionContext, actions, command, options);
+        if (CommonUtils.isNotEmpty(command.getObject().getDescription())) {
+            addColumnCommentAction(actions, command.getObject(), false);
+        }
+    }
+
+    @Override
     protected void addObjectModifyActions(DBRProgressMonitor monitor, DBCExecutionContext executionContext, List<DBEPersistAction> actionList, ObjectChangeCommand command, Map<String, Object> options)
     {
         final SQLServerTableColumn column = command.getObject();
@@ -177,14 +191,7 @@ public class SQLServerTableColumnManager extends SQLTableColumnManager<SQLServer
                 SQLServerObjectClass.OBJECT_OR_COLUMN,
                 column.getTable().getObjectId(),
                 column.getObjectId());
-            actionList.add(
-                new SQLDatabasePersistAction(
-                    "Add column comment",
-                    "EXEC " + SQLServerUtils.getSystemTableName(column.getTable().getDatabase(), isUpdate ? "sp_updateextendedproperty" : "sp_addextendedproperty") +
-                        " 'MS_Description', " + SQLUtils.quoteString(column, column.getDescription()) + "," +
-                        " 'schema', " + SQLUtils.quoteString(column, column.getTable().getSchema().getName()) + "," +
-                        " 'table', " + SQLUtils.quoteString(column, column.getTable().getName()) + "," +
-                        " 'column', " + SQLUtils.quoteString(column, column.getName())));
+            addColumnCommentAction(actionList, column, isUpdate);
         }
         if (totalProps > 0) {
             actionList.add(new SQLDatabasePersistAction(
@@ -192,6 +199,19 @@ public class SQLServerTableColumnManager extends SQLTableColumnManager<SQLServer
                 "ALTER TABLE " + column.getTable().getFullyQualifiedName(DBPEvaluationContext.DDL) + //$NON-NLS-1$
                     " ALTER COLUMN " + getNestedDeclaration(monitor, column.getTable(), command, options))); //$NON-NLS-1$
         }
+    }
+
+    static void addColumnCommentAction(List<DBEPersistAction> actionList, SQLServerTableColumn column, boolean isUpdate) {
+        actionList.add(
+            new SQLDatabasePersistAction(
+                "Add column comment",
+                "EXEC " + SQLServerUtils.getSystemTableName(
+                    column.getTable().getDatabase(),
+                    isUpdate ? "sp_updateextendedproperty" : "sp_addextendedproperty") +
+                    " 'MS_Description', " + SQLUtils.quoteString(column, column.getDescription()) + "," +
+                    " 'schema', " + SQLUtils.quoteString(column, column.getTable().getSchema().getName()) + "," +
+                    " 'table', " + SQLUtils.quoteString(column, column.getTable().getName()) + "," +
+                    " 'column', " + SQLUtils.quoteString(column, column.getName())));
     }
 
     @Override

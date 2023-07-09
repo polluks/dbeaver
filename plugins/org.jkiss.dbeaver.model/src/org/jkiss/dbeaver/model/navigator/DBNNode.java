@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -95,6 +95,10 @@ public abstract class DBNNode implements DBPNamedObject, DBPNamedObjectLocalized
     @NotNull
     @Override
     public String getName() {
+        return getNodeName();
+    }
+
+    protected String getSortName() {
         return getNodeName();
     }
 
@@ -258,6 +262,10 @@ public abstract class DBNNode implements DBPNamedObject, DBPNamedObjectLocalized
         return null;
     }
 
+    public Throwable getLastLoadError() {
+        return null;
+    }
+
     static void sortNodes(List<? extends DBNNode> nodes) {
         nodes.sort((Comparator<DBNNode>) (o1, o2) -> {
             boolean isFolder1 = o1 instanceof DBNLocalFolder;
@@ -267,7 +275,7 @@ public abstract class DBNNode implements DBPNamedObject, DBPNamedObjectLocalized
             } else if (!isFolder1 && isFolder2) {
                 return 1;
             }
-            return o1.getName().compareToIgnoreCase(o2.getName());
+            return o1.getSortName().compareToIgnoreCase(o2.getSortName());
         });
     }
 

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ public interface IGridLabelProvider {
     String OPTION_EXCLUDE_COLUMN_NAME_FOR_WIDTH_CALC = "OPTION_EXCLUDE_COLUMN_NAME_FOR_WIDTH_CALC";
 
     @NotNull
-    String getText(IGridItem element);
+    String getText(@NotNull IGridItem element);
 
     @Nullable
     String getDescription(IGridItem element);
@@ -54,6 +54,34 @@ public interface IGridLabelProvider {
      */
     Color getBackground(IGridItem element);
 
+    /**
+     * Provides a foreground color for the header of the given {@code item}.
+     *
+     * @param item     the item for which the color should be returned
+     * @param selected whether the selection color should be returned instead or not
+     * @return the foreground color for the {@code item}
+     */
+    @NotNull
+    Color getHeaderForeground(@Nullable IGridItem item, boolean selected);
+
+    /**
+     * Provides a background color for the header of the given {@code item}.
+     *
+     * @param item     the item for which the color should be returned
+     * @param selected whether the selection color should be returned instead or not
+     * @return the background color for the {@code item}
+     */
+    @NotNull
+    Color getHeaderBackground(@Nullable IGridItem item, boolean selected);
+
+    /**
+     * Provides a border color for the header of the given {@code item}.
+     *
+     * @param item the item for which the color should be returned
+     * @return the border color for the {@code item}
+     */
+    @NotNull
+    Color getHeaderBorder(@Nullable IGridItem item);
 
     /**
      * Provides a font for the given element.

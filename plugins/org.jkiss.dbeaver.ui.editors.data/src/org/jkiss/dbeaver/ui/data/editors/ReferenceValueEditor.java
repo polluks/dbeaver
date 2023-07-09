@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,8 +17,10 @@
 package org.jkiss.dbeaver.ui.data.editors;
 
 import org.eclipse.jface.action.Action;
+import org.eclipse.jface.action.ContributionItem;
 import org.eclipse.jface.action.MenuManager;
 import org.eclipse.jface.action.Separator;
+import org.eclipse.jface.resource.ImageDescriptor;
 import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.StyledText;
@@ -27,22 +29,24 @@ import org.eclipse.swt.events.ModifyListener;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.graphics.Color;
+import org.eclipse.swt.graphics.Font;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.widgets.*;
 import org.eclipse.ui.IWorkbenchWindow;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
+import org.jkiss.dbeaver.ModelPreferences;
 import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.data.*;
+import org.jkiss.dbeaver.model.exec.DBCExecutionContext;
 import org.jkiss.dbeaver.model.exec.DBExecUtils;
 import org.jkiss.dbeaver.model.navigator.DBNDatabaseNode;
 import org.jkiss.dbeaver.model.navigator.DBNUtils;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.load.AbstractLoadService;
 import org.jkiss.dbeaver.model.struct.*;
-import org.jkiss.dbeaver.ui.LoadingJob;
-import org.jkiss.dbeaver.ui.UIUtils;
+import org.jkiss.dbeaver.ui.*;
 import org.jkiss.dbeaver.ui.controls.ProgressLoaderVisualizer;
 import org.jkiss.dbeaver.ui.controls.resultset.ResultSetUtils;
 import org.jkiss.dbeaver.ui.controls.resultset.ThemeConstants;
@@ -69,18 +73,30 @@ public class ReferenceValueEditor {
     private static final Log log = Log.getLog(ReferenceValueEditor.class);
 
     private final Color selectionColor = UIUtils.getColorRegistry().get(ThemeConstants.COLOR_SQL_RESULT_SET_SELECTION_BACK);
-    private IValueController valueController;
+    private final IValueController valueController;
     private IValueEditor valueEditor;
     private DBSEntityReferrer refConstraint;
     private Table editorSelector;
-    private volatile boolean sortByValue = true;
-    private volatile boolean sortAsc = true;
+    private static volatile boolean sortByValue = true; // It is static to save its value between editors
+    private static volatile boolean sortAsc = true;
+    private TableColumn prevSortColumn = null;
     private volatile boolean dictLoaded = false;
     private Object lastPattern;
+    private Object firstValue = null;
+    private Object lastValue = null;
+    private int maxResults;
+    private Font boldFont;
+
 
     public ReferenceValueEditor(IValueController valueController, IValueEditor valueEditor) {
         this.valueController = valueController;
         this.valueEditor = valueEditor;
+        DBCExecutionContext executionContext = valueController.getExecutionContext();
+        if (executionContext != null) {
+            this.maxResults =
+                executionContext.getDataSource().getContainer().getPreferenceStore().getInt(
+                    ModelPreferences.DICTIONARY_MAX_ROWS);
+        }
     }
 
     public void setValueEditor(IValueEditor valueEditor) {
@@ -110,6 +126,9 @@ public class ReferenceValueEditor {
         if (refConstraint == null) {
             return false;
         }
+
+        this.boldFont = UIUtils.makeBoldFont(parent.getFont());
+        parent.addDisposeListener(e -> this.boldFont.dispose());
 
         if (refConstraint instanceof DBSEntityAssociation) {
             final DBSEntityAssociation association = (DBSEntityAssociation)refConstraint;
@@ -160,19 +179,25 @@ public class ReferenceValueEditor {
         //gd.grabExcessVerticalSpace = true;
         //gd.grabExcessHorizontalSpace = true;
         editorSelector.setLayoutData(gd);
-
         TableColumn valueColumn = UIUtils.createTableColumn(editorSelector, SWT.LEFT, ResultSetMessages.dialog_value_view_column_value);
         valueColumn.setData(Boolean.TRUE);
+
         TableColumn descColumn = UIUtils.createTableColumn(editorSelector, SWT.LEFT, ResultSetMessages.dialog_value_view_column_description);
         descColumn.setData(Boolean.FALSE);
+
 
         SortListener sortListener = new SortListener();
         valueColumn.addListener(SWT.Selection, sortListener);
         descColumn.addListener(SWT.Selection, sortListener);
+        if (!sortByValue) {
+            editorSelector.setSortColumn(descColumn);
+            editorSelector.setSortDirection(sortAsc ? SWT.DOWN : SWT.UP);
+            prevSortColumn = descColumn;
+        }
 
         editorSelector.addSelectionListener(new SelectionAdapter() {
             @Override
-            public void widgetSelected(SelectionEvent e) {
+            public void widgetDefaultSelected(SelectionEvent e) {
                 if (valueEditor.isReadOnly()) {
                     return;
                 }
@@ -219,13 +244,11 @@ public class ReferenceValueEditor {
             for (TableItem item : items) {
                 if (curTextValue.equalsIgnoreCase(item.getText(0)) || curTextValue.equalsIgnoreCase(item.getText(1))) {
                     editorSelector.deselectAll();
-                    item.setBackground(selectionColor);
-                    item.setForeground(UIUtils.getContrastColor(selectionColor));
+                    item.setFont(boldFont);
                     editorSelector.showItem(item);
                     newValueFound = true;
                 } else {
-                    item.setBackground(null);
-                    item.setForeground(null);
+                    item.setFont(null);
                 }
             }
 
@@ -263,13 +286,17 @@ public class ReferenceValueEditor {
     }
 
     private void reloadSelectorValues(Object pattern, boolean force) {
+        reloadSelectorValues(pattern, force, 0);
+    }
+
+    private void reloadSelectorValues(Object pattern, boolean force, int offset) {
         if (!force && dictLoaded && CommonUtils.equalObjects(String.valueOf(lastPattern), String.valueOf(pattern))) {
             selectCurrentValue();
             return;
         }
         lastPattern = pattern;
         dictLoaded = true;
-        SelectorLoaderService loadingService = new SelectorLoaderService();
+        SelectorLoaderService loadingService = new SelectorLoaderService(offset);
         if (pattern != null) {
             loadingService.setPattern(pattern);
         }
@@ -305,6 +332,22 @@ public class ReferenceValueEditor {
         }
     }
 
+
+    /**
+     * Returns action to allow editor paging
+     *
+     * @return actions for paging
+     */
+    public ContributionItem[] getContributionItems() {
+        MoveToNextPageAction moveBackward = new MoveToNextPageAction("Move Backward", true,
+            DBeaverIcons.getImageDescriptor(UIIcon.ARROW_LEFT));
+        MoveToNextPageAction moveForward = new MoveToNextPageAction("Move Forward", false,
+            DBeaverIcons.getImageDescriptor(UIIcon.ARROW_RIGHT));
+
+        return new ContributionItem[]{ ActionUtils.makeActionContribution(moveBackward, false),
+            ActionUtils.makeActionContribution(moveForward, false) };
+    }
+
     private void selectCurrentValue() {
         Control editorControl = valueEditor.getControl();
         if (editorControl != null && !editorControl.isDisposed()) {
@@ -324,13 +367,12 @@ public class ReferenceValueEditor {
                         curItem = item;
                         curItemIndex = i;
                     } else {
-                        item.setBackground(null);
+                        item.setFont(null);
                     }
                 }
                 editorSelector.deselectAll();
                 if (curItem != null) {
-                    curItem.setBackground(selectionColor);
-                    curItem.setForeground(UIUtils.getContrastColor(selectionColor));
+                    curItem.setFont(boldFont);
                     editorSelector.showItem(curItem);
                     // Show cur item on top
                     editorSelector.setTopIndex(curItemIndex);
@@ -340,6 +382,7 @@ public class ReferenceValueEditor {
             }
         }
     }
+
 
     private class CopyAction extends Action {
         public CopyAction() {
@@ -358,8 +401,7 @@ public class ReferenceValueEditor {
     }
 
     private class SortListener implements Listener {
-        private TableColumn prevColumn = null;
-        private int sortDirection = SWT.DOWN;
+        private int sortDirection = sortAsc ? SWT.DOWN : SWT.UP;
 
         public SortListener() {
         }
@@ -367,16 +409,17 @@ public class ReferenceValueEditor {
         @Override
         public void handleEvent(Event event) {
             TableColumn column = (TableColumn) event.widget;
-            if (prevColumn == column) {
+            if (prevSortColumn == column) {
                 // Set reverse order
                 sortDirection = (sortDirection == SWT.UP ? SWT.DOWN : SWT.UP);
             }
-            prevColumn = column;
+            prevSortColumn = column;
             sortByValue = (Boolean)column.getData();
             sortAsc = sortDirection == SWT.DOWN;
             editorSelector.setSortColumn(column);
             editorSelector.setSortDirection(sortDirection);
             reloadSelectorValues(lastPattern, true);
+
         }
     }
 
@@ -394,20 +437,27 @@ public class ReferenceValueEditor {
 
     class SelectorLoaderService extends AbstractLoadService<EnumValuesData> {
 
+        int offset;
         private Object pattern;
 
-        private SelectorLoaderService() {
-            super(ResultSetMessages.dialog_value_view_job_selector_name + valueController.getValueName() + " possible values");
+        public Object getLastValue() {
+            return lastValue;
         }
 
-        void setPattern(@Nullable Object pattern)
+        private SelectorLoaderService(int offset) {
+            super(ResultSetMessages.dialog_value_view_job_selector_name + valueController.getValueName() + " possible values");
+            this.offset = offset;
+        }
+
+        public void setPattern(@Nullable Object pattern)
         {
             this.pattern = pattern;
         }
 
+
         @Override
         public EnumValuesData evaluate(DBRProgressMonitor monitor) {
-            if (editorSelector.isDisposed()) {
+            if (editorSelector.isDisposed() || valueController.getExecutionContext() == null) {
                 return null;
             }
             EnumValuesData[] result = new EnumValuesData[1];
@@ -461,12 +511,21 @@ public class ReferenceValueEditor {
             } else {
                 return null;
             }
-            final DBSEntityAttribute refColumn = DBUtils.getReferenceAttribute(monitor, association, tableColumn, false);
-            if (refColumn == null) {
+            DBSEntityAttribute activeRefColumn = DBUtils.getReferenceAttribute(monitor, association, tableColumn,
+                false);
+            if (activeRefColumn == null) {
                 return null;
             }
+            return getEnumValuesData(monitor, attributeController, fkColumn, association, activeRefColumn);
+        }
+
+        @Nullable
+        private EnumValuesData getEnumValuesData(DBRProgressMonitor monitor, IAttributeController attributeController,
+                                                 DBSEntityAttributeRef fkColumn, DBSEntityAssociation association,
+                                                 DBSEntityAttribute refColumn) throws DBException {
             List<DBDAttributeValue> precedingKeys = null;
-            List<? extends DBSEntityAttributeRef> allColumns = CommonUtils.safeList(refConstraint.getAttributeReferences(monitor));
+            List<? extends DBSEntityAttributeRef> allColumns = CommonUtils.safeList(refConstraint.getAttributeReferences(
+                monitor));
             if (allColumns.size() > 1 && allColumns.get(0) != fkColumn) {
                 // Our column is not a first on in foreign key.
                 // So, fill uo preceeding keys
@@ -491,20 +550,20 @@ public class ReferenceValueEditor {
             final DBSEntityConstraint refConstraint = association.getReferencedConstraint();
             final DBSDictionary enumConstraint = (DBSDictionary) refConstraint.getParentObject();
             if (fkAttribute != null && enumConstraint != null) {
-                Collection<DBDLabelValuePair> enumValues = enumConstraint.getDictionaryEnumeration(
-                    monitor,
-                    refColumn,
-                    pattern,
-                    precedingKeys,
-                    sortByValue,
-                    sortAsc,
-                    false,
-                    200);
+                List<DBDLabelValuePair> enumValues = enumConstraint.getDictionaryEnumeration(monitor, refColumn,
+                    pattern, precedingKeys, false, sortAsc, sortByValue, offset, maxResults);
 //                        for (DBDLabelValuePair pair : enumValues) {
 //                            keyValues.put(pair.getValue(), pair.getLabel());
 //                        }
                 if (monitor.isCanceled()) {
                     return null;
+                }
+                if (enumValues.isEmpty()) {
+                    return null;
+                }
+                if (enumValues.size() >= 1) {
+                    firstValue = enumValues.get(0).getValue();
+                    lastValue = enumValues.get(enumValues.size() - 1).getValue();
                 }
                 final DBDValueHandler colHandler = DBUtils.findValueHandler(fkAttribute.getDataSource(), fkAttribute);
                 return new EnumValuesData(enumValues, fkColumn, colHandler);
@@ -512,6 +571,7 @@ public class ReferenceValueEditor {
 
             return null;
         }
+
 
         @Override
         public Object getFamily() {
@@ -539,4 +599,33 @@ public class ReferenceValueEditor {
             }
         }
     }
+
+    private class MoveToNextPageAction extends Action {
+        boolean backwardMove;
+
+        private void updateList() throws DBException {
+            if (backwardMove && firstValue != null) {
+                reloadSelectorValues(firstValue, true, Math.min(-Math.floorDiv(maxResults, 2), -1));
+            } else if (!backwardMove && lastValue != null) {
+                reloadSelectorValues(lastValue, true, Math.max(Math.round((float) maxResults / 2) + 1, 1));
+            }
+        }
+
+        private MoveToNextPageAction(String text, boolean backwardMove, ImageDescriptor image) {
+            super(text, image);
+            this.backwardMove = backwardMove;
+        }
+
+        @Override
+        public void run() {
+            super.run();
+            try {
+                updateList();
+            } catch (DBException e) {
+                log.error("Can't load new dictionary values", e);
+            }
+        }
+
+    }
+
 }

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import org.eclipse.core.runtime.IAdaptable;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.runtime.Platform;
 import org.eclipse.jface.preference.IPreferenceStore;
+import org.eclipse.jface.resource.JFaceResources;
 import org.eclipse.jface.util.IPropertyChangeListener;
 import org.eclipse.swt.dnd.DropTargetAdapter;
 import org.eclipse.swt.dnd.FileTransfer;
@@ -43,6 +44,7 @@ import org.eclipse.ui.part.ResourceTransfer;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.core.DesktopUI;
 import org.jkiss.dbeaver.model.app.*;
+import org.jkiss.dbeaver.registry.DataSourceProviderRegistry;
 import org.jkiss.dbeaver.registry.WorkbenchHandlerRegistry;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.ui.IWorkbenchWindowInitializer;
@@ -54,6 +56,68 @@ import java.util.StringJoiner;
 
 public class ApplicationWorkbenchWindowAdvisor extends IDEWorkbenchWindowAdvisor implements DBPProjectListener, IResourceChangeListener {
     private static final Log log = Log.getLog(ApplicationWorkbenchWindowAdvisor.class);
+    
+    // Eclipse fonts
+    
+    /**
+     * Compare text font
+     */
+    public static String COMPARE_TEXT_FONT = "org.eclipse.compare.contentmergeviewer.TextMergeViewer";
+    
+    /**
+     * Detail pane text font
+     */
+    public static String DETAIL_PANE_TEXT_FONT = "org.eclipse.debug.ui.DetailPaneFont";
+    
+    /**
+     * Memory view table font
+     */
+    public static String MEMORY_VIEW_TABLE_FONT = "org.eclipse.debug.ui.MemoryViewTableFont";
+
+    /**
+     * Variable text font
+     */
+    public static String VARIABLE_TEXT_FONT = "org.eclipse.debug.ui.VariableTextFont";
+ 
+    /**
+     * Console font
+     */
+    public static String CONSOLE_FONT = "org.eclipse.debug.ui.consoleFont";
+
+    /**
+     * Part title font
+     */
+    public static String PART_TITLE_FONT = "org.eclipse.ui.workbench.TAB_TEXT_FONT";
+
+    /**
+     * Tree and Table font for views
+     */
+    public static String TREE_AND_TABLE_FONT_FOR_VIEWS = "org.eclipse.ui.workbench.TREE_TABLE_FONT";
+
+    /**
+     * Header Font
+     */
+    public static String HEADER_FONT = "org.eclipse.jface.headerfont";
+
+    /**
+     * Text Font
+     */
+    public static String TEXT_FONT = "org.eclipse.jface.textfont";
+
+    /**
+     * Text Editor Block Selection Font
+     */
+    public static String TEXT_EDITOR_BLOCK_SELECTION_FONT = "org.eclipse.ui.workbench.texteditor.blockSelectionModeFont";
+
+    /**
+     * Banner font
+     */
+    public static String BANNER_FONT = JFaceResources.BANNER_FONT;
+
+    /**
+     * Dialog font
+     */
+    public static String DIALOG_FONT = JFaceResources.DIALOG_FONT;
 
     private IEditorPart lastActiveEditor = null;
     private IPerspectiveDescriptor lastPerspective = null;
@@ -76,7 +140,7 @@ public class ApplicationWorkbenchWindowAdvisor extends IDEWorkbenchWindowAdvisor
             refreshProjects();
         }
 
-        DBPPlatformEclipse.getInstance().getWorkspace().addProjectListener(this);
+        DBPPlatformDesktop.getInstance().getWorkspace().addProjectListener(this);
 
         ResourcesPlugin.getWorkspace().addResourceChangeListener(this);
     }
@@ -104,7 +168,7 @@ public class ApplicationWorkbenchWindowAdvisor extends IDEWorkbenchWindowAdvisor
         // Remove project listener
         DBPPlatform platform = DBWorkbench.getPlatform();
         if (platform != null) {
-            DBPWorkspaceEclipse workspace = DBPPlatformEclipse.getInstance().getWorkspace();
+            DBPWorkspaceEclipse workspace = DBPPlatformDesktop.getInstance().getWorkspace();
             workspace.removeProjectListener(this);
         }
 
@@ -147,15 +211,15 @@ public class ApplicationWorkbenchWindowAdvisor extends IDEWorkbenchWindowAdvisor
         configurer.configureEditorAreaDropListener(new org.eclipse.ui.internal.ide.EditorAreaDropAdapter(
             configurer.getWindow()));
 
-        //PreferenceManager preferenceManager = PlatformUI.getWorkbench().getPreferenceManager();
-        //preferenceManager.remove("org.eclipse.ui.preferencePages.Workbench/org.eclipse.ui.preferencePages.Perspectives");
-        //preferenceManager.remove("org.eclipse.ui.preferencePages.Workbench/org.eclipse.ui.preferencePages.Workspace");
-
         // Show heap usage
         //PlatformUI.getPreferenceStore().setValue(IWorkbenchPreferenceConstants.SHOW_MEMORY_MONITOR, true);
         hookTitleUpdateListeners(configurer);
 
+        // Initialize desktop UI
         DesktopUI.getInstance();
+
+        // Initialize drivers in the very beginning
+        DataSourceProviderRegistry.getInstance();
     }
 
     /**

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.model.DBPDataSourceContainer;
 import org.jkiss.dbeaver.model.connection.DBPDriver;
+import org.jkiss.dbeaver.model.data.json.JSONUtils;
 import org.jkiss.dbeaver.runtime.IVariableResolver;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.utils.CommonUtils;
@@ -193,12 +194,48 @@ public class DBWHandlerConfiguration {
     }
 
     public void setSecureProperty(@NotNull String name, @Nullable String value) {
-        secureProperties.put(name, value);
+        if (value == null) {
+            secureProperties.remove(name);
+        } else {
+            secureProperties.put(name, value);
+        }
     }
 
     public void setSecureProperties(@NotNull Map<String, String> secureProperties) {
         this.secureProperties.clear();
         this.secureProperties.putAll(secureProperties);
+    }
+
+    public Map<String, Object> saveToMap() {
+        return saveToMap(false);
+    }
+
+    public Map<String, Object> saveToSecret() {
+        return saveToMap(true);
+    }
+
+    private Map<String, Object> saveToMap(boolean ignoreSecureProperties) {
+        Map<String, Object> handlerProps = new LinkedHashMap<>();
+        if (!isSavePassword() && ignoreSecureProperties) {
+            return handlerProps;
+        }
+        if (!CommonUtils.isEmpty(userName)) {
+            handlerProps.put("user", userName);
+        }
+        if (!CommonUtils.isEmpty(password)) {
+            handlerProps.put("password", password);
+        }
+        if (!CommonUtils.isEmpty(secureProperties)) {
+            handlerProps.put("properties", secureProperties);
+        }
+        return handlerProps;
+    }
+
+    void loadFromMap(Map<String, Object> handlerMap) {
+        userName = JSONUtils.getString(handlerMap, "user");
+        password = JSONUtils.getString(handlerMap, "password");
+        secureProperties.clear();
+        secureProperties.putAll(JSONUtils.deserializeStringMap(handlerMap, "properties"));
     }
 
     @Override

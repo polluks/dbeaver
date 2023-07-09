@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,10 +17,7 @@
 package org.jkiss.dbeaver.ui.controls.resultset.panel.valueviewer;
 
 import org.eclipse.core.runtime.IAdaptable;
-import org.eclipse.jface.action.Action;
-import org.eclipse.jface.action.GroupMarker;
-import org.eclipse.jface.action.IContributionManager;
-import org.eclipse.jface.action.Separator;
+import org.eclipse.jface.action.*;
 import org.eclipse.jface.dialogs.IDialogSettings;
 import org.eclipse.jface.viewers.ISelectionChangedListener;
 import org.eclipse.jface.viewers.ISelectionProvider;
@@ -101,6 +98,8 @@ public class ValueViewerPanel implements IResultSetPanel, IAdaptable {
                 UIUtils.drawMessageOverControl(viewPlaceholder, e, NLS.bind(ResultSetMessages.value_viewer_hide_panel_message, hidePanelCmd), 20);
             }
         });
+
+        viewPlaceholder.addDisposeListener(e -> disposeValueEditor());
 
 /*
         addTraverseListener(new TraverseListener() {
@@ -201,14 +200,7 @@ public class ValueViewerPanel implements IResultSetPanel, IAdaptable {
         }
         if (!force && (valueManager == null || valueEditor == null)) {
             force = true;
-        }
-        if (!force && valueManager instanceof ContentValueManager) {
-            final Object value = previewController.getValue();
-            if (value instanceof DBDContent && !ContentUtils.isTextContent((DBDContent) value)) {
-                // Always perform refresh for non-textual data
-                force = true;
-                updateActions = true;
-            }
+            updateActions = true;
         }
         viewValue(force);
         if (updateActions) {
@@ -267,8 +259,9 @@ public class ValueViewerPanel implements IResultSetPanel, IAdaptable {
                 } else {
                     viewPlaceholder.setLayout(new FillLayout());
                 }
+            }
 
-            } else {
+            if (valueEditor == null || valueEditor.getControl() == null) {
                 final Composite placeholder = UIUtils.createPlaceholder(viewPlaceholder, 1);
                 placeholder.setBackground(placeholder.getDisplay().getSystemColor(SWT.COLOR_WIDGET_BACKGROUND));
                 placeholder.addPaintListener(e -> {
@@ -346,8 +339,16 @@ public class ValueViewerPanel implements IResultSetPanel, IAdaptable {
 
     private void cleanupPanel()
     {
+        disposeValueEditor();
         // Cleanup previous viewer
         UIUtils.disposeChildControls(viewPlaceholder);
+    }
+
+    private void disposeValueEditor() {
+        if (valueEditor != null) {
+            valueEditor.dispose();
+            valueEditor = null;
+        }
     }
 
     private void fillToolBar(final IContributionManager contributionManager)
@@ -360,9 +361,12 @@ public class ValueViewerPanel implements IResultSetPanel, IAdaptable {
                 log.error("Can't contribute value manager actions", e);
             }
         }
-
         contributionManager.add(new GroupMarker(IValueManager.GROUP_ACTIONS_ADDITIONAL));
-
+        if (referenceValueEditor != null && referenceValueEditor.isReferenceValue()) {
+            for (ContributionItem contributionItem : referenceValueEditor.getContributionItems()) {
+                contributionManager.add(contributionItem);
+            }
+        }
         if (valueEditor != null && !valueEditor.isReadOnly()) {
             contributionManager.add(
                 ActionUtils.makeCommandContribution(presentation.getController().getSite(), ValueViewCommandHandler.CMD_SAVE_VALUE));
@@ -401,4 +405,6 @@ public class ValueViewerPanel implements IResultSetPanel, IAdaptable {
 
         return null;
     }
+
+
 }

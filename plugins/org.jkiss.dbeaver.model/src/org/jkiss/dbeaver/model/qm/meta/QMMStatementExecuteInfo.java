@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,9 +27,9 @@ import java.sql.SQLException;
 */
 public class QMMStatementExecuteInfo extends QMMObject {
 
-    private QMMStatementInfo statement;
+    private final QMMStatementInfo statement;
     private QMMTransactionSavepointInfo savepoint;
-    private String queryString;
+    private final String queryString;
 
     private long fetchRowCount;
     private long updateRowCount = -1;
@@ -42,10 +42,16 @@ public class QMMStatementExecuteInfo extends QMMObject {
 
     private boolean transactional;
 
-    private QMMStatementExecuteInfo previous;
+    private transient QMMStatementExecuteInfo previous;
 
-    QMMStatementExecuteInfo(QMMStatementInfo statement, QMMTransactionSavepointInfo savepoint, String queryString, QMMStatementExecuteInfo previous)
+    QMMStatementExecuteInfo(
+        QMMStatementInfo statement,
+        QMMTransactionSavepointInfo savepoint,
+        String queryString,
+        QMMStatementExecuteInfo previous,
+        SQLDialect sqlDialect)
     {
+        super(QMMetaObjectType.STATEMENT_EXECUTE_INFO);
         this.statement = statement;
         this.previous = previous;
         this.savepoint = savepoint;
@@ -53,7 +59,6 @@ public class QMMStatementExecuteInfo extends QMMObject {
         if (savepoint != null) {
             savepoint.setLastExecute(this);
         }
-        final SQLDialect sqlDialect = statement.getConnection().getSQLDialect();
         if (sqlDialect != null && queryString != null) {
             this.transactional = statement.getPurpose() != DBCExecutionPurpose.META && sqlDialect.isTransactionModifyingQuery(queryString);
         } else {
@@ -62,7 +67,7 @@ public class QMMStatementExecuteInfo extends QMMObject {
     }
 
     public QMMStatementExecuteInfo(long openTime, long closeTime, QMMStatementInfo stmt, String queryString, long rowCount, int errorCode, String errorMessage, long fetchBeginTime, long fetchEndTime, boolean transactional) {
-        super(openTime, closeTime);
+        super(QMMetaObjectType.STATEMENT_EXECUTE_INFO, openTime, closeTime);
         this.statement = stmt;
         this.queryString = queryString;
         this.fetchRowCount = rowCount;
@@ -188,4 +193,5 @@ public class QMMStatementExecuteInfo extends QMMObject {
     public QMMConnectionInfo getConnection() {
         return statement.getConnection();
     }
+
 }

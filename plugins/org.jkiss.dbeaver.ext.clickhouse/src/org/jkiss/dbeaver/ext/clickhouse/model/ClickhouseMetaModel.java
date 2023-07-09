@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,11 +30,13 @@ import org.jkiss.dbeaver.model.exec.DBCQueryTransformer;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCPreparedStatement;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCResultSet;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCSession;
+import org.jkiss.dbeaver.model.exec.jdbc.JDBCStatement;
 import org.jkiss.dbeaver.model.impl.jdbc.cache.JDBCBasicDataTypeCache;
 import org.jkiss.dbeaver.model.impl.jdbc.struct.JDBCDataType;
 import org.jkiss.dbeaver.model.impl.sql.QueryTransformerLimit;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.struct.DBSObject;
+import org.jkiss.utils.CommonUtils;
 
 import java.sql.SQLException;
 import java.util.Map;
@@ -64,6 +66,36 @@ public class ClickhouseMetaModel extends GenericMetaModel implements DBCQueryTra
     }
 
     @Override
+    public GenericCatalog createCatalogImpl(@NotNull GenericDataSource dataSource, @NotNull String catalogName) {
+        return new ClickhouseCatalog(dataSource, catalogName);
+    }
+
+    @Override
+    public boolean isSystemSchema(GenericSchema schema) {
+        return schema.getName().equalsIgnoreCase("INFORMATION_SCHEMA") || schema.getName().equals("system");
+    }
+
+    @Override
+    public JDBCStatement prepareTableLoadStatement(
+        @NotNull JDBCSession session,
+        @NotNull GenericStructContainer owner,
+        @Nullable GenericTableBase table,
+        @Nullable String tableName) throws SQLException {
+        // engine can be View or MaterializedView, we can read this field instead table_type
+        String sql =
+            "SELECT name as TABLE_NAME, engine as TABLE_TYPE, database as TABLE_SCHEM," +
+                (((ClickhouseDataSource) owner.getDataSource()).isSupportTableComments() ? "comment as REMARKS," : "") + " * " +
+            "FROM system.tables\n" +
+            "WHERE database = ?" + (table != null || CommonUtils.isNotEmpty(tableName) ? " and name=?" : "");
+        JDBCPreparedStatement dbStat = session.prepareStatement(sql);
+        dbStat.setString(1, owner.getName());
+        if (table != null || CommonUtils.isNotEmpty(tableName)) {
+            dbStat.setString(2, table != null ? table.getName() : tableName);
+        }
+        return dbStat;
+    }
+
+    @Override
     public GenericTableBase createTableImpl(GenericStructContainer container, @Nullable String tableName, @Nullable String tableType, @Nullable JDBCResultSet dbResult) {
         if (tableType != null && isView(tableType)) {
             return new ClickhouseView(container, tableName, tableType, dbResult);
@@ -88,7 +120,12 @@ public class ClickhouseMetaModel extends GenericMetaModel implements DBCQueryTra
     @Override
     public String getTableDDL(DBRProgressMonitor monitor, GenericTableBase sourceObject, Map<String, Object> options) throws DBException {
         GenericSchema schema =  sourceObject.getSchema();
-        if (schema != null && schema.getName().equals("system")) {
+        GenericCatalog catalog =  sourceObject.getCatalog();
+
+        if (
+            (schema != null && schema.getName().equals("system"))
+            || (catalog != null && catalog.getName().equals("system"))
+        ) {
             return super.getTableDDL(monitor, sourceObject, options);
         }
         GenericDataSource dataSource = sourceObject.getDataSource();

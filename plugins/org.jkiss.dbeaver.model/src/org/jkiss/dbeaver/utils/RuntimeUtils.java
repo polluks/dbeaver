@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
+import org.jkiss.dbeaver.model.DBConstants;
 import org.jkiss.dbeaver.model.connection.DBPNativeClientLocation;
 import org.jkiss.dbeaver.model.runtime.AbstractJob;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
@@ -47,6 +48,8 @@ public final class RuntimeUtils {
     private static final boolean IS_WINDOWS = Platform.getOS().equals(Platform.OS_WIN32);
     private static final boolean IS_MACOS = Platform.getOS().equals(Platform.OS_MACOSX);
     private static final boolean IS_LINUX = Platform.getOS().equals(Platform.OS_LINUX);
+
+    private static final boolean IS_GTK = Platform.getWS().equals(Platform.WS_GTK);
 
     private static final byte[] NULL_MAC_ADDRESS = new byte[] {0, 0, 0, 0, 0, 0};
 
@@ -207,6 +210,23 @@ public final class RuntimeUtils {
         }
     }
 
+    public static java.nio.file.Path getLocalPathFromURL(URL fileURL) throws IOException {
+        // Escape spaces to avoid URI syntax error
+        try {
+            URI filePath = GeneralUtils.makeURIFromFilePath(fileURL.toString());
+            /*
+                File can't accept URI with file authority in it. This created a problem for shared folders.
+                see dbeaver#15117
+             */
+            if (filePath.getAuthority() != null) {
+                return java.nio.file.Path.of(filePath.getSchemeSpecificPart());
+            }
+            return java.nio.file.Path.of(filePath);
+        } catch (URISyntaxException e) {
+            throw new IOException("Bad local file path: " + fileURL, e);
+        }
+    }
+
     public static boolean runTask(final DBRRunnableWithProgress task, String taskName, final long waitTime) {
         return runTask(task, taskName, waitTime, false);
     }
@@ -302,12 +322,29 @@ public final class RuntimeUtils {
         return IS_WINDOWS;
     }
 
+
+    /**
+     * Checks if current application is shipped from Windows store
+     * @return true if shipped from Windows store, false if not.
+     */
+    public static boolean isWindowsStoreApplication() {
+        if (!IS_WINDOWS) {
+            return false;
+        }
+        final String property = System.getProperty(DBConstants.IS_WINDOWS_STORE_APP);
+        return property != null && property.equalsIgnoreCase("true");
+    }
+
     public static boolean isMacOS() {
         return IS_MACOS;
     }
 
     public static boolean isLinux() {
         return IS_LINUX;
+    }
+    
+    public static boolean isGtk() {
+        return IS_GTK;
     }
 
     public static void setThreadName(String name) {
@@ -401,6 +438,36 @@ public final class RuntimeUtils {
         }
 
         return arguments;
+    }
+
+    @NotNull
+    public static String getWorkingDirectory(String defaultWorkspaceLocation) {
+        String osName = (System.getProperty("os.name")).toUpperCase();
+        String workingDirectory;
+        if (osName.contains("WIN")) {
+            String appData = System.getenv("AppData");
+            if (appData == null) {
+                appData = System.getProperty("user.home");
+            }
+            workingDirectory = appData + "\\" + defaultWorkspaceLocation;
+        } else if (osName.contains("MAC")) {
+            workingDirectory = System.getProperty("user.home") + "/Library/" + defaultWorkspaceLocation;
+        } else {
+            // Linux
+            String dataHome = System.getProperty("XDG_DATA_HOME");
+            if (dataHome == null) {
+                dataHome = System.getProperty("user.home") + "/.local/share";
+            }
+            String badWorkingDir = dataHome + "/." + defaultWorkspaceLocation;
+            String goodWorkingDir = dataHome + "/" + defaultWorkspaceLocation;
+            if (!new File(goodWorkingDir).exists() && new File(badWorkingDir).exists()) {
+                // Let's use bad working dir if it exists (#6316)
+                workingDirectory = badWorkingDir;
+            } else {
+                workingDirectory = goodWorkingDir;
+            }
+        }
+        return workingDirectory;
     }
 
     private enum CommandLineState {

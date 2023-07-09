@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
  */
 package org.jkiss.dbeaver.ui.dialogs.connection;
 
+import org.eclipse.jface.dialogs.Dialog;
 import org.eclipse.jface.dialogs.IDialogConstants;
 import org.eclipse.jface.dialogs.IDialogPage;
 import org.eclipse.jface.util.IPropertyChangeListener;
@@ -26,6 +27,7 @@ import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.graphics.Image;
+import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
@@ -35,13 +37,14 @@ import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.core.CoreMessages;
+import org.jkiss.dbeaver.model.DBConstants;
 import org.jkiss.dbeaver.model.app.DBPDataSourceRegistry;
 import org.jkiss.dbeaver.model.app.DBPProject;
 import org.jkiss.dbeaver.model.connection.DBPDriver;
+import org.jkiss.dbeaver.model.connection.DBPDriverSubstitutionDescriptor;
 import org.jkiss.dbeaver.model.exec.DBCSession;
 import org.jkiss.dbeaver.model.runtime.DBRRunnableContext;
-import org.jkiss.dbeaver.registry.DataSourceDescriptor;
-import org.jkiss.dbeaver.registry.DataSourceViewDescriptor;
+import org.jkiss.dbeaver.registry.*;
 import org.jkiss.dbeaver.registry.driver.DriverDescriptor;
 import org.jkiss.dbeaver.registry.network.NetworkHandlerDescriptor;
 import org.jkiss.dbeaver.registry.network.NetworkHandlerRegistry;
@@ -66,8 +69,11 @@ class ConnectionPageSettings extends ActiveWizardPage<ConnectionWizard> implemen
     private final ConnectionWizard wizard;
     @NotNull
     private final DataSourceViewDescriptor viewDescriptor;
+    private final DataSourceViewDescriptor substitutedViewDescriptor;
+    private final DBPDriverSubstitutionDescriptor driverSubstitution;
     @Nullable
     private IDataSourceConnectionEditor connectionEditor;
+    private IDataSourceConnectionEditor originalConnectionEditor;
     @Nullable
     private DataSourceDescriptor dataSource;
     private final Set<DataSourceDescriptor> activated = new HashSet<>();
@@ -79,28 +85,52 @@ class ConnectionPageSettings extends ActiveWizardPage<ConnectionWizard> implemen
      */
     ConnectionPageSettings(
         @NotNull ConnectionWizard wizard,
-        @NotNull DataSourceViewDescriptor viewDescriptor) {
+        @NotNull DataSourceViewDescriptor viewDescriptor,
+        @Nullable DataSourceDescriptor dataSource,
+        @Nullable DBPDriverSubstitutionDescriptor driverSubstitution
+    ) {
         super(PAGE_NAME + "." + viewDescriptor.getId());
+
         this.wizard = wizard;
         this.viewDescriptor = viewDescriptor;
+        this.dataSource = dataSource;
+        this.driverSubstitution = driverSubstitution;
+
+        if (driverSubstitution != null) {
+            this.substitutedViewDescriptor = DataSourceViewRegistry.getInstance().findView(
+                DataSourceProviderRegistry.getInstance().getDataSourceProvider(driverSubstitution.getProviderId()),
+                IActionConstants.EDIT_CONNECTION_POINT
+            );
+        } else {
+            this.substitutedViewDescriptor = null;
+        }
 
         setTitle(wizard.isNew() ? viewDescriptor.getLabel() : CoreMessages.dialog_setting_connection_wizard_title);
         setDescription(CoreMessages.dialog_connection_description);
     }
 
-    /**
-     * Constructor for ConnectionPageSettings
-     */
-    ConnectionPageSettings(
-        @NotNull ConnectionWizard wizard,
-        @NotNull DataSourceViewDescriptor viewDescriptor,
-        @Nullable DataSourceDescriptor dataSource) {
-        this(wizard, viewDescriptor);
-        this.dataSource = dataSource;
+    @NotNull
+    private IDataSourceConnectionEditor getConnectionEditor() {
+        if (connectionEditor == null) {
+            if (substitutedViewDescriptor == null) {
+                connectionEditor = getOriginalConnectionEditor();
+            } else {
+                connectionEditor = substitutedViewDescriptor.createView(IDataSourceConnectionEditor.class);
+                connectionEditor.setSite(this);
+            }
+        }
+
+        return connectionEditor;
     }
 
-    IDataSourceConnectionEditor getConnectionEditor() {
-        return connectionEditor;
+    @NotNull
+    private IDataSourceConnectionEditor getOriginalConnectionEditor() {
+        if (originalConnectionEditor == null) {
+            originalConnectionEditor = viewDescriptor.createView(IDataSourceConnectionEditor.class);
+            originalConnectionEditor.setSite(this);
+        }
+
+        return originalConnectionEditor;
     }
 
     @Override
@@ -201,10 +231,9 @@ class ConnectionPageSettings extends ActiveWizardPage<ConnectionWizard> implemen
         }
 
         try {
-            if (this.connectionEditor == null) {
-                this.connectionEditor = viewDescriptor.createView(IDataSourceConnectionEditor.class);
-                this.connectionEditor.setSite(this);
-            }
+            // init main page
+            getConnectionEditor();
+
             // init sub pages (if any)
             IDialogPage[] allSubPages = getDialogPages(false, true);
 
@@ -227,10 +256,10 @@ class ConnectionPageSettings extends ActiveWizardPage<ConnectionWizard> implemen
                         continue;
                     }
                     TabItem item = new TabItem(tabFolder, SWT.NONE);
-                    page.createControl(tabFolder);
+                    Composite dummyComposite = new Composite(tabFolder, SWT.NONE);
+                    dummyComposite.setLayout(new FillLayout());
                     item.setData(page);
-                    Control pageControl = page.getControl();
-                    item.setControl(pageControl);
+                    item.setControl(dummyComposite);
                     item.setText(CommonUtils.isEmpty(page.getTitle()) ? CoreMessages.dialog_setting_connection_general : page.getTitle());
                     item.setToolTipText(page.getDescription());
                 }
@@ -243,6 +272,8 @@ class ConnectionPageSettings extends ActiveWizardPage<ConnectionWizard> implemen
                 });
             }
 
+            activateCurrentItem();
+            Dialog.applyDialogFont(tabFolder);
             UIUtils.setHelp(getControl(), IHelpContextIds.CTX_CON_WIZARD_SETTINGS);
         } catch (Exception ex) {
             log.warn(ex);
@@ -256,6 +287,13 @@ class ConnectionPageSettings extends ActiveWizardPage<ConnectionWizard> implemen
             TabItem[] selection = tabFolder.getSelection();
             if (selection.length == 1) {
                 IDialogPage page = (IDialogPage) selection[0].getData();
+                if (page.getControl() == null) {
+                    // Create page
+                    Composite panel = (Composite) selection[0].getControl();
+                    page.createControl(panel);
+                    Dialog.applyDialogFont(panel);
+                    panel.layout(true, true);
+                }
                 page.setVisible(true);
             }
         }
@@ -333,12 +371,12 @@ class ConnectionPageSettings extends ActiveWizardPage<ConnectionWizard> implemen
         PropertyChangeEvent pcEvent = new PropertyChangeEvent(source, property, oldValue, newValue);
         for (TabItem item : tabFolder.getItems()) {
             IDialogPage page = (IDialogPage) item.getData();
-            if (page instanceof IPropertyChangeListener) {
+            if (page instanceof IPropertyChangeListener && page.getControl() != null) {
                 ((IPropertyChangeListener) page).propertyChange(pcEvent);
             }
         }
         for (IWizardPage page : getWizard().getPages()) {
-            if (page instanceof IPropertyChangeListener) {
+            if (page instanceof IPropertyChangeListener && page.getControl() != null) {
                 ((IPropertyChangeListener) page).propertyChange(pcEvent);
             }
         }
@@ -365,18 +403,18 @@ class ConnectionPageSettings extends ActiveWizardPage<ConnectionWizard> implemen
         if (!forceCreate) {
             return new IDialogPage[0];
         }
-        if (this.connectionEditor == null) {
-            this.connectionEditor = viewDescriptor.createView(IDataSourceConnectionEditor.class);
-            this.connectionEditor.setSite(this);
-        }
 
-        if (connectionEditor instanceof IDialogPageProvider) {
+        final IDataSourceConnectionEditor originalConnectionEditor = getOriginalConnectionEditor();
 
-            subPages = ((IDialogPageProvider) connectionEditor).getDialogPages(extrasOnly, true);
+        if (originalConnectionEditor instanceof IDialogPageProvider) {
+            subPages = ((IDialogPageProvider) originalConnectionEditor).getDialogPages(extrasOnly, true);
 
-            if (isNew() || !getDriver().isEmbedded()) {
-                // Add network tabs (for new connections or non-embedded drivers)
+            if (!getDriver().isEmbedded() && !CommonUtils.toBoolean(getDriver().getDriverParameter(DBConstants.DRIVER_PARAM_DISABLE_NETWORK_PARAMETERS))) {
+                // Add network tabs (for non-embedded drivers)
                 for (NetworkHandlerDescriptor descriptor : NetworkHandlerRegistry.getInstance().getDescriptors(getActiveDataSource())) {
+                    if (driverSubstitution != null && !driverSubstitution.getInstance().isNetworkHandlerSupported(descriptor)) {
+                        continue;
+                    }
                     subPages = ArrayUtils.add(IDialogPage.class, subPages, new ConnectionPageNetworkHandler(this, descriptor));
                 }
             }
@@ -447,13 +485,14 @@ class ConnectionPageSettings extends ActiveWizardPage<ConnectionWizard> implemen
         TabItem[] selection = tabFolder.getSelection();
         for (TabItem pageTab : tabFolder.getItems()) {
             if (pageTab.getData() == subPage) {
+                tabFolder.setSelection(pageTab);
+                activateCurrentItem();
                 if (selection.length == 1 && selection[0].getData() != subPage && selection[0].getData() instanceof ActiveWizardPage) {
                     ((ActiveWizardPage) selection[0].getData()).deactivatePage();
                 }
                 if (subPage instanceof ActiveWizardPage) {
                     ((ActiveWizardPage) subPage).activatePage();
                 }
-                tabFolder.setSelection(pageTab);
                 break;
             }
         }

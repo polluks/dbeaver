@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,20 +42,23 @@ import org.jkiss.dbeaver.model.sql.parser.tokens.predicates.TokenPredicatesCondi
 import org.jkiss.dbeaver.model.struct.DBSDataType;
 import org.jkiss.dbeaver.model.struct.DBSTypedObject;
 import org.jkiss.dbeaver.model.struct.rdb.DBSProcedure;
+import org.jkiss.dbeaver.model.struct.rdb.DBSProcedureType;
 import org.jkiss.utils.ArrayUtils;
 import org.jkiss.utils.CommonUtils;
 
 import java.util.Arrays;
 import java.util.Locale;
+import java.util.UUID;
 
 /**
  * Oracle SQL dialect
  */
-public class OracleSQLDialect extends JDBCSQLDialect implements SQLDataTypeConverter {
+public class OracleSQLDialect extends JDBCSQLDialect
+    implements SQLDataTypeConverter, SQLDialectDDLExtension, SQLDialectSchemaController {
 
     private static final Log log = Log.getLog(OracleSQLDialect.class);
 
-    private static final String[] EXEC_KEYWORDS = new String[]{ "call" };
+    private static final String[] EXEC_KEYWORDS = new String[]{"call"};
 
     private static final String[] ORACLE_NON_TRANSACTIONAL_KEYWORDS = ArrayUtils.concatArrays(
         BasicSQLDialect.NON_TRANSACTIONAL_KEYWORDS,
@@ -67,7 +70,6 @@ public class OracleSQLDialect extends JDBCSQLDialect implements SQLDataTypeConve
 
     private static final String[][] ORACLE_BEGIN_END_BLOCK = new String[][]{
         {SQLConstants.BLOCK_BEGIN, SQLConstants.BLOCK_END},
-        {"IF", SQLConstants.BLOCK_END},
         {"LOOP", SQLConstants.BLOCK_END + " LOOP"},
         {SQLConstants.KEYWORD_CASE, SQLConstants.BLOCK_END + " " + SQLConstants.KEYWORD_CASE},
     };
@@ -82,7 +84,7 @@ public class OracleSQLDialect extends JDBCSQLDialect implements SQLDataTypeConve
         "IS",
     };
 
-    public static final String[] OTHER_TYPES_FUNCTIONS = {
+    private static final String[] OTHER_TYPES_FUNCTIONS = {
         //functions without parentheses #8710
         "CURRENT_DATE",
         "CURRENT_TIMESTAMP",
@@ -92,7 +94,7 @@ public class OracleSQLDialect extends JDBCSQLDialect implements SQLDataTypeConve
         "SYSTIMESTAMP"
     };
 
-    public static final String[] ADVANCED_KEYWORDS = {
+    private static final String[] ADVANCED_KEYWORDS = {
         "REPLACE",
         "PACKAGE",
         "FUNCTION",
@@ -118,7 +120,13 @@ public class OracleSQLDialect extends JDBCSQLDialect implements SQLDataTypeConve
         "BULK",
         "ELSIF",
         "EXIT",
+        "SUBPARTITION",
+        "TEMPFILE",
+        "DATAFILE",
+        "TABLESPACE"
     };
+
+    private static final String AUTO_INCREMENT_KEYWORD = "GENERATED ALWAYS AS IDENTITY";
     private boolean crlfBroken;
     private DBPPreferenceStore preferenceStore;
 
@@ -370,6 +378,12 @@ public class OracleSQLDialect extends JDBCSQLDialect implements SQLDataTypeConve
     }
 
     @Override
+    protected void loadDataTypesFromDatabase(JDBCDataSource dataSource) {
+        super.loadDataTypesFromDatabase(dataSource);
+        addDataTypes(OracleDataType.PREDEFINED_TYPES.keySet());
+    }
+
+    @Override
     public String[][] getBlockBoundStrings() {
         return ORACLE_BEGIN_END_BLOCK;
     }
@@ -462,8 +476,20 @@ public class OracleSQLDialect extends JDBCSQLDialect implements SQLDataTypeConve
 
     @Override
     protected String getStoredProcedureCallInitialClause(DBSProcedure proc) {
-        String schemaName = proc.getParentObject().getName();
-        return "CALL " + schemaName + "." + proc.getName();
+        if (proc.getProcedureType() == DBSProcedureType.FUNCTION) {
+            return SQLConstants.KEYWORD_SELECT + " " + proc.getFullyQualifiedName(DBPEvaluationContext.DML);
+        } else {
+            return "CALL " + proc.getFullyQualifiedName(DBPEvaluationContext.DML);
+        }
+    }
+
+    @NotNull
+    @Override
+    protected String getProcedureCallEndClause(DBSProcedure procedure) {
+        if (procedure.getProcedureType() == DBSProcedureType.FUNCTION) {
+            return "FROM DUAL";
+        }
+        return super.getProcedureCallEndClause(procedure);
     }
 
     @Override
@@ -497,8 +523,10 @@ public class OracleSQLDialect extends JDBCSQLDialect implements SQLDataTypeConve
                 if (precision == 0 || precision > OracleConstants.NUMERIC_MAX_PRECISION) {
                     precision = OracleConstants.NUMERIC_MAX_PRECISION;
                 }
-                if (scale != null && precision > 0) {
-                    return "(" + precision + ',' + scale + ")";
+                if (scale != null || precision > 0) {
+                    // 38 - is default precision value. And we can not add scale here.
+                    // It will be changed to 0 automatically after table creation from the Oracle side.
+                    return "(" + (precision > 0 ? precision : "38") + (scale != null ? "," + scale : "") +  ")";
                 }
                 break;
             case OracleConstants.TYPE_INTERVAL_DAY_SECOND:
@@ -539,6 +567,11 @@ public class OracleSQLDialect extends JDBCSQLDialect implements SQLDataTypeConve
                 //We don't want to use a VARCHAR it's not recommended
                 //See https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/Data-Types.html#GUID-DF7E10FC-A461-4325-A295-3FD4D150809E
                 localDataType = OracleConstants.TYPE_NAME_VARCHAR2;
+                if (sourceTypedObject.getMaxLength() > 0
+                    && sourceTypedObject.getMaxLength() != Integer.MAX_VALUE
+                    && sourceTypedObject.getMaxLength() != Long.MAX_VALUE) {
+                    dataTypeModifies = String.valueOf(sourceTypedObject.getMaxLength());
+                }
                 break;
             case "XML":
             case "XMLTYPE":
@@ -634,6 +667,11 @@ public class OracleSQLDialect extends JDBCSQLDialect implements SQLDataTypeConve
                                 tt.sequence("procedure", SQLTokenType.T_OTHER),
                                 tt.sequence(SQLTokenType.T_OTHER, SQLTokenType.T_TYPE)
                         ), ";")
+                ),
+                new TokenPredicatesCondition(
+                    SQLParserActionKind.BEGIN_BLOCK,
+                    tt.sequence(),
+                    tt.sequence(tt.not("END"), "IF", tt.not("EXISTS"))
                 )
         );
 
@@ -662,5 +700,63 @@ public class OracleSQLDialect extends JDBCSQLDialect implements SQLDataTypeConve
     @Override
     public boolean supportsAliasInConditions() {
         return false;
+    }
+
+    @Nullable
+    @Override
+    public String getAutoIncrementKeyword() {
+        return AUTO_INCREMENT_KEYWORD;
+    }
+
+    @Override
+    public boolean supportsCreateIfExists() {
+        return false;
+    }
+
+    @NotNull
+    @Override
+    public String getTimestampDataType() {
+        return OracleConstants.TYPE_NAME_TIMESTAMP;
+    }
+
+    @NotNull
+    @Override
+    public String getBigIntegerType() {
+        return OracleConstants.TYPE_NUMBER;
+    }
+
+    @NotNull
+    @Override
+    public String getClobDataType() {
+        return OracleConstants.TYPE_CLOB;
+    }
+
+    @NotNull
+    @Override
+    public String getUuidDataType() {
+        return OracleConstants.TYPE_UUID;
+    }
+
+    @NotNull
+    @Override
+    public String getBooleanDataType() {
+        return OracleConstants.TYPE_BOOLEAN;
+    }
+
+    @Override
+    public boolean needsDefaultDataTypes() {
+        return false;
+    }
+
+    @NotNull
+    @Override
+    public String getSchemaExistQuery(@NotNull String schemaName) {
+        return "SELECT 1 FROM all_users WHERE USERNAME='" + schemaName + "'";
+    }
+
+    @NotNull
+    @Override
+    public String getCreateSchemaQuery(@NotNull String schemaName) {
+        return "CREATE USER \"" + schemaName + "\" IDENTIFIED BY \"" + UUID.randomUUID() + "\"";
     }
 }

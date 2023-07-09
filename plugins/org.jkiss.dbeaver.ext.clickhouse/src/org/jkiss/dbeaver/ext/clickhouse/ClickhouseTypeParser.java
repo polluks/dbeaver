@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -44,7 +44,7 @@ public class ClickhouseTypeParser {
         builder.setRule("number", E.regex("[-]?[0-9]+"));
 
         builder.setRule("enum_entry", E.seq(E.call("string"), "=", E.call("number")));
-        builder.setRule("enum_entry_list", E.seq(E.call("enum_entry"), E.any(",", E.call("enum_entry"))));
+        builder.setRule("enum_entry_list", E.seq(E.call("enum_entry"), E.zeroOrMore(",", E.call("enum_entry"))));
         builder.setRule("enum", E.seq(E.regex("enum(8|16)"), "(", E.call("enum_entry_list"), ")"));
 
         builder.setStartRuleName("enum");

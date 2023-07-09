@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -206,7 +206,9 @@ public abstract class GenericObjectContainer implements GenericStructContainer, 
                             }
                             monitor.subTask("Read indexes for '" + table.getFullyQualifiedName(DBPEvaluationContext.DDL) + "'");
                             Collection<? extends GenericTableIndex> tableIndexes = table.getIndexes(monitor);
-                            newIndexCache.addAll(tableIndexes);
+                            if (!CommonUtils.isEmpty(tableIndexes)) {
+                                newIndexCache.addAll(tableIndexes);
+                            }
                             monitor.worked(1);
                         }
                     } finally {
@@ -411,8 +413,9 @@ public abstract class GenericObjectContainer implements GenericStructContainer, 
     }
 
     @Override
-    public synchronized DBSObject refreshObject(@NotNull DBRProgressMonitor monitor)
-        throws DBException {
+    public synchronized DBSObject refreshObject(@NotNull DBRProgressMonitor monitor) throws DBException {
+        final boolean needsStructureCaching = !getTableCache().isEmpty();
+
         this.tableCache.clearCache();
         this.indexCache.clearCache();
         this.constraintKeysCache.clearCache();
@@ -425,6 +428,11 @@ public abstract class GenericObjectContainer implements GenericStructContainer, 
         this.procedures = null;
         this.sequences = null;
         this.synonyms = null;
+
+        if (needsStructureCaching) {
+            cacheStructure(monitor, STRUCT_ALL);
+        }
+
         return this;
     }
 

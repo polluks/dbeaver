@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,6 +41,10 @@ public class NumberDataFormatter implements DBDDataFormatter {
     private DecimalFormat numberFormat;
     private StringBuffer buffer;
     private FieldPosition position;
+    private boolean nativeSpecialValues;
+
+    public NumberDataFormatter() {
+    }
 
     @Override
     public void init(DBSTypedObject type, Locale locale, Map<String, Object> properties)
@@ -111,6 +115,7 @@ public class NumberDataFormatter implements DBDDataFormatter {
         }
         buffer = new StringBuffer();
         position = new FieldPosition(0);
+        nativeSpecialValues = CommonUtils.toBoolean(properties.get(NumberFormatSample.PROP_NATIVE_SPECIAL_VALUES));
     }
 
     @Nullable
@@ -126,6 +131,9 @@ public class NumberDataFormatter implements DBDDataFormatter {
     {
         if (value == null) {
             return null;
+        }
+        if (nativeSpecialValues && (CommonUtils.isNaN(value) || CommonUtils.isInfinite(value))) {
+            return value.toString();
         }
         try {
             synchronized (this) {

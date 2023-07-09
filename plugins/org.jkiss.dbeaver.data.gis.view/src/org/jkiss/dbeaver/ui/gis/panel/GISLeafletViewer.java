@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,16 +23,14 @@ import org.eclipse.jface.action.Separator;
 import org.eclipse.jface.action.ToolBarManager;
 import org.eclipse.jface.viewers.StructuredSelection;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.SWTError;
 import org.eclipse.swt.browser.Browser;
 import org.eclipse.swt.browser.BrowserFunction;
 import org.eclipse.swt.dnd.Clipboard;
 import org.eclipse.swt.dnd.ImageTransfer;
 import org.eclipse.swt.dnd.TextTransfer;
 import org.eclipse.swt.dnd.Transfer;
-import org.eclipse.swt.graphics.GC;
-import org.eclipse.swt.graphics.Image;
-import org.eclipse.swt.graphics.ImageData;
-import org.eclipse.swt.graphics.ImageLoader;
+import org.eclipse.swt.graphics.*;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.widgets.*;
 import org.jkiss.code.NotNull;
@@ -66,12 +64,15 @@ import org.jkiss.dbeaver.ui.gis.registry.GeometryViewerRegistry;
 import org.jkiss.dbeaver.ui.gis.registry.LeafletTilesDescriptor;
 import org.jkiss.dbeaver.utils.ContentUtils;
 import org.jkiss.dbeaver.utils.GeneralUtils;
+import org.jkiss.dbeaver.utils.RuntimeUtils;
 import org.jkiss.utils.ArrayUtils;
 import org.jkiss.utils.CommonUtils;
 import org.jkiss.utils.IOUtils;
 import org.locationtech.jts.geom.Geometry;
 
 import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -85,15 +86,17 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
     private static final String PROP_FLIP_COORDINATES = "gis.flipCoords";
     private static final String PROP_SRID = "gis.srid";
 
+    private volatile boolean browserCreating = false;
+
     private static final Gson gson = new GsonBuilder()
             .registerTypeHierarchyAdapter(DBDContent.class, new DBDContentAdapter()).create();
 
     private final DBDAttributeBinding[] bindings;
-    private final Browser browser;
+    private Browser browser;
     private DBGeometry[] lastValue;
     private int sourceSRID; // Explicitly set SRID
     private int actualSourceSRID; // SRID taken from geometry value
-    private File scriptFile;
+    private Path scriptFile;
     private final ToolBarManager toolBarManager;
     private int defaultSRID; // Target SRID used to render map
 
@@ -108,37 +111,55 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
 
         composite = UIUtils.createPlaceholder(parent, 1);
         CSSUtils.setCSSClass(composite, DBStyles.COLORED_BY_CONNECTION_TYPE);
-
-        browser = new Browser(composite, SWT.NONE);
-        browser.setLayoutData(new GridData(GridData.FILL_BOTH));
-
-        new BrowserFunction(browser, "setClipboardContents") {
-            @Override
-            public Object function(Object[] arguments) {
-                UIUtils.setClipboardContents(Display.getCurrent(), TextTransfer.getInstance(), arguments[0]);
-                return null;
+        browserCreating = true;
+        try {
+            browser = new Browser(composite, SWT.NONE);
+        } catch (SWTError error) {
+            log.warn("Internal web browser initialization failed", error);
+            browser = null;
+            if (error.code != SWT.ERROR_NOT_IMPLEMENTED) {
+                for (Control control : composite.getChildren()) {
+                    control.dispose();
+                }
+                throw error;
+            } else {
+                // HACK: Will force SWT to use IE instead. We can't use SWT.DEFAULT because it might resolve to SWT.EDGE
+                browser = new Browser(composite, SWT.WEBKIT);
             }
-        };
+        } finally {
+            browserCreating = false;
+        }
 
-        if (presentation instanceof AbstractPresentation) {
-            new BrowserFunction(browser, "setPresentationSelection") {
+        if (browser != null) {
+            browser.setLayoutData(new GridData(GridData.FILL_BOTH));
+            new BrowserFunction(browser, "setClipboardContents") {
                 @Override
                 public Object function(Object[] arguments) {
-                    final List<GridPos> selection = new ArrayList<>();
-                    for (Object pos : ((Object[]) arguments[0])) {
-                        final String[] split = ((String) pos).split(":");
-                        selection.add(new GridPos(CommonUtils.toInt(split[0]), CommonUtils.toInt(split[1])));
-                    }
-                    ((AbstractPresentation) presentation).setSelection(new StructuredSelection(selection), false);
+                    UIUtils.setClipboardContents(Display.getCurrent(), TextTransfer.getInstance(), arguments[0]);
                     return null;
                 }
             };
-        }
 
-        browser.addDisposeListener(e -> {
-            cleanupFiles();
-            GISViewerActivator.getDefault().getPreferences().removePropertyChangeListener(this);
-        });
+            if (presentation instanceof AbstractPresentation) {
+                new BrowserFunction(browser, "setPresentationSelection") {
+                    @Override
+                    public Object function(Object[] arguments) {
+                        final List<GridPos> selection = new ArrayList<>();
+                        for (Object pos : ((Object[]) arguments[0])) {
+                            final String[] split = ((String) pos).split(":");
+                            selection.add(new GridPos(CommonUtils.toInt(split[0]), CommonUtils.toInt(split[1])));
+                        }
+                        ((AbstractPresentation) presentation).setSelection(new StructuredSelection(selection), false);
+                        return null;
+                    }
+                };
+            }
+
+            browser.addDisposeListener(e -> {
+                cleanupFiles();
+                GISViewerActivator.getDefault().getPreferences().removePropertyChangeListener(this);
+            });
+        }
 
         {
             Composite bottomPanel = UIUtils.createPlaceholder(composite, 1);//new Composite(composite, SWT.NONE);
@@ -263,8 +284,8 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
                     browser.setUrl("about:blank");
                 } else {
                     final Bounds bounds = recenter ? null : Bounds.tryExtractFromBrowser(browser);
-                    final File file = generateViewScript(values, bounds);
-                    browser.setUrl(file.toURI().toURL().toString());
+                    final Path file = generateViewScript(values, bounds);
+                    browser.setUrl(file.toFile().toURI().toURL().toString());
                 }
             } catch (IOException e) {
                 throw new DBException("Error generating viewer script", e);
@@ -274,12 +295,12 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
         updateToolbar();
     }
 
-    private File generateViewScript(DBGeometry[] values, @Nullable Bounds bounds) throws IOException {
+    private Path generateViewScript(DBGeometry[] values, @Nullable Bounds bounds) throws IOException {
         if (scriptFile == null) {
-            File tempDir = DBWorkbench.getPlatform().getTempFolder(new VoidProgressMonitor(), "gis-viewer-files");
+            Path tempDir = DBWorkbench.getPlatform().getTempFolder(new VoidProgressMonitor(), "gis-viewer-files");
             checkIncludesExistence(tempDir);
 
-            scriptFile = File.createTempFile("view", "gis.html", tempDir);
+            scriptFile = Files.createTempFile(tempDir, "view", "gis.html");
         }
 
         int attributeSrid = GisConstants.SRID_SIMPLE;
@@ -399,7 +420,7 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
                 }
                 return null;
             });
-            try (FileOutputStream fos = new FileOutputStream(scriptFile)) {
+            try (OutputStream fos = Files.newOutputStream(scriptFile)) {
                 fos.write(viewTemplate.getBytes(GeneralUtils.UTF8_CHARSET));
             }
         } finally {
@@ -409,16 +430,14 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
         return scriptFile;
     }
 
-    private void checkIncludesExistence(File scriptDir) throws IOException {
-        File incFolder = new File(scriptDir, "inc");
-        if (!incFolder.exists()) {
-            if (!incFolder.mkdirs()) {
-                throw new IOException("Can't create inc folder '" + incFolder.getAbsolutePath() + "'");
-            }
+    private void checkIncludesExistence(Path scriptDir) throws IOException {
+        Path incFolder = scriptDir.resolve("inc");
+        if (!Files.exists(incFolder)) {
+            Files.createDirectories(incFolder);
             for (String fileName : GISBrowserViewerConstants.INC_FILES) {
                 InputStream fis = GISViewerActivator.getDefault().getResourceStream(GISBrowserViewerConstants.WEB_INC_PATH + fileName);
                 if (fis != null) {
-                    try (FileOutputStream fos = new FileOutputStream(new File(incFolder, fileName))) {
+                    try (OutputStream fos = Files.newOutputStream(incFolder.resolve(fileName))) {
                         try {
                             IOUtils.copyStream(fis, fos);
                         } catch (Exception e) {
@@ -434,8 +453,10 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
 
     private void cleanupFiles() {
         if (scriptFile != null) {
-            if (!scriptFile.delete()) {
-                log.debug("Can't delete temp script file '" + scriptFile.getAbsolutePath() + "'");
+            try {
+                Files.delete(scriptFile);
+            } catch (IOException e) {
+                log.debug("Can't delete temp script file '" + scriptFile + "'", e);
             }
         }
     }
@@ -444,8 +465,13 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
         return composite;
     }
 
+    @Nullable
     public Browser getBrowser() {
         return browser;
+    }
+
+    public boolean isBrowserCreating() {
+        return browserCreating;
     }
 
     public DBGeometry[] getCurrentValue() {
@@ -453,26 +479,23 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
     }
 
     void updateToolbar() {
+        if (browser == null) {
+            return;
+        }
         toolBarManager.removeAll();
         toolBarManager.add(new Action(GISMessages.panel_leaflet_viewer_tool_bar_action_text_open, DBeaverIcons.getImageDescriptor(UIIcon.BROWSER)) {
             @Override
             public void run() {
-                ShellUtils.launchProgram(scriptFile.getAbsolutePath());
+                ShellUtils.launchProgram(scriptFile.toAbsolutePath().toString());
             }
         });
         toolBarManager.add(new Action(GISMessages.panel_leaflet_viewer_tool_bar_action_text_copy_as, DBeaverIcons.getImageDescriptor(UIIcon.PICTURE)) {
             @Override
             public void run() {
-                Image image = new Image(Display.getDefault(), browser.getBounds());
-                GC gc = new GC(image);
-                try {
-                    browser.print(gc);
-                } finally {
-                    gc.dispose();
-                }
                 ImageTransfer imageTransfer = ImageTransfer.getInstance();
+                ImageData imageData = captureBrowserImage(); 
                 Clipboard clipboard = new Clipboard(Display.getCurrent());
-                clipboard.setContents(new Object[] {image.getImageData()}, new Transfer[]{imageTransfer});
+                clipboard.setContents(new Object[] { imageData }, new Transfer[]{imageTransfer});
             }
         });
         toolBarManager.add(new Action(GISMessages.panel_leaflet_viewer_tool_bar_action_text_save_as, DBeaverIcons.getImageDescriptor(UIIcon.PICTURE_SAVE)) {
@@ -502,16 +525,9 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
                     }
                 }
 
-                Image image = new Image(Display.getDefault(), browser.getBounds());
-                GC gc = new GC(image);
-                try {
-                    browser.print(gc);
-                } finally {
-                    gc.dispose();
-                }
                 ImageLoader imageLoader = new ImageLoader();
                 imageLoader.data = new ImageData[1];
-                imageLoader.data[0] = image.getImageData();
+                imageLoader.data[0] = captureBrowserImage();
                 File outFile = new File(filePath);
                 try (OutputStream fos = new FileOutputStream(outFile)) {
                     imageLoader.save(fos, imageType);
@@ -607,13 +623,17 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
                 }
             }
         }
-        bindings[0].getDataSource().getContainer().getRegistry().flushConfig();
+        bindings[0].getDataSource().getContainer().persistConfiguration();
     }
 
     private void updateControlsVisibility() {
+        if (browser == null) {
+            return;
+        }
+        
         GC gc = new GC(browser.getDisplay());
         try {
-            browser.execute("javascript:showTools(" + toolsVisible +");");
+            browser.execute("javascript:showTools(" + toolsVisible + ");");
         } finally {
             gc.dispose();
         }
@@ -665,4 +685,22 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
             return String.format("L.latLngBounds(L.latLng(%f, %f), L.latLng(%f, %f))", north, east, south, west);
         }
     }
+
+    private ImageData captureBrowserImage() {
+        ImageData imageData; 
+        if (RuntimeUtils.isWindows()) {
+            imageData = GISBrowserImageUtils.getControlScreenshotOnWindows(browser);
+        } else {
+            Image image = new Image(Display.getDefault(), browser.getBounds());
+            GC gc = new GC(image);
+            try {
+                browser.print(gc);
+            } finally {
+                gc.dispose();
+            }
+            imageData = image.getImageData();
+        }
+        return imageData;
+    }
+
 }

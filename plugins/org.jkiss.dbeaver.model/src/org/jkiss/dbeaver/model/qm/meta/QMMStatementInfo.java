@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,11 +26,12 @@ public class QMMStatementInfo extends QMMObject {
 
     private final QMMConnectionInfo connection;
     private final DBCExecutionPurpose purpose;
-    private final QMMStatementInfo previous;
+    private final transient QMMStatementInfo previous;
 
     private transient DBCStatement reference;
 
     public QMMStatementInfo(QMMConnectionInfo connection, DBCStatement reference, QMMStatementInfo previous) {
+        super(QMMetaObjectType.STATEMENT_INFO);
         this.connection = connection;
         this.reference = reference;
         this.purpose = reference.getSession().getPurpose();
@@ -38,7 +39,7 @@ public class QMMStatementInfo extends QMMObject {
     }
 
     public QMMStatementInfo(long openTime, long closeTime, QMMConnectionInfo session, DBCExecutionPurpose purpose) {
-        super(openTime, closeTime);
+        super(QMMetaObjectType.STATEMENT_INFO, openTime, closeTime);
         this.connection = session;
         this.purpose = purpose;
         this.previous = null;

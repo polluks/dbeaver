@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,6 +34,7 @@ import org.jkiss.dbeaver.model.runtime.load.ILoadVisualizer;
 import org.jkiss.dbeaver.ui.DBeaverIcons;
 import org.jkiss.dbeaver.ui.UIIcon;
 import org.jkiss.dbeaver.ui.UIStyles;
+import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.utils.CommonUtils;
 
 import java.lang.reflect.InvocationTargetException;
@@ -175,15 +176,12 @@ public class ProgressLoaderVisualizer<RESULT> implements ILoadVisualizer<RESULT>
                     progressMessage.replaceAll("\\s", " "), 64);
                 String status = statusMessage + " - " + elapsedString + "s";
                 gc.setFont(cancelButton.getFont());
-                Point statusSize = gc.textExtent(status);
-
-                int statusX = (buttonBounds.x + buttonBounds.width / 2) - statusSize.x / 2;
-                int statusY = buttonBounds.y - imageBounds.height - 10 - statusSize.y;
-                gc.setForeground(UIStyles.getDefaultTextForeground());
-                gc.setBackground(UIStyles.getDefaultTextBackground());
-                gc.fillRectangle(statusX - 2, statusY - 2, statusSize.x + 4, statusSize.y + 4);
-                gc.drawText(status, statusX, statusY, true);
-                gc.drawRoundRectangle(statusX - 3, statusY - 3, statusSize.x + 5, statusSize.y + 5, 5, 5);
+                UIUtils.drawTextWithBackground(
+                    gc,
+                    status,
+                    buttonBounds.x + buttonBounds.width / 2,
+                    buttonBounds.y - imageBounds.height - 10
+                );
             };
             progressPane.addPaintListener(painListener);
 

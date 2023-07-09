@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,6 +36,7 @@ import org.jkiss.dbeaver.model.meta.Property;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.struct.DBSEntity;
 import org.jkiss.dbeaver.model.struct.DBSObject;
+import org.jkiss.dbeaver.model.struct.DBSObjectContainer;
 import org.jkiss.dbeaver.model.struct.rdb.DBSProcedureContainer;
 import org.jkiss.dbeaver.model.struct.rdb.DBSProcedureType;
 import org.jkiss.dbeaver.model.struct.rdb.DBSSchema;
@@ -50,7 +51,13 @@ import java.util.stream.Collectors;
 /**
  * OracleSchema
  */
-public class OracleSchema extends OracleGlobalObject implements DBSSchema, DBPRefreshableObject, DBPSystemObject, DBSProcedureContainer, DBPObjectStatisticsCollector
+public class OracleSchema extends OracleGlobalObject implements
+    DBSSchema,
+    DBPRefreshableObject,
+    DBPSystemObject,
+    DBSProcedureContainer,
+    DBPObjectStatisticsCollector,
+    DBPScriptObject
 {
     private static final Log log = Log.getLog(OracleSchema.class);
 
@@ -412,6 +419,7 @@ public class OracleSchema extends OracleGlobalObject implements DBSSchema, DBPRe
             monitor.subTask("Cache table constraints");
             constraintCache.getObjects(monitor, this, null);
             foreignKeyCache.getObjects(monitor, this, null);
+            tableTriggerCache.getAllObjects(monitor, this);
         }
     }
 
@@ -510,11 +518,108 @@ public class OracleSchema extends OracleGlobalObject implements DBSSchema, DBPRe
         }
     }
 
+    @Override
+    public String getObjectDefinitionText(DBRProgressMonitor monitor, Map<String, Object> options) throws DBException {
+        StringBuilder sql = new StringBuilder();
+        sql.append("-- DROP USER ").append(DBUtils.getQuotedIdentifier(this)).append(";\n\n");
+        sql.append("CREATE USER ").append(DBUtils.getQuotedIdentifier(this)).append("\n-- IDENTIFIED BY <password>\n").append(";\n");
+
+        // Show DDL for all schema objects
+        monitor.beginTask("Cache schema", 1);
+        cacheStructure(monitor, DBSObjectContainer.STRUCT_ALL);
+        monitor.done();
+
+        Collection<OracleDataType> dataTypes = getDataTypes(monitor);
+        if (!monitor.isCanceled()) {
+            monitor.beginTask("Load data types", dataTypes.size());
+            for (OracleDataType dataType : dataTypes) {
+                addDDLLine(sql, dataType.getObjectDefinitionText(monitor, options));
+                monitor.worked(1);
+                if (monitor.isCanceled()) {
+                    break;
+                }
+            }
+            monitor.done();
+        }
+
+        if (!monitor.isCanceled()) {
+            List<OracleTableBase> tablesOrViews = getTableCache().getAllObjects(monitor, this);
+            monitor.beginTask("Read tables DDL", tablesOrViews.size());
+            for (OracleTableBase tableBase : tablesOrViews) {
+                monitor.worked(1);
+                if (tableBase instanceof OracleTable && ((OracleTable) tableBase).isNested()) {
+                    // To avoid java.sql.SQLException: ORA-31603
+                    continue;
+                }
+                monitor.subTask("Load table '" + tableBase.getName() + "' DDL");
+                addDDLLine(sql, tableBase.getDDL(monitor, OracleDDLFormat.getCurrentFormat(getDataSource()), options));
+                if (monitor.isCanceled()) {
+                    break;
+                }
+            }
+            monitor.done();
+        }
+
+        if (!monitor.isCanceled()) {
+            Collection<OracleProcedureStandalone> procedures = getProcedures(monitor);
+            monitor.beginTask("Load procedures", procedures.size());
+            for (OracleProcedureStandalone procedure : procedures) {
+                monitor.subTask(procedure.getName());
+                addDDLLine(sql, procedure.getObjectDefinitionText(monitor, options));
+                monitor.worked(1);
+                if (monitor.isCanceled()) {
+                    break;
+                }
+            }
+            monitor.done();
+        }
+
+        if (!monitor.isCanceled()) {
+            Collection<OracleSchemaTrigger> triggers = getTriggers(monitor);
+            monitor.beginTask("Load triggers", triggers.size());
+            for (OracleSchemaTrigger trigger : triggers) {
+                monitor.subTask(trigger.getName());
+                addDDLLine(sql, trigger.getObjectDefinitionText(monitor, options));
+                monitor.worked(1);
+                if (monitor.isCanceled()) {
+                    break;
+                }
+            }
+            monitor.done();
+        }
+
+        if (!monitor.isCanceled()) {
+            Collection<OracleSequence> sequences = getSequences(monitor);
+            monitor.beginTask("Load sequences", sequences.size());
+            for (OracleSequence sequence : sequences) {
+                monitor.subTask(sequence.getName());
+                addDDLLine(sql, sequence.getObjectDefinitionText(monitor, options));
+                monitor.worked(1);
+                if (monitor.isCanceled()) {
+                    break;
+                }
+            }
+            monitor.done();
+        }
+
+        return sql.toString();
+    }
+
+    private void addDDLLine(StringBuilder sql, String ddl) {
+        if (!CommonUtils.isEmpty(ddl)) {
+            sql.append("\n").append(ddl);
+            if (!ddl.endsWith(";")) {
+                sql.append(";");
+            }
+            sql.append("\n");
+        }
+    }
+
     public class TableCache extends JDBCStructLookupCache<OracleSchema, OracleTableBase, OracleTableColumn> {
 
         TableCache()
         {
-            super("OBJECT_NAME");
+            super(OracleConstants.COLUMN_OBJECT_NAME);
             setListOrderComparator(DBUtils.nameComparator());
         }
 
@@ -554,7 +659,7 @@ public class OracleSchema extends OracleGlobalObject implements DBSSchema, DBPRe
         protected OracleTableBase fetchObject(@NotNull JDBCSession session, @NotNull OracleSchema owner, @NotNull JDBCResultSet dbResult)
             throws SQLException, DBException
         {
-            final String tableType = JDBCUtils.safeGetString(dbResult, "OBJECT_TYPE");
+            final String tableType = JDBCUtils.safeGetString(dbResult, OracleConstants.COLUMN_OBJECT_TYPE);
             if ("TABLE".equals(tableType)) {
                 return new OracleTable(session.getProgressMonitor(), owner, dbResult);
             } else if ("MATERIALIZED VIEW".equals(tableType)) {
@@ -673,7 +778,7 @@ public class OracleSchema extends OracleGlobalObject implements DBSSchema, DBPRe
     class ConstraintCache extends JDBCCompositeCache<OracleSchema, OracleTableBase, OracleTableConstraint, OracleTableConstraintColumn> {
         ConstraintCache()
         {
-            super(tableCache, OracleTableBase.class, "TABLE_NAME", "CONSTRAINT_NAME");
+            super(tableCache, OracleTableBase.class, OracleConstants.COL_TABLE_NAME, OracleConstants.COL_CONSTRAINT_NAME);
         }
 
         @NotNull
@@ -889,7 +994,7 @@ public class OracleSchema extends OracleGlobalObject implements DBSSchema, DBPRe
                 
         ForeignKeyCache()
         {
-            super(tableCache, OracleTable.class, "TABLE_NAME", "CONSTRAINT_NAME");
+            super(tableCache, OracleTable.class, OracleConstants.COL_TABLE_NAME, OracleConstants.COL_CONSTRAINT_NAME);
            
         }
 
@@ -1250,7 +1355,8 @@ public class OracleSchema extends OracleGlobalObject implements DBSSchema, DBPRe
             throws SQLException
         {
             JDBCPreparedStatement dbStat = session.prepareStatement(
-                "SELECT " + OracleUtils.getSysCatalogHint(owner.getDataSource()) + " OBJECT_NAME, STATUS FROM " +
+                "SELECT " + OracleUtils.getSysCatalogHint(owner.getDataSource()) +
+                    " OBJECT_NAME, STATUS, CREATED, LAST_DDL_TIME, TEMPORARY FROM " +
                 OracleUtils.getAdminAllViewPrefix(session.getProgressMonitor(), owner.getDataSource(), "OBJECTS") +
                 " WHERE OBJECT_TYPE='PACKAGE' AND OWNER=? " +
                 " ORDER BY OBJECT_NAME");

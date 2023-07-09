@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,15 +20,14 @@ import org.eclipse.core.runtime.Platform;
 import org.eclipse.equinox.app.IApplication;
 import org.eclipse.equinox.app.IApplicationContext;
 import org.jkiss.code.NotNull;
+import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.Log;
-import org.jkiss.dbeaver.model.app.DBASecureStorage;
 import org.jkiss.dbeaver.model.app.DBPApplication;
-import org.jkiss.dbeaver.model.app.DBPProject;
 import org.jkiss.dbeaver.model.impl.app.ApplicationDescriptor;
 import org.jkiss.dbeaver.model.impl.app.ApplicationRegistry;
-import org.jkiss.dbeaver.model.impl.app.DefaultSecureStorage;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
-import org.jkiss.utils.CommonUtils;
+
+import java.util.UUID;
 
 /**
  * Base application implementation
@@ -38,6 +37,9 @@ public abstract class BaseApplicationImpl implements IApplication, DBPApplicatio
     private static final Log log = Log.getLog(BaseApplicationImpl.class);
 
     private static DBPApplication INSTANCE;
+
+    private final String applicationRunId = UUID.randomUUID().toString();
+    private final long applicationStartTime = System.currentTimeMillis();
 
     protected BaseApplicationImpl() {
         if (INSTANCE != null && !(INSTANCE instanceof EclipsePluginApplicationImpl)) {
@@ -89,16 +91,19 @@ public abstract class BaseApplicationImpl implements IApplication, DBPApplicatio
         return false;
     }
 
-    @NotNull
     @Override
-    public DBASecureStorage getSecureStorage() {
-        return DefaultSecureStorage.INSTANCE;
+    public boolean isDistributed() {
+        return false;
     }
 
     @NotNull
+    public String getApplicationRunId() {
+        return applicationRunId;
+    }
+
     @Override
-    public DBASecureStorage getProjectSecureStorage(DBPProject project) {
-        return new ProjectSecureStorage(project);
+    public long getApplicationStartTime() {
+        return applicationStartTime;
     }
 
     @Override
@@ -106,24 +111,17 @@ public abstract class BaseApplicationImpl implements IApplication, DBPApplicatio
         return "N/A";
     }
 
-    /**
-     * Returns last user activity time
-     * @return -1 by default
-     */
+    @Nullable
     @Override
-    public long getLastUserActivityTime() {
-        return -1;
-    }
-
-    @Override
-    public String getProductProperty(String propName) {
+    public String getProductProperty(@NotNull String propName) {
         return Platform.getProduct().getProperty(propName);
     }
 
     @Override
-    public boolean hasProductFeature(String featureName) {
-        return CommonUtils.toBoolean(
-            Platform.getProduct().getProperty("feature." + featureName));
+    public boolean hasProductFeature(@NotNull String featureName) {
+        // By default, product includes all possible features
+        // Feature set can be customized by particular implementation
+        return true;
     }
 
     /////////////////////////////////////////

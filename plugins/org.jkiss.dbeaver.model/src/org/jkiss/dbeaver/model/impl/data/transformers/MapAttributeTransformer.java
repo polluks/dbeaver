@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,6 +43,13 @@ public class MapAttributeTransformer implements DBDAttributeTransformer {
     @Override
     public void transformAttribute(@NotNull DBCSession session, @NotNull DBDAttributeBinding attribute, @NotNull List<Object[]> rows, @NotNull Map<String, Object> options) throws DBException {
         if (!session.getDataSource().getContainer().getPreferenceStore().getBoolean(ModelPreferences.RESULT_TRANSFORM_COMPLEX_TYPES)) {
+            return;
+        }
+        if (attribute.getDataKind() == DBPDataKind.STRUCT &&
+            !CommonUtils.isEmpty(attribute.getNestedBindings()) &&
+            !session.getDataSource().getInfo().isDynamicMetadata()
+        ) {
+            // Do not transform structs to avoid double transformation
             return;
         }
         resolveMapsFromData(session, attribute, rows);

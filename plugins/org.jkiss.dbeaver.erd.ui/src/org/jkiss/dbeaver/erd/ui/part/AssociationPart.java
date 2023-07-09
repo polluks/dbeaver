@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,25 +19,25 @@
  */
 package org.jkiss.dbeaver.erd.ui.part;
 
-import org.eclipse.draw2dl.*;
-import org.eclipse.draw2dl.geometry.Dimension;
-import org.eclipse.draw2dl.geometry.Point;
-import org.eclipse.draw2dl.geometry.PointList;
-import org.eclipse.draw2dl.geometry.Rectangle;
-import org.eclipse.gef3.*;
-import org.eclipse.gef3.editpolicies.ConnectionEndpointEditPolicy;
+import org.eclipse.draw2d.*;
+import org.eclipse.draw2d.geometry.Dimension;
+import org.eclipse.draw2d.geometry.Point;
+import org.eclipse.draw2d.geometry.PointList;
+import org.eclipse.draw2d.geometry.Rectangle;
+import org.eclipse.gef.*;
+import org.eclipse.gef.editpolicies.ConnectionEndpointEditPolicy;
+import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.accessibility.AccessibleEvent;
 import org.eclipse.swt.graphics.Color;
-import org.jkiss.dbeaver.erd.model.ERDAssociation;
-import org.jkiss.dbeaver.erd.model.ERDAttributeVisibility;
-import org.jkiss.dbeaver.erd.model.ERDEntity;
-import org.jkiss.dbeaver.erd.model.ERDUtils;
+import org.jkiss.dbeaver.erd.model.*;
 import org.jkiss.dbeaver.erd.ui.ERDUIConstants;
 import org.jkiss.dbeaver.erd.ui.ERDUIUtils;
 import org.jkiss.dbeaver.erd.ui.editor.ERDGraphicalViewer;
 import org.jkiss.dbeaver.erd.ui.editor.ERDHighlightingHandle;
 import org.jkiss.dbeaver.erd.ui.editor.ERDViewStyle;
 import org.jkiss.dbeaver.erd.ui.internal.ERDUIActivator;
+import org.jkiss.dbeaver.erd.ui.internal.ERDUIMessages;
 import org.jkiss.dbeaver.erd.ui.policy.AssociationBendEditPolicy;
 import org.jkiss.dbeaver.erd.ui.policy.AssociationEditPolicy;
 import org.jkiss.dbeaver.model.DBIcon;
@@ -62,6 +62,7 @@ public class AssociationPart extends PropertyAwareConnectionPart {
     private Integer oldLineWidth;
 
     private ERDHighlightingHandle associatedAttributesHighlighing = null;
+    private AccessibleGraphicalEditPart accPart;
 
     public AssociationPart() {
     }
@@ -84,12 +85,12 @@ public class AssociationPart extends PropertyAwareConnectionPart {
     protected void createEditPolicies() {
         installEditPolicy(EditPolicy.CONNECTION_ENDPOINTS_ROLE, new ConnectionEndpointEditPolicy());
         installEditPolicy(EditPolicy.CONNECTION_BENDPOINTS_ROLE, new AssociationBendEditPolicy());
-
-        if (isEditEnabled()) {
-            installEditPolicy(EditPolicy.COMPONENT_ROLE, new AssociationEditPolicy());
+        if (!getDiagramPart().getEditor().isReadOnly()) {
+            if (isEditEnabled()) {
+                installEditPolicy(EditPolicy.COMPONENT_ROLE, new AssociationEditPolicy());
+            }
+            getDiagramPart().getDiagram().getModelAdapter().installPartEditPolicies(this);
         }
-
-        getDiagramPart().getDiagram().getModelAdapter().installPartEditPolicies(this);
     }
 
     @Override
@@ -414,4 +415,39 @@ public class AssociationPart extends PropertyAwareConnectionPart {
         }
     }
 
+    @Override
+    protected AccessibleEditPart getAccessibleEditPart() {
+        if (this.accPart == null) {
+            this.accPart = new AccessibleGraphicalEditPart() {
+                public void getName(AccessibleEvent e) {
+                    ERDAssociation association = AssociationPart.this.getAssociation();
+                    String result = "";
+                    if (association.isLogical()) {
+                        result += ERDUIMessages.erd_accessibility_association_part_logical;
+                    }
+                    StringBuilder sourceString = new StringBuilder();
+                    for (ERDEntityAttribute sourceAttribute : association.getSourceAttributes()) {
+                        sourceString.append(NLS.bind(ERDUIMessages.erd_accessibility_association_part_attribute,
+                            sourceAttribute.getName()));
+                    }
+                    StringBuilder targetString = new StringBuilder();
+                    for (ERDEntityAttribute targetAttribute : association.getTargetAttributes()) {
+                        targetString.append(NLS.bind(
+                            ERDUIMessages.erd_accessibility_association_part_attribute,
+                            targetAttribute.getName()));
+                    }
+                    result += NLS.bind(ERDUIMessages.erd_accessibility_association_part, new Object[]{
+                        association.getName(),
+                        association.getSourceEntity().getName(),
+                        sourceString.toString(),
+                        association.getTargetEntity().getName(),
+                        targetString.toString()
+                    });
+                    e.result = result;
+                }
+            };
+        }
+
+        return this.accPart;
+    }
 }

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -414,16 +414,21 @@ public class SQLServerSchema implements DBSSchema, DBPSaveableObject, DBPQualifi
 
         @Override
         protected SQLServerTableBase fetchObject(@NotNull JDBCSession session, @NotNull SQLServerSchema owner, @NotNull JDBCResultSet dbResult) {
+            String name = JDBCUtils.safeGetString(dbResult, "name");
+            if (CommonUtils.isEmpty(name)) {
+                log.debug("Empty table name fetched");
+                return null;
+            }
             if (owner.getDataSource().supportsExternalTables(session) && JDBCUtils.safeGetBoolean(dbResult, "is_external")) {
-                return new SQLServerExternalTable(owner, dbResult);
+                return new SQLServerExternalTable(owner, dbResult, name);
             }
             String type = JDBCUtils.safeGetStringTrimmed(dbResult, "type");
             if (SQLServerObjectType.U.name().equals(type) || SQLServerObjectType.S.name().equals(type)) {
-                return new SQLServerTable(owner, dbResult);
+                return new SQLServerTable(owner, dbResult, name);
             } else if (SQLServerObjectType.TT.name().equals(type)) {
-                return new SQLServerTableType(owner, dbResult);
+                return new SQLServerTableType(owner, dbResult, name);
             } else {
-                return new SQLServerView(owner, dbResult);
+                return new SQLServerView(owner, dbResult, name);
             }
         }
 
@@ -484,6 +489,15 @@ public class SQLServerSchema implements DBSSchema, DBPSaveableObject, DBPQualifi
      * Index cache implementation
      */
     static class IndexCache extends JDBCCompositeCache<SQLServerSchema, SQLServerTableBase, SQLServerTableIndex, SQLServerTableIndexColumn> {
+        private static final int INDEX_TYPE_HEAP = 0;
+        private static final int INDEX_TYPE_CLUSTERED_ROWSTORE = 1;
+        private static final int INDEX_TYPE_NONCLUSTERED_ROWSTORE = 2;
+        private static final int INDEX_TYPE_XML = 3;
+        private static final int INDEX_TYPE_SPATIAL = 4;
+        private static final int INDEX_TYPE_CLUSTERED_COLUMNSTORE = 5;
+        private static final int INDEX_TYPE_NONCLUSTERED_COLUMNSTORE = 6;
+        private static final int INDEX_TYPE_NONCLUSTERED_HASH = 7;
+
         IndexCache(TableCache tableCache)
         {
             super(tableCache, SQLServerTableBase.class, "table_name", "name");
@@ -524,22 +538,32 @@ public class SQLServerSchema implements DBSSchema, DBPSaveableObject, DBPQualifi
             int indexTypeNum = JDBCUtils.safeGetInt(dbResult, "type");
             DBSIndexType indexType;
             switch (indexTypeNum) {
-                case 0: indexType = SQLServerConstants.INDEX_TYPE_HEAP; break;
-                case 1:
-                case 5:
-                    indexType = DBSIndexType.CLUSTERED; break;
-                case 2:
-                case 6:
-                    indexType = SQLServerConstants.INDEX_TYPE_NON_CLUSTERED; break;
+                case INDEX_TYPE_HEAP:
+                    indexType = SQLServerConstants.INDEX_TYPE_HEAP;
+                    break;
+                case INDEX_TYPE_CLUSTERED_ROWSTORE:
+                case INDEX_TYPE_CLUSTERED_COLUMNSTORE:
+                    indexType = DBSIndexType.CLUSTERED;
+                    break;
+                case INDEX_TYPE_NONCLUSTERED_ROWSTORE:
+                case INDEX_TYPE_NONCLUSTERED_COLUMNSTORE:
+                    indexType = SQLServerConstants.INDEX_TYPE_NON_CLUSTERED;
+                    break;
+                case INDEX_TYPE_XML:
+                case INDEX_TYPE_SPATIAL:
+                case INDEX_TYPE_NONCLUSTERED_HASH:
                 default:
                     indexType = DBSIndexType.OTHER;
                     break;
             }
+            boolean isColumnstoreIndex = indexTypeNum == INDEX_TYPE_CLUSTERED_COLUMNSTORE
+                || indexTypeNum == INDEX_TYPE_NONCLUSTERED_COLUMNSTORE;
             return new SQLServerTableIndex(
                 parent,
                 indexName,
                 indexType,
-                dbResult);
+                dbResult,
+                isColumnstoreIndex);
         }
 
         @Nullable

@@ -2,7 +2,7 @@
 <feature
       id="org.jkiss.dbeaver.db.ui.feature"
       label="%featureName"
-      version="1.0.74.qualifier"
+      version="1.0.100.qualifier"
       provider-name="%providerName">
 
    <description>
@@ -60,6 +60,13 @@
          
    <plugin
          id="org.jkiss.dbeaver.ext.oceanbase.ui"
+         download-size="0"
+         install-size="0"
+         version="0.0.0"
+         unpack="false"/>
+
+   <plugin
+         id="org.jkiss.dbeaver.ext.tidb.ui"
          download-size="0"
          install-size="0"
          version="0.0.0"
@@ -129,25 +136,11 @@
          unpack="false"/>
 
    <plugin
-         id="org.jkiss.dbeaver.ext.datavirtuality.ui"
-         download-size="0"
-         install-size="0"
-         version="0.0.0"
-         unpack="false"/>
-
-   <plugin
          id="org.jkiss.dbeaver.ext.wmi"
          os="win32"
          download-size="0"
          install-size="0"
          version="0.0.0"
          unpack="false"/>
-
-   <plugin
-           id="org.jkiss.dbeaver.ext.denodo.ui"
-           download-size="0"
-           install-size="0"
-           version="0.0.0"
-           unpack="false"/>
 
 </feature>

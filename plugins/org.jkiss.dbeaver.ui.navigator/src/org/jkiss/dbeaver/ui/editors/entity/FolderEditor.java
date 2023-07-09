@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ import org.eclipse.ui.part.EditorPart;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
+import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.navigator.*;
 import org.jkiss.dbeaver.model.runtime.VoidProgressMonitor;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
@@ -199,6 +200,9 @@ public class FolderEditor extends EditorPart implements INavigatorModelView, IRe
                     nodesWithParent.add(0, DBWorkbench.getPlatform().getNavigatorModel().getRoot());
                     items = nodesWithParent;
                 }
+            }
+            if (items != null) {
+                items.removeIf(DBUtils::isHiddenObject);
             }
             super.setListData(items, append, forUpdate);
         }

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,8 +43,6 @@ import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.ui.*;
 import org.jkiss.dbeaver.ui.app.standalone.about.AboutBoxAction;
 import org.jkiss.dbeaver.ui.app.standalone.actions.EmergentExitAction;
-import org.jkiss.dbeaver.ui.app.standalone.actions.ResetUISettingsAction;
-import org.jkiss.dbeaver.ui.app.standalone.actions.ResetWorkspaceStateAction;
 import org.jkiss.dbeaver.ui.app.standalone.internal.CoreApplicationActivator;
 import org.jkiss.dbeaver.ui.app.standalone.internal.CoreApplicationMessages;
 import org.jkiss.dbeaver.ui.app.standalone.update.CheckForUpdateAction;
@@ -249,37 +247,22 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor
         IWorkbenchWindow workbenchWindow = getActionBarConfigurer().getWindowConfigurer().getWindow();
         {
             // File
-
-            /*fileMenu.add(new GroupMarker(IWorkbenchActionConstants.FILE_START));
-            fileMenu.add(new GroupMarker(IWorkbenchActionConstants.NEW_EXT));
-            fileMenu.add(new Separator());
-            fileMenu.add(new GroupMarker(IWorkbenchActionConstants.CLOSE_EXT));
-            fileMenu.add(new Separator());
-            fileMenu.add(new GroupMarker(IWorkbenchActionConstants.PRINT_EXT));
-            fileMenu.add(new Separator());
-            fileMenu.add(new GroupMarker(IWorkbenchActionConstants.OPEN_EXT));
-            fileMenu.add(new Separator());
-            fileMenu.add(new GroupMarker(IWorkbenchActionConstants.IMPORT_EXT));
-            fileMenu.add(new Separator());
-            fileMenu.add(new GroupMarker(IWorkbenchActionConstants.SAVE_EXT));
-            fileMenu.add(new Separator());*/
-
             MenuManager recentEditors = new MenuManager(CoreApplicationMessages.actions_menu_recent_editors);
             recentEditors.add(ContributionItemFactory.REOPEN_EDITORS.create(workbenchWindow));
             recentEditors.add(new GroupMarker(IWorkbenchActionConstants.MRU));
             fileMenu.add(recentEditors);
 
-            fileMenu.add(ActionUtils.makeCommandContribution(workbenchWindow, "org.eclipse.ui.edit.text.openLocalFile"));
-            fileMenu.add(new GroupMarker(IWorkbenchActionConstants.FILE_START));
-            fileMenu.add(new GroupMarker(IWorkbenchActionConstants.NEW_EXT));
+            if (!DBWorkbench.isDistributed()) {
+                // Local FS operations are not needed
+                fileMenu.add(ActionUtils.makeCommandContribution(workbenchWindow, "org.eclipse.ui.edit.text.openLocalFile"));
+                fileMenu.add(new GroupMarker(IWorkbenchActionConstants.FILE_START));
+                fileMenu.add(new GroupMarker(IWorkbenchActionConstants.NEW_EXT));
+            }
             fileMenu.add(new GroupMarker(IWorkbenchActionConstants.MB_ADDITIONS));
-
 
             fileMenu.add(openWorkspaceAction);
 
             fileMenu.add(new Separator());
-            fileMenu.add(new ResetUISettingsAction(workbenchWindow));
-            fileMenu.add(new ResetWorkspaceStateAction(workbenchWindow));
             fileMenu.add(new EmergentExitAction(workbenchWindow));
 
             fileMenu.add(new GroupMarker(IWorkbenchActionConstants.FILE_END));
@@ -342,32 +325,14 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor
 
         {
             // Help
-            helpMenu.add(ActionUtils.makeAction(aboutAction, null, null, CoreMessages.actions_menu_about, null, null));
+            helpMenu.add(ActionUtils.makeAction(aboutAction, null, null, "about-box", CoreMessages.actions_menu_about, null, null));
             helpMenu.add(showHelpAction);
             helpMenu.add(new Separator());
             helpMenu.add(ActionUtils.makeCommandContribution(workbenchWindow, "org.eclipse.ui.help.installationDialog"));
-            helpMenu.add(new GroupMarker(IWorkbenchActionConstants.MB_ADDITIONS));
             helpMenu.add(new Separator());
             helpMenu.add(new GroupMarker("installation_help"));
-/*
-            if (showAltHelp) {
-                //helpMenu.add(searchHelpAction);
-                //helpMenu.add(dynamicHelpAction);
-                helpMenu.add(ActionUtils.makeCommandContribution(workbenchWindow, IWorkbenchCommandConstants.WINDOW_SHOW_KEY_ASSIST, CoreMessages.action_menu_showKeyAssist, null));
-                helpMenu.add(new Separator());
-                helpMenu.add(ActionUtils.makeCommandContribution(workbenchWindow, "org.eclipse.equinox.p2.ui.sdk.install"));
-
-                helpMenu.add(new Separator());
-                helpMenu.add(checkUpdatesAction);
-
-                helpMenu.add(new ExternalPageAction(
-                    NLS.bind(CoreMessages.action_menu_marketplace_extensions, GeneralUtils.getProductName()),
-                    UIIcon.DBEAVER_MARKETPLACE, "https://marketplace.eclipse.org/search/site/dbeaver"));
-                helpMenu.add(new ExternalPageAction(CoreMessages.action_menu_enterpriseEdition, UIIcon.DBEAVER_LOGO_SMALL, "https://dbeaver.com"));
-            } else {
-                helpMenu.add(new GroupMarker(IWorkbenchActionConstants.MB_ADDITIONS));
-            }
-*/
+            helpMenu.add(new Separator());
+            helpMenu.add(new GroupMarker(IWorkbenchActionConstants.MB_ADDITIONS));
         }
     }
 
@@ -401,7 +366,7 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor
             tzItem.setDoubleClickListener(() -> {
                 UIUtils.showMessageBox(null, "Time zone", "You can change time zone by changing 'client timezone' in 'Settings' -> 'User Interface' or by adding parameter:\n" +
                         "-D" + StandardConstants.ENV_USER_TIMEZONE + "=<TimeZone>\n" +
-                        "in the end of file'\n" + DBWorkbench.getPlatform().getApplicationConfiguration().getAbsolutePath() + "'\n" , SWT.ICON_INFORMATION
+                        "in the end of file'\n" + DBWorkbench.getPlatform().getApplicationConfiguration().toAbsolutePath().toString() + "'\n" , SWT.ICON_INFORMATION
                 );
             });
             statusLine.add(tzItem);
@@ -413,7 +378,7 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor
             localeItem.setDoubleClickListener(() -> {
                 UIUtils.showMessageBox(null, "Locale", "You can change locale by adding parameters\n" +
                     "-nl\n<language_iso_code>\n" +
-                    "in file '" + DBWorkbench.getPlatform().getApplicationConfiguration().getAbsolutePath() + "'.\n" +
+                    "in file '" + DBWorkbench.getPlatform().getApplicationConfiguration().toAbsolutePath().toString() + "'.\n" +
                     "Or by passing command line parameter -nl <language_iso_code>", SWT.ICON_INFORMATION);
             });
             statusLine.add(localeItem);

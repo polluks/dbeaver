@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  * Copyright (C) 2011-2012 Eugene Fradkin (eugene.fradkin@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -161,6 +161,9 @@ public class UIConnectionMessages extends NLS {
     public static String dialog_driver_download_auto_page_driver_security_warning_msg;
     public static String dialog_driver_download_auto_page_download_rate;
     public static String dialog_driver_download_auto_page_download_failed_msg;
+    public static String dialog_driver_download_auto_page_download_failed_cert_msg;
+    public static String dialog_driver_download_network_unavailable_msg;
+    public static String dialog_driver_download_network_unavailable_cert_msg;
     // Driver edit
 	public static String dialog_edit_driver_setting;
     public static String dialog_edit_driver_type_label;
@@ -178,6 +181,7 @@ public class UIConnectionMessages extends NLS {
     public static String dialog_edit_driven_edit_maven_field_text_message;
     public static String dialog_edit_driver_edit_maven_group_id_label;
     public static String dialog_edit_driver_edit_maven_artifact_id_label;
+    public static String dialog_edit_driver_edit_maven_classifier_label;
     public static String dialog_edit_driver_edit_maven_fallback_version_label;
     public static String dialog_edit_driver_edit_maven_version_label;
     public static String dialog_edit_driver_text_driver_library;
@@ -252,6 +256,7 @@ public class UIConnectionMessages extends NLS {
     public static String pref_page_drivers_maven_group_properties;
     public static String pref_page_drivers_maven_label_name;
     public static String pref_page_drivers_maven_label_scope;
+    public static String pref_page_drivers_maven_checkbox_snapshot;
     public static String pref_page_drivers_maven_group_authentication;
     public static String pref_page_drivers_maven_label_user;
     public static String pref_page_drivers_maven_label_password;
@@ -267,9 +272,6 @@ public class UIConnectionMessages extends NLS {
 
     public static String dialog_connection_driver_project;
 
-    public static String dialog_user_password_change_label;
-    public static String dialog_user_password_change_question_label;
-    public static String dialog_user_password_change_question_message;
     public static String dialog_edit_driver_edit_maven_raw;
     public static String dialog_edit_driver_edit_maven_settings;
     public static String dialog_edit_driver_edit_maven_manual;
@@ -285,6 +287,16 @@ public class UIConnectionMessages extends NLS {
 
     public static String driver_labal_provider_tip_saved_connections;
     public static String driver_labal_provider_tip_no_saved_connections;
+
+    public static String dialog_connection_server_label;
+    public static String dialog_connection_mode_label;
+    public static String dialog_connection_url_label;
+    public static String dialog_connection_host_label;
+
+    public static String dialog_driver_select_viewer_order_by_name_label;
+    public static String dialog_driver_select_viewer_order_by_name_description;
+    public static String dialog_driver_select_viewer_order_by_score_label;
+    public static String dialog_driver_select_viewer_order_by_score_description;
 
     static {
         // initialize resource bundle

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  * Copyright (C) 2011-2012 Eugene Fradkin (eugene.fradkin@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -40,10 +40,12 @@ import org.jkiss.dbeaver.ModelPreferences;
 import org.jkiss.dbeaver.core.CoreMessages;
 import org.jkiss.dbeaver.core.DesktopPlatform;
 import org.jkiss.dbeaver.model.DBConstants;
+import org.jkiss.dbeaver.model.app.DBPPlatformDesktop;
 import org.jkiss.dbeaver.model.app.DBPPlatformLanguage;
 import org.jkiss.dbeaver.model.app.DBPPlatformLanguageManager;
 import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
-import org.jkiss.dbeaver.registry.TimezoneRegistry;
+import org.jkiss.dbeaver.registry.SWTBrowserRegistry;
+import org.jkiss.dbeaver.registry.timezone.TimezoneRegistry;
 import org.jkiss.dbeaver.registry.language.PlatformLanguageDescriptor;
 import org.jkiss.dbeaver.registry.language.PlatformLanguageRegistry;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
@@ -69,6 +71,8 @@ public class PrefPageDatabaseUserInterface extends AbstractPrefPage implements I
 
     private Button automaticUpdateCheck;
     private Combo workspaceLanguage;
+
+    @Nullable
     private Combo clientTimezone;
 
     private Button longOperationsCheck;
@@ -78,6 +82,7 @@ public class PrefPageDatabaseUserInterface extends AbstractPrefPage implements I
     private Spinner notificationsCloseDelay;
 
     private boolean isStandalone = DesktopPlatform.isStandalone();
+    private Combo browserCombo;
 
 
     public PrefPageDatabaseUserInterface()
@@ -103,12 +108,20 @@ public class PrefPageDatabaseUserInterface extends AbstractPrefPage implements I
             //automaticUpdateCheck.setLayoutData(new GridData(GridData.BEGINNING, GridData.BEGINNING, true, false, 2, 1));
         }
         if (isStandalone) {
-            Group groupLanguage = UIUtils.createControlGroup(composite, CoreMessages.pref_page_ui_general_group_language, 2, GridData.VERTICAL_ALIGN_BEGINNING, 0);
-
-            workspaceLanguage = UIUtils.createLabelCombo(groupLanguage, CoreMessages.pref_page_ui_general_combo_language, CoreMessages.pref_page_ui_general_combo_language_tip, SWT.READ_ONLY | SWT.DROP_DOWN);
+            Group regionalSettingsGroup = UIUtils.createControlGroup(composite,
+                CoreMessages.pref_page_ui_general_group_regional,
+                2,
+                GridData.FILL_HORIZONTAL | GridData.VERTICAL_ALIGN_BEGINNING,
+                0
+            );
+            workspaceLanguage = UIUtils.createLabelCombo(regionalSettingsGroup,
+                CoreMessages.pref_page_ui_general_combo_language,
+                CoreMessages.pref_page_ui_general_combo_language_tip,
+                SWT.READ_ONLY | SWT.DROP_DOWN
+            );
             workspaceLanguage.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING));
             List<PlatformLanguageDescriptor> languages = PlatformLanguageRegistry.getInstance().getLanguages();
-            DBPPlatformLanguage pLanguage = DBWorkbench.getPlatform().getLanguage();
+            DBPPlatformLanguage pLanguage = DBPPlatformDesktop.getInstance().getLanguage();
             for (int i = 0; i < languages.size(); i++) {
                 PlatformLanguageDescriptor lang = languages.get(i);
                 workspaceLanguage.add(lang.getLabel());
@@ -120,12 +133,11 @@ public class PrefPageDatabaseUserInterface extends AbstractPrefPage implements I
                 workspaceLanguage.select(0);
             }
 
-            Label tipLabel = UIUtils.createLabel(groupLanguage, CoreMessages.pref_page_ui_general_label_options_take_effect_after_restart);
-            tipLabel.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING, GridData.VERTICAL_ALIGN_BEGINNING, false, false, 2, 1));
-        }
-        if (isStandalone) {
-            Group clientTimezoneGroup = UIUtils.createControlGroup(composite, CoreMessages.pref_page_ui_general_group_timezone, 2, GridData.FILL_HORIZONTAL | GridData.VERTICAL_ALIGN_BEGINNING, 0);
-            clientTimezone = UIUtils.createLabelCombo(clientTimezoneGroup, CoreMessages.pref_page_ui_general_combo_timezone, CoreMessages.pref_page_ui_general_combo_timezone_tip, SWT.DROP_DOWN);
+            clientTimezone = UIUtils.createLabelCombo(regionalSettingsGroup,
+                CoreMessages.pref_page_ui_general_combo_timezone,
+                CoreMessages.pref_page_ui_general_combo_timezone_tip,
+                SWT.DROP_DOWN
+            );
             clientTimezone.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING));
             clientTimezone.add(DBConstants.DEFAULT_TIMEZONE);
             for (String timezoneName : TimezoneRegistry.getTimezoneNames()) {
@@ -148,6 +160,17 @@ public class PrefPageDatabaseUserInterface extends AbstractPrefPage implements I
                 return proposals.toArray(IContentProposal[]::new);
             };
             ContentAssistUtils.installContentProposal(clientTimezone, new ComboContentAdapter(), proposalProvider);
+
+            Control tipLabel = UIUtils.createInfoLabel(regionalSettingsGroup,
+                CoreMessages.pref_page_ui_general_label_options_take_effect_after_restart
+            );
+            tipLabel.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING,
+                GridData.VERTICAL_ALIGN_BEGINNING,
+                false,
+                false,
+                2,
+                1
+            ));
 
         }
         // Notifications settings
@@ -175,6 +198,25 @@ public class PrefPageDatabaseUserInterface extends AbstractPrefPage implements I
                 ControlEnableState.disable(agentGroup);
             }
         }
+        if (isWindowsDesktopClient()) {
+            Group groupObjects = UIUtils.createControlGroup(
+                composite,
+                CoreMessages.pref_page_ui_general_group_browser, 2,
+                GridData.FILL_HORIZONTAL | GridData.VERTICAL_ALIGN_BEGINNING, 0
+            );
+            browserCombo = UIUtils.createLabelCombo(groupObjects, CoreMessages.pref_page_ui_general_combo_browser,
+                SWT.READ_ONLY
+            );
+            browserCombo.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING));
+            for (SWTBrowserRegistry.BrowserSelection value : SWTBrowserRegistry.BrowserSelection.values()) {
+                browserCombo.add(value.getFullName(), value.ordinal());
+            }
+            Control tipLabel =
+                UIUtils.createInfoLabel(groupObjects, CoreMessages.pref_page_ui_general_combo_browser_tip);
+            tipLabel.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING,
+                GridData.VERTICAL_ALIGN_BEGINNING, false, false, 2, 1
+            ));
+        }
 
         performDefaults();
 
@@ -189,18 +231,27 @@ public class PrefPageDatabaseUserInterface extends AbstractPrefPage implements I
         if (isStandalone) {
             automaticUpdateCheck.setSelection(store.getBoolean(DBeaverPreferences.UI_AUTO_UPDATE_CHECK));
         }
-
+        if (isWindowsDesktopClient()) {
+            SWTBrowserRegistry.getActiveBrowser();
+            browserCombo.select(SWTBrowserRegistry.getActiveBrowser().ordinal());
+        }
         notificationsEnabled.setSelection(store.getBoolean(ModelPreferences.NOTIFICATIONS_ENABLED));
         notificationsCloseDelay.setSelection(store.getInt(ModelPreferences.NOTIFICATIONS_CLOSE_DELAY_TIMEOUT));
-        final String string = store.getString(ModelPreferences.CLIENT_TIMEZONE);
-        if (string.equals(DBConstants.DEFAULT_TIMEZONE)) {
-            clientTimezone.setText(DBConstants.DEFAULT_TIMEZONE);
-        } else {
-            clientTimezone.setText(TimezoneRegistry.getGMTString(string));
+        final String timezone = store.getString(ModelPreferences.CLIENT_TIMEZONE);
+        if (clientTimezone != null) {
+            if (DBConstants.DEFAULT_TIMEZONE.equals(timezone)) {
+                clientTimezone.setText(DBConstants.DEFAULT_TIMEZONE);
+            } else {
+                clientTimezone.setText(TimezoneRegistry.getGMTString(timezone));
+            }
         }
 
         longOperationsCheck.setSelection(store.getBoolean(DBeaverPreferences.AGENT_LONG_OPERATION_NOTIFY));
         longOperationsTimeout.setSelection(store.getInt(DBeaverPreferences.AGENT_LONG_OPERATION_TIMEOUT));
+    }
+
+    private boolean isWindowsDesktopClient() {
+        return isStandalone && RuntimeUtils.isWindows();
     }
 
     @Override
@@ -218,7 +269,9 @@ public class PrefPageDatabaseUserInterface extends AbstractPrefPage implements I
             store.setValue(DBeaverPreferences.UI_AUTO_UPDATE_CHECK, automaticUpdateCheck.getSelection());
         }
 
-
+        if (isWindowsDesktopClient()) {
+            SWTBrowserRegistry.setActiveBrowser(SWTBrowserRegistry.BrowserSelection.values()[browserCombo.getSelectionIndex()]);
+        }
         store.setValue(ModelPreferences.NOTIFICATIONS_ENABLED, notificationsEnabled.getSelection());
         store.setValue(ModelPreferences.NOTIFICATIONS_CLOSE_DELAY_TIMEOUT, notificationsCloseDelay.getSelection());
 
@@ -226,14 +279,17 @@ public class PrefPageDatabaseUserInterface extends AbstractPrefPage implements I
         store.setValue(DBeaverPreferences.AGENT_LONG_OPERATION_TIMEOUT, longOperationsTimeout.getSelection());
 
         PrefUtils.savePreferenceStore(store);
-        if (clientTimezone.getText().equals(DBConstants.DEFAULT_TIMEZONE)) {
-            TimezoneRegistry.setDefaultZone(null);
-        } else {
-            TimezoneRegistry.setDefaultZone(ZoneId.of(TimezoneRegistry.extractTimezoneId(clientTimezone.getText())));
+        if (clientTimezone != null) {
+            if (DBConstants.DEFAULT_TIMEZONE.equals(clientTimezone.getText())) {
+                TimezoneRegistry.setDefaultZone(null);
+            } else {
+                TimezoneRegistry.setDefaultZone(
+                    ZoneId.of(TimezoneRegistry.extractTimezoneId(clientTimezone.getText())));
+            }
         }
         if (workspaceLanguage.getSelectionIndex() >= 0) {
             PlatformLanguageDescriptor language = PlatformLanguageRegistry.getInstance().getLanguages().get(workspaceLanguage.getSelectionIndex());
-            DBPPlatformLanguage curLanguage = DBWorkbench.getPlatform().getLanguage();
+            DBPPlatformLanguage curLanguage = DBPPlatformDesktop.getInstance().getLanguage();
 
             try {
                 if (curLanguage != language) {

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Label;
 import org.eclipse.ui.IWorkbenchWindow;
+import org.jkiss.code.NotNull;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.app.DBPProject;
@@ -275,6 +276,12 @@ public class TaskConfigurationWizardDialog extends MultiPageWizardDialog {
 
     public void setEditMode(boolean editMode) {
         this.editMode = editMode;
+    }
+
+    @NotNull
+    @Override
+    protected IWizardPage getStartingPage() {
+        return getWizard().getStartingPage();
     }
 
     public static int openNewTaskDialog(IWorkbenchWindow window, DBPProject project, String taskTypeId, IStructuredSelection selection) {

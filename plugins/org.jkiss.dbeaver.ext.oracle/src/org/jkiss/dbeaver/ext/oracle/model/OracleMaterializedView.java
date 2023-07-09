@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -226,10 +226,15 @@ public class OracleMaterializedView extends OracleTableBase implements OracleSou
                 dbStat.setString(2, getName());
                 try (JDBCResultSet dbResult = dbStat.executeQuery()) {
                     if (dbResult.next()) {
-                        additionalInfo.mviewValid = "VALID".equals(JDBCUtils.safeGetString(dbResult, "COMPILE_STATE"));
+                        additionalInfo.mviewValid = OracleConstants.RESULT_STATUS_VALID.equals(
+                            JDBCUtils.safeGetString(dbResult, "COMPILE_STATE"));
                         additionalInfo.container = JDBCUtils.safeGetString(dbResult, "CONTAINER_NAME");
-                        additionalInfo.updatable = JDBCUtils.safeGetBoolean(dbResult, "UPDATABLE", "Y");
-                        additionalInfo.rewriteEnabled = JDBCUtils.safeGetBoolean(dbResult, "REWRITE_ENABLED", "Y");
+                        additionalInfo.updatable = JDBCUtils.safeGetBoolean(
+                            dbResult, "UPDATABLE",
+                            OracleConstants.RESULT_YES_VALUE);
+                        additionalInfo.rewriteEnabled = JDBCUtils.safeGetBoolean(
+                            dbResult, "REWRITE_ENABLED",
+                            OracleConstants.RESULT_YES_VALUE);
                         additionalInfo.rewriteCapability = JDBCUtils.safeGetString(dbResult, "REWRITE_CAPABILITY");
                         additionalInfo.refreshMode = JDBCUtils.safeGetString(dbResult, "REFRESH_MODE");
                         additionalInfo.refreshMethod = JDBCUtils.safeGetString(dbResult, "REFRESH_METHOD");

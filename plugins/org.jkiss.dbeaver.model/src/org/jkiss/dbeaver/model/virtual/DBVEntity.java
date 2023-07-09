@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -672,20 +672,33 @@ public class DBVEntity extends DBVObject implements DBSEntity, DBPQualifiedObjec
 
     @NotNull
     @Override
-    public List<DBDLabelValuePair> getDictionaryEnumeration(@NotNull DBRProgressMonitor monitor, @NotNull DBSEntityAttribute keyColumn, Object keyPattern, @Nullable List<DBDAttributeValue> preceedingKeys, boolean sortByValue, boolean sortAsc, boolean caseInsensitiveSearch, int maxResults) throws DBException {
-        DBSEntity realEntity = getRealEntity(monitor);
+    public List<DBDLabelValuePair> getDictionaryEnumeration(
+        @NotNull DBRProgressMonitor monitor,
+        @NotNull DBSEntityAttribute keyColumn,
+        Object keyPattern,
+        @Nullable List<DBDAttributeValue> preceedingKeys,
+        boolean caseInsensitiveSearch,
+        boolean sortAsc,
+        boolean sortByValue,
+        int offset,
+        int maxResults
+    ) throws DBException {
+        final DBSEntity realEntity = getRealEntity(monitor);
         if (realEntity instanceof DBSDictionary) {
             return ((DBSDictionary) realEntity).getDictionaryEnumeration(
                 monitor,
                 keyColumn,
                 keyPattern,
                 preceedingKeys,
-                sortByValue,
-                sortAsc,
                 caseInsensitiveSearch,
-                maxResults);
+                sortAsc,
+                sortByValue,
+                offset,
+                maxResults
+            );
+        } else {
+            return Collections.emptyList();
         }
-        return Collections.emptyList();
     }
 
     @NotNull

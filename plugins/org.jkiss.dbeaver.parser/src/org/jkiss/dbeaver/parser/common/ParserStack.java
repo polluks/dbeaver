@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,9 @@
 package org.jkiss.dbeaver.parser.common;
 
 import org.jkiss.dbeaver.parser.common.grammar.GrammarRule;
+
+import java.util.ArrayList;
+import java.util.Collections;
 
 /**
  * Parsing context
@@ -57,6 +60,22 @@ class ParserStack {
 
     public ParserStack pop() {
         return this.prev;
+    }
+
+    public String collectDescription() {
+        ArrayList<String> items = new ArrayList<>();
+        String prevName = "";
+        for (ParserStack item = this; item != null; item = item.prev) {
+            if (item.getRule() != null) {
+                String name = item.getRule().getName();
+                if (!name.equals(prevName)) {
+                    prevName = name;
+                    items.add(name);
+                }
+            }
+        }
+        Collections.reverse(items);
+        return String.join("/", items);
     }
 }
 

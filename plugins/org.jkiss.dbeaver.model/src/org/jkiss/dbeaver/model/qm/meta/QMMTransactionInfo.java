@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,14 +25,20 @@ import org.jkiss.dbeaver.model.exec.DBCSavepoint;
 public class QMMTransactionInfo extends QMMObject {
 
     private final QMMConnectionInfo connection;
-    private final QMMTransactionInfo previous;
+    private final transient QMMTransactionInfo previous;
     private boolean committed;
-    private QMMTransactionSavepointInfo savepointStack;
+    private final transient QMMTransactionSavepointInfo savepointStack = new QMMTransactionSavepointInfo(this, null, null, null);
 
     QMMTransactionInfo(QMMConnectionInfo connection, QMMTransactionInfo previous) {
+        super(QMMetaObjectType.TRANSACTION_INFO);
         this.connection = connection;
         this.previous = previous;
-        this.savepointStack = new QMMTransactionSavepointInfo(this, null, null, null);
+    }
+
+    public QMMTransactionInfo(QMMConnectionInfo connection, long openTime) {
+        super(QMMetaObjectType.TRANSACTION_INFO, openTime, openTime);
+        this.connection = connection;
+        this.previous = null;
     }
 
     void commit() {
@@ -95,4 +101,5 @@ public class QMMTransactionInfo extends QMMObject {
     public String getText() {
         return connection.getText();
     }
+
 }

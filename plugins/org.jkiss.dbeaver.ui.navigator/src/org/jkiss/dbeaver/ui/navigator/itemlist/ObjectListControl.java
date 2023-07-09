@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  * Copyright (C) 2011-2012 Eugene Fradkin (eugene.fradkin@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -215,6 +215,8 @@ public abstract class ObjectListControl<OBJECT_TYPE> extends ProgressPageControl
             }
             setInfo(status);
         });
+
+        UIUtils.installAndUpdateMainFont(itemsViewer.getControl());
     }
 
     /**
@@ -271,6 +273,7 @@ public abstract class ObjectListControl<OBJECT_TYPE> extends ProgressPageControl
     public ColumnViewer getItemsViewer() {
         return itemsViewer;
     }
+
 
     public Composite getControl() {
         // Both table and tree are composites so its ok
@@ -366,6 +369,10 @@ public abstract class ObjectListControl<OBJECT_TYPE> extends ProgressPageControl
         }
     }
 
+    public ViewerColumnController<ObjectColumn, Object> getColumnController() {
+        return columnController;
+    }
+
     protected int getDataLoadTimeout() {
         return 4000;
     }
@@ -416,8 +423,8 @@ public abstract class ObjectListControl<OBJECT_TYPE> extends ProgressPageControl
                 }
 
                 IPropertyFilter propertyFilter = new DataSourcePropertyFilter(
-                    ObjectListControl.this instanceof IDataSourceContainerProvider ?
-                        ((IDataSourceContainerProvider) ObjectListControl.this).getDataSourceContainer() :
+                    ObjectListControl.this instanceof DBPDataSourceContainerProvider ?
+                        ((DBPDataSourceContainerProvider) ObjectListControl.this).getDataSourceContainer() :
                         null);
 
                 // Collect all properties
@@ -746,7 +753,10 @@ public abstract class ObjectListControl<OBJECT_TYPE> extends ProgressPageControl
      * Gets property descriptor by column and object value (NB! not OBJECT_TYPE but real object value).
      */
     @Nullable
-    private static ObjectPropertyDescriptor getPropertyByObject(ObjectColumn column, Object objectValue) {
+    private static ObjectPropertyDescriptor getPropertyByObject(@NotNull ObjectColumn column, @Nullable Object objectValue) {
+        if (objectValue == null) {
+            return null;
+        }
         ObjectPropertyDescriptor prop = null;
         for (Class<?> valueClass = objectValue.getClass(); prop == null && valueClass != Object.class; valueClass = valueClass.getSuperclass()) {
             prop = column.propMap.get(valueClass);
@@ -825,6 +835,17 @@ public abstract class ObjectListControl<OBJECT_TYPE> extends ProgressPageControl
             props.addAll(column.propMap.values());
         }
         return props;
+    }
+
+    public void setIsColumnVisibleById(String id, boolean visible) {
+        if (columnController != null) {
+            ObjectColumn[] columnsData = columnController.getColumnsData(ObjectColumn.class);
+            for (int i = 0; i < columnsData.length; i++) {
+                if (columnsData[i].id.equals(id)) {
+                    columnController.setIsColumnVisible(i, visible);
+                }
+            }
+        }
     }
 
     protected void createColumn(ObjectPropertyDescriptor prop) {
@@ -911,12 +932,12 @@ public abstract class ObjectListControl<OBJECT_TYPE> extends ProgressPageControl
             IStructuredSelection selection = itemsViewer.getStructuredSelection();
             if (selection.size() > 1) {
                 StringBuilder buf = new StringBuilder();
-                for (Iterator iter = selection.iterator(); iter.hasNext(); ) {
-                    Object object = getObjectValue((OBJECT_TYPE) iter.next());
+                for (Object o : selection) {
+                    Object object = getObjectValue((OBJECT_TYPE) o);
 
                     ObjectColumn nameColumn = null;
                     int columnsCount = columnController.getColumnsCount();
-                    for (int i = 0 ; i < columnsCount; i++) {
+                    for (int i = 0; i < columnsCount; i++) {
                         ObjectColumn column = getColumnByIndex(i);
                         if (column.isNameColumn(object)) {
                             nameColumn = column;
@@ -943,6 +964,15 @@ public abstract class ObjectListControl<OBJECT_TYPE> extends ProgressPageControl
                         }
                     }
                     if (buf.length() > 0) buf.append("\n");
+                    if (selection instanceof TreeSelection) {
+                        final TreePath[] paths = ((TreeSelection) selection).getPathsFor(o);
+                        if (!ArrayUtils.isEmpty(paths)) {
+                            final int count = paths[0].getSegmentCount();
+                            for (int i = 1; i < count; i++) {
+                                buf.append('\t');
+                            }
+                        }
+                    }
                     buf.append(objectName);
                 }
                 selectedText = buf.toString();
@@ -970,7 +1000,7 @@ public abstract class ObjectListControl<OBJECT_TYPE> extends ProgressPageControl
                 return false;
             }
             ViewerCell cell = (ViewerCell) event.getSource();
-            if (renderer.isHyperlink(getCellValue(cell.getElement(), cell.getColumnIndex())) &&
+            if (renderer.isHyperlink(cell.getElement(), getCellValue(cell.getElement(), cell.getColumnIndex())) &&
                 getItemsViewer().getControl().getCursor() == getItemsViewer().getControl().getDisplay().getSystemCursor(SWT.CURSOR_HAND)) {
                 return false;
             }
@@ -1118,7 +1148,7 @@ public abstract class ObjectListControl<OBJECT_TYPE> extends ProgressPageControl
             if (cellValue instanceof LazyValue) {
                 cellValue = ((LazyValue) cellValue).value;
             }
-            if (forUI && !sampleItems && renderer.isHyperlink(cellValue)) {
+            if (forUI && !sampleItems && renderer.isHyperlink(element, cellValue)) {
                 return EMPTY_STRING; //$NON-NLS-1$
             }
             if (element instanceof ObjectsGroupingWrapper) {
@@ -1229,14 +1259,16 @@ public abstract class ObjectListControl<OBJECT_TYPE> extends ProgressPageControl
                             if (!lazyLoadCanceled) {
                                 addLazyObject(object, objectColumn);
                             }
-                        } else if (cellValue != null) {
-                            ObjectPropertyDescriptor prop = getPropertyByObject(objectColumn, objectValue);
-                            if (prop != null) {
-                                if (itemsViewer.isCellEditorActive() && isFocusCell) {
-                                    // Do not paint over active editor
-                                    return;
-                                }
+                        } else {
+                            final ObjectPropertyDescriptor prop = getPropertyByObject(objectColumn, objectValue);
+                            if (itemsViewer.isCellEditorActive() && isFocusCell) {
+                                // Do not paint over active editor
+                                return;
+                            }
+                            if (cellValue != null && prop != null) {
                                 renderer.paintCell(e, object, cellValue, e.item, prop.getDataType(), e.index, prop.isEditable(objectValue), (e.detail & SWT.SELECTED) == SWT.SELECTED);
+                            } else if (prop == null) {
+                                renderer.paintInvalidCell(e, e.item, e.index);
                             }
                         }
                         break;
@@ -1455,27 +1487,29 @@ public abstract class ObjectListControl<OBJECT_TYPE> extends ProgressPageControl
                 if (columnPersist) {
                     columnName = columnController.getColumnName(selectedColumnNumber);
                 }
-                menuManager.add(new Action("Group by column " + CommonUtils.notEmpty(columnName), null) {
-                    @Override
-                    public void run() {
-                        if (columnPersist) {
-                            groupingColumn = getColumnByIndex(selectedColumnNumber);
-                            groupingColumn.columnIndex = selectedColumnNumber;
-                            originalColumnOrder = ((TreeViewer) itemsViewer).getTree().getColumnOrder();
-                            moveGroupingColumnInTheBeginning(selectedColumnNumber);
-                            itemsViewer.setContentProvider(new GroupingTreeProvider());
-                            itemsViewer.refresh();
-                            ((TreeViewer) itemsViewer).expandToLevel(2);
+                menuManager.add(
+                    new Action(NLS.bind(UINavigatorMessages.object_list_control_group_by_label, CommonUtils.notEmpty(columnName)), null) {
+                        @Override
+                        public void run() {
+                            if (columnPersist) {
+                                groupingColumn = getColumnByIndex(selectedColumnNumber);
+                                groupingColumn.columnIndex = selectedColumnNumber;
+                                originalColumnOrder = ((TreeViewer) itemsViewer).getTree().getColumnOrder();
+                                moveGroupingColumnInTheBeginning(selectedColumnNumber);
+                                itemsViewer.setContentProvider(new GroupingTreeProvider());
+                                itemsViewer.refresh();
+                                ((TreeViewer) itemsViewer).expandToLevel(2);
+                            }
+                        }
+
+                        @Override
+                        public boolean isEnabled() {
+                            return columnPersist;
                         }
                     }
+                );
 
-                    @Override
-                    public boolean isEnabled() {
-                        return columnPersist;
-                    }
-                });
-
-                menuManager.add(new Action("Clear grouping", null) {
+                menuManager.add(new Action(UINavigatorMessages.object_list_control_clear_grouping_label, null) {
                     @Override
                     public void run() {
                         groupingColumn = null;

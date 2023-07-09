@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ public class NumberExpression extends UnaryExpression {
     public final int min;
     public final int max;
 
-    protected NumberExpression(RuleExpression expr, int min, int max) {
+    public NumberExpression(RuleExpression expr, int min, int max) {
         super(expr);
         this.min = min;
         this.max = max;

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -46,13 +46,14 @@ import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.DBPDataSourceContainer;
 import org.jkiss.dbeaver.model.DBUtils;
-import org.jkiss.dbeaver.model.app.DBPProject;
+import org.jkiss.dbeaver.model.connection.DBPDriver;
 import org.jkiss.dbeaver.model.exec.DBCExecutionContext;
 import org.jkiss.dbeaver.model.exec.DBCExecutionPurpose;
 import org.jkiss.dbeaver.model.messages.ModelMessages;
 import org.jkiss.dbeaver.model.preferences.DBPPreferenceListener;
 import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
 import org.jkiss.dbeaver.model.qm.*;
+import org.jkiss.dbeaver.model.qm.filters.QMCursorFilter;
 import org.jkiss.dbeaver.model.qm.filters.QMEventCriteria;
 import org.jkiss.dbeaver.model.qm.meta.*;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
@@ -60,6 +61,7 @@ import org.jkiss.dbeaver.model.runtime.load.AbstractLoadService;
 import org.jkiss.dbeaver.model.sql.SQLConstants;
 import org.jkiss.dbeaver.model.sql.SQLDialect;
 import org.jkiss.dbeaver.model.sql.SQLQuery;
+import org.jkiss.dbeaver.registry.DataSourceProviderRegistry;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.runtime.qm.DefaultEventFilter;
 import org.jkiss.dbeaver.ui.*;
@@ -140,6 +142,9 @@ public class QueryLogViewer extends Viewer implements QMMetaListener, DBPPrefere
 
         @Override
         String getText(QMEvent event, boolean briefInfo) {
+            if (event.getObject() instanceof QMMConnectionInfo && event.getAction() == QMEventAction.END) {
+                return timeFormat.format(event.getObject().getCloseTime());
+            }
             return timeFormat.format(event.getObject().getOpenTime());
         }
 
@@ -634,7 +639,7 @@ public class QueryLogViewer extends Viewer implements QMMetaListener, DBPPrefere
     }
 
     @Override
-    public void metaInfoChanged(DBRProgressMonitor monitor, @NotNull final List<QMMetaEvent> events) {
+    public void metaInfoChanged(@NotNull DBRProgressMonitor monitor, @NotNull final List<QMMetaEvent> events) {
         if (DBWorkbench.getPlatform().isShuttingDown()) {
             return;
         }
@@ -766,6 +771,15 @@ public class QueryLogViewer extends Viewer implements QMMetaListener, DBPPrefere
             copyAction.setEnabled(logTable.getSelectionCount() > 0);
             copyAction.setActionDefinitionId(IWorkbenchCommandConstants.EDIT_COPY);
 
+            IAction deleteSelectionAction = new Action(ModelMessages.controls_querylog_action_delete) {
+                @Override
+                public void run() {
+                    deleteSelectedItems();
+                }
+            };
+            deleteSelectionAction.setEnabled(logTable.getSelectionCount() > 0);
+            deleteSelectionAction.setActionDefinitionId(IWorkbenchCommandConstants.EDIT_DELETE);
+
             IAction copyAllAction = new Action(ModelMessages.controls_querylog_action_copy_all_fields) {
                 @Override
                 public void run() {
@@ -802,6 +816,7 @@ public class QueryLogViewer extends Viewer implements QMMetaListener, DBPPrefere
                 manager.add(new Separator());
             }
             manager.add(copyAction);
+            manager.add(deleteSelectionAction);
             manager.add(copyAllAction);
             manager.add(selectAllAction);
             manager.add(clearLogAction);
@@ -935,6 +950,14 @@ public class QueryLogViewer extends Viewer implements QMMetaListener, DBPPrefere
         });
     }
 
+    public synchronized void deleteSelectedItems() {
+        for (TableItem tableItem : logTable.getSelection()) {
+            objectToItemMap.remove(((QMEvent) tableItem.getData()).getObject().getObjectId());
+        }
+        int[] selectionIndices = logTable.getSelectionIndices();
+        logTable.remove(selectionIndices);
+    }
+
     public synchronized void clearLog() {
         logTable.removeAll();
         objectToItemMap.clear();
@@ -1013,16 +1036,10 @@ public class QueryLogViewer extends Viewer implements QMMetaListener, DBPPrefere
     }
 
     private DBPDataSourceContainer getDataSourceContainer(QMMStatementExecuteInfo stmtExec) {
-        DBPDataSourceContainer dsContainer = null;
         QMMConnectionInfo session = stmtExec.getStatement().getConnection();
-        DBPProject project = session.getProject();
+        String projectId = session.getProjectInfo() == null ? null : session.getProjectInfo().getId();
         String containerId = session.getContainerId();
-        if (project != null) {
-            dsContainer = project.getDataSourceRegistry().getDataSource(containerId);
-        } else {
-            dsContainer = DBUtils.findDataSource(containerId);
-        }
-        return dsContainer;
+        return DBUtils.findDataSource(projectId, containerId);
     }
 
     private class EventViewDialog extends BaseSQLDialog {
@@ -1033,7 +1050,7 @@ public class QueryLogViewer extends Viewer implements QMMetaListener, DBPPrefere
 
         EventViewDialog(QMEvent object) {
             super(QueryLogViewer.this.getControl().getShell(), QueryLogViewer.this.site, "Event", null); //$NON-NLS-1$
-            setShellStyle(SWT.SHELL_TRIM);
+            setShellStyle(SWT.CLOSE | SWT.TITLE | SWT.MAX | SWT.RESIZE);
             this.object = object;
         }
 
@@ -1094,47 +1111,58 @@ public class QueryLogViewer extends Viewer implements QMMetaListener, DBPPrefere
         }
 
         @Override
-        protected void createButtonsForButtonBar(Composite parent) {
-            parent.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
-            parent.setLayout(new GridLayout(2, false));
-            
-            Composite leftCell = UIUtils.createComposite(parent, 1);
-            leftCell.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
-            Composite rightCell = UIUtils.createComposite(parent, 1);
-            rightCell.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_END));
-            
-            createButton(rightCell, IDialogConstants.OK_ID, IDialogConstants.OK_LABEL, true);
-            
-            QMMStatementExecuteInfo execInfo = null;
-            if (object.getObject() instanceof QMMStatementExecuteInfo) {
-                execInfo = (QMMStatementExecuteInfo) object.getObject();
-                if (isQueryLinkedWithEditor(execInfo) && SQLEditorUtils.isOpenSeparateConnection(getDataSourceContainer(execInfo))) {
-                    UIUtils.createPushButton(leftCell, SQLEditorMessages.editor_query_log_viewer_reexecute_query_button_text, null,
-                        new SelectionAdapter() {
-                            @Override
-                            public void widgetSelected(SelectionEvent e) {
-                                if (object.getObject() instanceof QMMStatementExecuteInfo) {
-                                    QMMStatementExecuteInfo execInfo = (QMMStatementExecuteInfo) object.getObject();
-                                    SQLEditor editor = ((SQLLogFilter) filter).getEditor();
-                                    SQLQuery query = new SQLQuery(editor.getDataSource(), execInfo.getQueryString());
-                                    editor.processQueries(List.of(query), false, true, false, true, null, null);
-                                }
-                            }
-                        }
-                    );
-                }
+        protected void createButtonsForButtonBar(@NotNull Composite parent, int alignment) {
+            if (alignment == SWT.LEAD) {
+                createCopyButton(parent);
+                createExecuteButton(parent);
+            } else {
+                createButton(parent, IDialogConstants.OK_ID, IDialogConstants.OK_LABEL, true);
+            }
+        }
+
+        @Override
+        protected void buttonPressed(int buttonId) {
+            if (buttonId == IDialogConstants.PROCEED_ID && object.getObject() instanceof QMMStatementExecuteInfo) {
+                final QMMStatementExecuteInfo info = (QMMStatementExecuteInfo) object.getObject();
+                final SQLEditor editor = ((SQLLogFilter) filter).getEditor();
+                final SQLQuery query = new SQLQuery(editor.getDataSource(), info.getQueryString());
+                editor.processQueries(List.of(query), false, true, false, true, null, null);
+            } else {
+                super.buttonPressed(buttonId);
             }
         }
 
         @Override
         protected SQLDialect getSQLDialect() {
             if (object.getObject() instanceof QMMStatementExecuteInfo) {
-                SQLDialect dialect = ((QMMStatementExecuteInfo) object.getObject()).getStatement().getConnection().getSQLDialect();
-                if (dialect != null) {
-                    return dialect;
+                var executeInfo = (QMMStatementExecuteInfo) object.getObject();
+                var container = getDataSourceContainer(executeInfo);
+                var sqlDialect = getSqlDialectFromContainer(container);
+                if (getSqlDialectFromContainer(container) != null) {
+                    return sqlDialect;
                 }
             }
             return super.getSQLDialect();
+        }
+
+        @Nullable
+        private SQLDialect getSqlDialectFromContainer(DBPDataSourceContainer container) {
+            if (container == null) {
+                return null;
+            }
+            var dataSource = container.getDataSource();
+            if (dataSource != null) {
+                return container.getDataSource().getSQLDialect();
+            }
+            DBPDriver driver = DataSourceProviderRegistry.getInstance().findDriver(container.getDriver().getId());
+            if (driver == null) {
+                return null;
+            }
+            try {
+                return driver.getScriptDialect().createInstance();
+            } catch (DBException e) {
+                return null;
+            }
         }
 
         @Override
@@ -1157,6 +1185,15 @@ public class QueryLogViewer extends Viewer implements QMMetaListener, DBPPrefere
             return (purpose == DBCExecutionPurpose.USER_SCRIPT || purpose == DBCExecutionPurpose.USER)
                 && object.getObject() instanceof QMMStatementExecuteInfo && filter != null && filter instanceof SQLLogFilter
                 && ((SQLLogFilter) filter).getEditor() != null;
+        }
+
+        private void createExecuteButton(@NotNull Composite parent) {
+            if (object.getObject() instanceof QMMStatementExecuteInfo) {
+                final QMMStatementExecuteInfo info = (QMMStatementExecuteInfo) object.getObject();
+                if (isQueryLinkedWithEditor(info) && SQLEditorUtils.isOpenSeparateConnection(getDataSourceContainer(info))) {
+                    createButton(parent, IDialogConstants.PROCEED_ID, SQLEditorMessages.editor_query_log_viewer_reexecute_query_button_text, false);
+                }
+            }
         }
     }
 
@@ -1184,7 +1221,14 @@ public class QueryLogViewer extends Viewer implements QMMetaListener, DBPPrefere
                 } else {
                     monitor.subTask("Load all queries"); //$NON-NLS-1$
                 }
-                try (QMEventCursor cursor = eventBrowser.getQueryHistoryCursor(monitor, criteria, filter != null ? filter : (useDefaultFilter ? defaultFilter : null))) {
+
+                var qmSessionId = QMUtils.getQmSessionId(DBWorkbench.getPlatform().getWorkspace().getWorkspaceSession());
+                var cursorFilter = new QMCursorFilter(
+                    qmSessionId,
+                    criteria,
+                    filter != null ? filter : (useDefaultFilter ? defaultFilter : null)
+                );
+                try (QMEventCursor cursor = eventBrowser.getQueryHistoryCursor(cursorFilter)) {
                     while (events.size() < entriesPerPage && cursor.hasNextEvent(monitor)) {
                         if (monitor.isCanceled()) {
                             break;

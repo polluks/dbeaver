@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,11 +23,14 @@ import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 
 import java.nio.file.Path;
+
 /**
  * DB application.
  * Application implementors may redefine core app behavior and/or settings.
  */
 public interface DBPApplication {
+
+    default void beforeWorkspaceInitialization() {}
 
     @NotNull
     DBPWorkspace createWorkspace(@NotNull DBPPlatform platform, @NotNull IWorkspace eclipseWorkspace);
@@ -57,37 +60,45 @@ public interface DBPApplication {
      */
     boolean isMultiuser();
 
-    @NotNull
-    DBASecureStorage getSecureStorage();
-
-    @NotNull
-    DBASecureStorage getProjectSecureStorage(DBPProject project);
+    /**
+     * Distributed application requires remote server.
+     */
+    boolean isDistributed();
 
     /**
      * Application information details.
      * Like license info or some custom produce info
-     * @param monitor
      */
     String getInfoDetails(DBRProgressMonitor monitor);
 
     /**
-     * Returns last user activity time
-     * @return -1 by default
-     */
-    long getLastUserActivityTime();
-
-    /**
      * Default project name, e.g. 'General'.
      */
+    @Nullable
     String getDefaultProjectName();
 
-    String getProductProperty(String propName);
+    @Nullable
+    String getProductProperty(@NotNull String propName);
 
-    boolean hasProductFeature(String featureName);
+    boolean hasProductFeature(@NotNull String featureName);
 
     /**
      * @return null if not found, otherwise returns default workspace path
      */
     @Nullable
     Path getDefaultWorkingFolder();
+
+    /**
+     * Unique application instance identifier.
+     * Generated on every application launch.
+     */
+    @NotNull
+    String getApplicationRunId();
+
+    /**
+     * Application start time
+     */
+    long getApplicationStartTime();
+
+
 }

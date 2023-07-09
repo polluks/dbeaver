@@ -52,15 +52,15 @@
 	<tip>Any keyboard shortcut can be created for most of DBeaver commands. <a href="prefs://org.eclipse.ui.preferencePages.Keys">Existing shortcuts can also be changed</a>.</tip>
 	<tip>You can <a href="prefs://org.jkiss.dbeaver.preferences.main.sql.format">configure</a> SQL formatter globally or for a particular database.</tip>
 	<tip>To filter table rows by column value in <a href="https://github.com/dbeaver/dbeaver/wiki/Data-Editor">Data Editor</a>, use the following shortcut: <b>Ctrl+F11</b>. You can also open filter menu by pressing <b>F11</b>.</tip>
-	<tip>To open foreign keys menu in <a href="https://github.com/dbeaver/dbeaver/wiki/Data-Editor">Data Editor</a>, use the following shortcut: <b>Ctrl+1</b>.</tip>
-	<tip>If your project requires advanced analytical tools or NoSQL database support, you can try <a href="https://dbeaver.com/">DBeaver Enterprise Edition</a>.</tip>
+	<tip>To open foreign keys menu in <a href="https://github.com/dbeaver/dbeaver/wiki/Data-Editor">Data Editor</a>, use the following shortcut: <b>Ctrl+Shift+1</b>.</tip>
+	<tip product="ce">If your project requires advanced analytical tools or NoSQL database support, you can try <a href="https://dbeaver.com/">DBeaver PRO</a>.</tip>
 	<tip>You can schedule your tasks to execute with specified recurrence, without needing to open DBeaver.
 		<br/>Note: <a href="https://github.com/dbeaver/dbeaver/wiki/Task-Scheduler">this feature</a> is available in <a href="https://github.com/dbeaver/dbeaver/wiki/Enterprise-Edition">Enterprise</a> and <a href="https://github.com/dbeaver/dbeaver/wiki/Ultimate-Edition">Ultimate</a> editions only.
 	</tip>
-	<tip>You can group several tasks into one composite task to easily execute a set of actions in one click.
+	<tip product="ee,ue,te">You can group several tasks into one composite task to easily execute a set of actions in one click.
 		<br/>Note: <a href="https://github.com/dbeaver/dbeaver/wiki/Composite-Tasks">this feature</a> is available in <a href="https://github.com/dbeaver/dbeaver/wiki/Enterprise-Edition">Enterprise</a> and <a href="https://github.com/dbeaver/dbeaver/wiki/Ultimate-Edition">Ultimate</a> editions only.
 	</tip>
-	<tip>If you're not familiar with NoSQL databases, you can use plain SQL to perform different queries.
+	<tip product="le,ee,ue,te">If you're not familiar with NoSQL databases, you can use plain SQL to perform different queries.
 		<br/>Note: this feature is available in <a href="https://github.com/dbeaver/dbeaver/wiki/Enterprise-Edition">Enterprise</a> and <a href="https://github.com/dbeaver/dbeaver/wiki/Ultimate-Edition">Ultimate</a> editions only.
 	</tip>
 	<tip>DBeaver <a href="https://github.com/dbeaver/dbeaver/wiki/Enterprise-Edition">Enterprise Edition</a> is fully integrated with Git version control system. You can keep your project configuration, scripts, diagrams, bookmarks and other artifacts in a Git repository.</tip>
@@ -73,14 +73,14 @@
 	<tip>You can ignore the PK validation constraint when importing data into a table by selecting the Replace method in the data load settings. Supported by Oracle, MySQL, PostgreSQL, Firebird, and SQLite. You can find out more about that in our <a href="https://github.com/dbeaver/dbeaver/wiki/Data-Import-and-Replace">wiki article</a>.</tip>
 	<tip>Choose the fully qualified name of the object in the SQL Editor and use <b>Ctrl(Cmd) + Left click</b>. This will take you to the object's tab. Works with tables, columns and procedures.</tip>
 <!--	Tips above were reviewed on 10th of February, 2021.-->
-	<tip>If you are looking for a web-based database management tool - check our new product: <a href="https://cloudbeaver.io/">CloudBeaver</a>.</tip>
+	<tip>If you are looking for a web-based database management tool - check our product <a href="https://cloudbeaver.io/">CloudBeaver</a>.</tip>
 
 	<tip>To compare data from two tables, you can use our Data Compare tool.
 		<br/>Note: <a href="https://github.com/dbeaver/dbeaver/wiki/Data-compare">this feature</a> is available in <a href="https://github.com/dbeaver/dbeaver/wiki/Enterprise-Edition">Enterprise</a> and <a href="https://github.com/dbeaver/dbeaver/wiki/Ultimate-Edition">Ultimate</a> editions only.
 	</tip>
 	<tip>While working with the Data Editor you can apply filtering using the value from the clipboard. Just copy the value you need from any source, right-click on the cell, go to Filter &amp;rArr; Clipboard and select the appropriate option.</tip>
 	<tip>If you are afraid to change the important data in the table by mistake, this problem can be easily solved. Just turn on read-only mode and view the table without the editing function.</tip>
-	<tip>An easy way to find repeated values in your data is to highlight them. You can enable this feature by ticking the <b>Mark occurrences of selected cell's value</b> checkbox <a href="href://org.jkiss.dbeaver.preferences.main.resultset">here</a>.</tip>
+	<tip>An easy way to find repeated values in your data is to highlight them. You can enable this feature by ticking the <b>Mark occurrences of selected cell's value</b> checkbox <a href="prefs://org.jkiss.dbeaver.preferences.main.sql.codeeditor">here</a>.</tip>
 	<tip>You can edit date and time fields in your tables using a convenient calendar. Open the Value panel and click on the icon with the clock to switch the editor to a calendar view. You can also find a corresponding checkbox in the Preferences.</tip>
 	<tip>Using the Filter field located above the grid you can enter an SQL expression to filter the results.
 		<br/>Click the expand button (<b>&#9660;</b>) on the right side to see the filter history.
@@ -91,4 +91,5 @@
 	<tip>To securely pass external variables into DBeaver you can use <b>-vars</b> command-line parameter to specify the file containing variables.
 		<br/>Read more about this feature on our <a href="https://github.com/dbeaver/dbeaver/wiki/Admin-Variables#declare-external-variables-in-a-file">wiki page</a>.
 	</tip>
+	<tip>You can improve data import performance by enabling <b>Use multi-row value insert</b> in the data transfer settings. Additionally, you can increase the rows count in the multi-insert batch.</tip>
 </tips>

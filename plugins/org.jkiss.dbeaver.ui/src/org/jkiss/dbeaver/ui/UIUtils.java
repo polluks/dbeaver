@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package org.jkiss.dbeaver.ui;
 
 import org.eclipse.core.resources.ResourcesPlugin;
+import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.jface.action.*;
@@ -24,15 +25,19 @@ import org.eclipse.jface.commands.ActionHandler;
 import org.eclipse.jface.dialogs.IDialogConstants;
 import org.eclipse.jface.dialogs.IDialogSettings;
 import org.eclipse.jface.dialogs.ProgressMonitorDialog;
+import org.eclipse.jface.layout.GridDataFactory;
+import org.eclipse.jface.layout.GridLayoutFactory;
 import org.eclipse.jface.operation.IRunnableContext;
 import org.eclipse.jface.preference.PreferenceDialog;
 import org.eclipse.jface.resource.ColorRegistry;
 import org.eclipse.jface.resource.ImageDescriptor;
 import org.eclipse.jface.resource.JFaceResources;
+import org.eclipse.jface.util.IPropertyChangeListener;
 import org.eclipse.jface.viewers.AbstractTreeViewer;
 import org.eclipse.jface.viewers.ISelectionProvider;
 import org.eclipse.jface.window.IShellProvider;
 import org.eclipse.jface.wizard.IWizardContainer;
+import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.*;
 import org.eclipse.swt.dnd.Clipboard;
@@ -532,11 +537,13 @@ public class UIUtils {
         return modifyFont(normalFont, SWT.BOLD);
     }
 
-    public static Font modifyFont(Font normalFont, int style)
-    {
-        FontData[] fontData = normalFont.getFontData();
-        fontData[0].setStyle(fontData[0].getStyle() | style);
-        return new Font(normalFont.getDevice(), fontData[0]);
+    @NotNull
+    public static Font modifyFont(@NotNull Font normalFont, int style) {
+        final FontData[] data = normalFont.getFontData();
+        for (FontData fd : data) {
+            fd.setStyle(fd.getStyle() | style);
+        }
+        return new Font(normalFont.getDevice(), data);
     }
 
     public static Group createControlGroup(Composite parent, String label, int columns, int layoutStyle, int widthHint)
@@ -588,24 +595,57 @@ public class UIUtils {
         return imageLabel;
     }
 
-
-    public static CLabel createInfoLabel(Composite parent, String text) {
-        CLabel tipLabel = new CLabel(parent, SWT.NONE);
-        tipLabel.setImage(DBeaverIcons.getImage(DBIcon.SMALL_INFO));
-        tipLabel.setText(text);
-        return tipLabel;
+    @NotNull
+    public static Control createInfoLabel(@NotNull Composite parent, @NotNull String text) {
+        return createInfoLabel(parent, text, null);
     }
 
-    public static CLabel createInfoLabel(Composite parent, String text, int gridStyle, int hSpan) {
-        CLabel tipLabel = new CLabel(parent, SWT.NONE);
-        tipLabel.setImage(DBeaverIcons.getImage(DBIcon.SMALL_INFO));
-        tipLabel.setText(text);
-        GridData gd = new GridData(gridStyle);
-        if (hSpan > 1) {
-            gd.horizontalSpan = hSpan;
+    @NotNull
+    public static Control createInfoLabel(@NotNull Composite parent, @NotNull String text, @Nullable Runnable listener) {
+        return createInfoLabel(parent, text, SWT.NONE, 1, listener);
+    }
+
+    @NotNull
+    public static Control createInfoLabel(@NotNull Composite parent, @NotNull String text, int gridStyle, int hSpan) {
+        return createInfoLabel(parent, text, gridStyle, hSpan, null);
+    }
+
+    @NotNull
+    public static Control createInfoLabel(
+        @NotNull Composite parent,
+        @NotNull String text,
+        int gridStyle,
+        int hSpan,
+        @Nullable Runnable callback
+    ) {
+        final Control control;
+
+        if (callback == null) {
+            final CLabel label = new CLabel(parent, SWT.NONE);
+            label.setImage(DBeaverIcons.getImage(DBIcon.SMALL_INFO));
+            label.setText(text);
+            control = label;
+        } else {
+            final Composite composite = new Composite(parent, SWT.NONE);
+            composite.setLayout(GridLayoutFactory.fillDefaults().numColumns(2).create());
+            control = composite;
+
+            final Label imageLabel = new Label(composite, SWT.NONE);
+            imageLabel.setImage(DBeaverIcons.getImage(DBIcon.SMALL_INFO));
+
+            final Link link = new Link(composite, SWT.NONE);
+            link.setText("<a href=\"#\">" + text + "</a>");
+            link.addSelectionListener(SelectionListener.widgetSelectedAdapter(e -> callback.run()));
+            link.setLayoutData(GridDataFactory.fillDefaults().grab(true, false).create());
         }
-        tipLabel.setLayoutData(gd);
-        return tipLabel;
+
+        if (gridStyle != SWT.NONE || hSpan > 1) {
+            final GridData gd = new GridData(gridStyle);
+            gd.horizontalSpan = hSpan;
+            control.setLayoutData(gd);
+        }
+
+        return control;
     }
 
     public static Text createLabelText(Composite parent, String label, String value) {
@@ -834,8 +874,7 @@ public class UIUtils {
     @Nullable
     public static Shell getActiveShell()
     {
-        IWorkbench workbench = PlatformUI.getWorkbench();
-        return workbench == null ? null : getShell(workbench.getActiveWorkbenchWindow());
+        return getActiveWorkbenchShell();
     }
 
     @Nullable
@@ -882,8 +921,7 @@ public class UIUtils {
         return createPlaceholder(parent, columns, 0);
     }
 
-    public static Composite createComposite(Composite parent, int columns)
-    {
+    public static Composite createComposite(@NotNull Composite parent, int columns) {
         Composite ph = new Composite(parent, SWT.NONE);
         GridLayout gl = new GridLayout(columns, false);
         gl.marginWidth = 0;
@@ -892,8 +930,7 @@ public class UIUtils {
         return ph;
     }
 
-    public static Composite createPlaceholder(Composite parent, int columns, int spacing)
-    {
+    public static Composite createPlaceholder(@NotNull Composite parent, int columns, int spacing) {
         Composite ph = new Composite(parent, SWT.NONE);
         GridLayout gl = new GridLayout(columns, false);
         gl.verticalSpacing = spacing;
@@ -1023,11 +1060,8 @@ public class UIUtils {
     }
 
     @NotNull
-    public static CustomSashForm createPartDivider(final IWorkbenchPart workbenchPart, Composite parent, int style)
-    {
-        final CustomSashForm sash = new CustomSashForm(parent, style);
-
-        return sash;
+    public static CustomSashForm createPartDivider(final IWorkbenchPart workbenchPart, Composite parent, int style) {
+        return new CustomSashForm(parent, style);
     }
 
     @NotNull
@@ -1333,7 +1367,7 @@ public class UIUtils {
     }
 
     public static boolean isUIThread() {
-        return Display.getDefault().getThread() == Thread.currentThread();
+        return Display.getCurrent() != null;
     }
 
     /**
@@ -1463,12 +1497,13 @@ public class UIUtils {
 
     public static void drawMessageOverControl(Control control, GC gc, String message, int offset) {
         Rectangle bounds = control.getBounds();
+        final int height = gc.textExtent(message).y;
         for (String line : message.split("\n")) {
             line = line.trim();
             Point ext = gc.textExtent(line);
             gc.drawText(line,
                 (bounds.width - ext.x) / 2,
-                bounds.height / 2 + offset);
+                (bounds.height - height) / 2 + offset);
             offset += ext.y;
         }
     }
@@ -1498,7 +1533,7 @@ public class UIUtils {
 
     public static void fillDefaultTableContextMenu(IContributionManager menu, final Table table) {
         if (table.getColumnCount() > 1) {
-            menu.add(new Action("Copy " + table.getColumn(0).getText()) {
+            menu.add(new Action(NLS.bind(UIMessages.utils_actions_copy_label, table.getColumn(0).getText())) {
                 @Override
                 public void run() {
                     StringBuilder text = new StringBuilder();
@@ -1513,7 +1548,7 @@ public class UIUtils {
                 }
             });
         }
-        menu.add(new Action("Copy All") {
+        menu.add(new Action(UIMessages.utils_actions_copy_all_label) {
             @Override
             public void run() {
                 StringBuilder text = new StringBuilder();
@@ -1550,7 +1585,7 @@ public class UIUtils {
                 }
             });
         }
-        menu.add(new Action("Copy All") {
+        menu.add(new Action(UIMessages.utils_actions_copy_all_label) {
             @Override
             public void run() {
                 StringBuilder text = new StringBuilder();
@@ -1680,13 +1715,28 @@ public class UIUtils {
 
     @Nullable
     public static Shell getActiveWorkbenchShell() {
-        IWorkbench workbench = PlatformUI.getWorkbench();
-        IWorkbenchWindow window = workbench.getActiveWorkbenchWindow();
-        if (window != null) {
-            return window.getShell();
-        } else {
-            return Display.getDefault().getActiveShell();
+        if (PlatformUI.isWorkbenchRunning()) {
+            IWorkbench workbench = PlatformUI.getWorkbench();
+            IWorkbenchWindow window = workbench.getActiveWorkbenchWindow();
+            if (window != null) {
+                Shell shell = window.getShell();
+                if (shell != null && shell.isVisible()) {
+                    return shell;
+                }
+            }
         }
+        Display display = Display.getCurrent();
+        Shell activeShell = display.getActiveShell();
+        if (activeShell != null) {
+            return activeShell;
+        }
+        Shell[] shells = display.getShells();
+        for (Shell shell : shells) {
+            if (shell.isVisible()) {
+                return shell;
+            }
+        }
+        return shells.length > 0 ? shells[0] : null;
     }
 
     public static DBRRunnableContext getDefaultRunnableContext() {
@@ -1944,7 +1994,6 @@ public class UIUtils {
             shellSize.x = Math.max(shellSize.x, compSize.x);
             shellSize.y = Math.max(shellSize.y, compSize.y);
             shell.setSize(shellSize);
-            needsLayout = true;
         }
 
         if (shellLocation.x + shellSize.x > displayArea.width || shellLocation.y + shellSize.y > displayArea.height) {
@@ -1960,9 +2009,16 @@ public class UIUtils {
     }
 
     public static void waitJobCompletion(AbstractJob job) {
+        waitJobCompletion(job, null);
+    }
+
+    public static void waitJobCompletion(@NotNull AbstractJob job, @Nullable IProgressMonitor monitor) {
         // Wait until job finished
         Display display = Display.getCurrent();
         while (!job.isFinished()) {
+            if (monitor != null && monitor.isCanceled()) {
+                job.cancel();
+            }
             if (!display.readAndDispatch()) {
                 display.sleep();
             }
@@ -2116,7 +2172,7 @@ public class UIUtils {
     }
 
     public static Font getMonospaceFont() {
-        return JFaceResources.getFont(JFaceResources.TEXT_FONT);
+        return JFaceResources.getFont(UIFonts.DBEAVER_FONTS_MONOSPACE);
     }
 
     public static <T extends Control> T getParentOfType(Control control, Class<T> parentType) {
@@ -2144,6 +2200,19 @@ public class UIUtils {
         }
     }
 
+    public static void drawTextWithBackground(@NotNull GC gc, @NotNull String text, int x, int y) {
+        final Point size = gc.textExtent(text);
+        final int centerX = x - size.x / 2;
+        final int centerY = y - size.y;
+
+        gc.setForeground(UIStyles.getDefaultTextForeground());
+        gc.setBackground(UIStyles.getDefaultTextBackground());
+
+        gc.fillRectangle(centerX - 2, centerY - 2, size.x + 4, size.y + 4);
+        gc.drawText(text, centerX, centerY, true);
+        gc.drawRoundRectangle(centerX - 3, centerY - 3, size.x + 5, size.y + 5, 5, 5);
+    }
+
     public static void installMacOSFocusLostSubstitution(@NotNull Widget widget, @NotNull Runnable onFocusLost) {
         if (!RuntimeUtils.isMacOS()) {
             return;
@@ -2158,5 +2227,79 @@ public class UIUtils {
         } else {
             widget.addDisposeListener(e -> onFocusLost.run());
         }
+    }
+
+    public static void installAndUpdateMainFont(@NotNull Control control) {
+        final IPropertyChangeListener listener = event -> {
+            if (event.getProperty().equals(UIFonts.DBEAVER_FONTS_MAIN_FONT)) {
+                applyMainFont(control);
+            }
+        };
+
+        PlatformUI.getWorkbench().getThemeManager().addPropertyChangeListener(listener);
+        control.addDisposeListener(e -> PlatformUI.getWorkbench().getThemeManager().removePropertyChangeListener(listener));
+
+        applyMainFont(control);
+    }
+
+    public static void applyMainFont(@Nullable Control control) {
+        if (control == null || control.isDisposed() || mainFontIsDefault()) {
+            return;
+        }
+        applyMainFont(control, JFaceResources.getFont(UIFonts.DBEAVER_FONTS_MAIN_FONT));
+    }
+
+    @Nullable
+    public static Text recreateTextControl(@Nullable Text original, int style) {
+        if (original == null || original.getStyle() == style) {
+            return original;
+        }
+
+        final Composite parent = original.getParent();
+        final Control[] tabList = parent.getTabList();
+
+        final Text text = new Text(parent, style);
+        text.setText(original.getText());
+        text.setLayoutData(original.getLayoutData());
+        text.moveAbove(original);
+
+        copyListeners(original, text, SWT.DefaultSelection);
+        copyListeners(original, text, SWT.Modify);
+        copyListeners(original, text, SWT.Verify);
+
+        original.dispose();
+
+        for (int i = 0; i < tabList.length; i++) {
+            if (tabList[i] == original) {
+                tabList[i] = text;
+            }
+        }
+
+        parent.setTabList(tabList);
+        parent.layout(true, true);
+
+        return text;
+    }
+
+    private static void copyListeners(@NotNull Widget source, @NotNull Widget target, int eventType) {
+        for (Listener listener : source.getListeners(eventType)) {
+            target.addListener(eventType, listener);
+        }
+    }
+
+    private static void applyMainFont(@NotNull Control control, @NotNull Font font) {
+        control.setFont(font);
+
+        if (control instanceof Composite) {
+            for (Control element : ((Composite) control).getChildren()) {
+                applyMainFont(element, font);
+            }
+        }
+    }
+
+    private static boolean mainFontIsDefault() {
+        final FontData[] mainFontData = JFaceResources.getFontRegistry().getFontData(UIFonts.DBEAVER_FONTS_MAIN_FONT);
+        final FontData[] defaultFontData = JFaceResources.getFontRegistry().getFontData(JFaceResources.DEFAULT_FONT);
+        return Arrays.equals(mainFontData, defaultFontData);
     }
 }

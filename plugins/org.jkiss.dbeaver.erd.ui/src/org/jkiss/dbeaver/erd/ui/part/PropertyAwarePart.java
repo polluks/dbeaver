@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,13 +16,13 @@
  */
 package org.jkiss.dbeaver.erd.ui.part;
 
-import org.eclipse.draw2dl.IFigure;
-import org.eclipse.draw2dl.geometry.Dimension;
-import org.eclipse.draw2dl.geometry.Rectangle;
-import org.eclipse.gef3.ConnectionEditPart;
-import org.eclipse.gef3.EditPart;
-import org.eclipse.gef3.GraphicalEditPart;
-import org.eclipse.gef3.editparts.AbstractGraphicalEditPart;
+import org.eclipse.draw2d.IFigure;
+import org.eclipse.draw2d.geometry.Dimension;
+import org.eclipse.draw2d.geometry.Rectangle;
+import org.eclipse.gef.ConnectionEditPart;
+import org.eclipse.gef.EditPart;
+import org.eclipse.gef.GraphicalEditPart;
+import org.eclipse.gef.editparts.AbstractGraphicalEditPart;
 import org.eclipse.ui.views.properties.IPropertySource;
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
@@ -191,6 +191,12 @@ public abstract class PropertyAwarePart extends AbstractGraphicalEditPart implem
             int modelIndex = getModelTargetConnections().indexOf(newValue);
             if (modelIndex >= 0) {
                 addTargetConnection(editPart, modelIndex);
+            } else {
+                for (Object child : getChildren()) {
+                    if (child instanceof PropertyAwarePart) {
+                        ((PropertyAwarePart) child).refreshTargetConnections();
+                    }
+                }
             }
 
         } else {
@@ -207,16 +213,19 @@ public abstract class PropertyAwarePart extends AbstractGraphicalEditPart implem
                 }
             }
 
-            List<PropertyAwarePart> childrenParts = getChildren();
-            for (PropertyAwarePart next : childrenParts) {
-                List<?> childrenConnections = next.getTargetConnections();
-                ConnectionEditPart childConnectionPartToRemove;
-                for (Object childrenConnection : childrenConnections) {
-                    ConnectionEditPart childConnectionPart = (ConnectionEditPart) childrenConnection;
-                    if (childConnectionPart.getModel() == oldValue) {
-                        childConnectionPartToRemove = childConnectionPart;
-                        next.removeTargetConnection(childConnectionPartToRemove);
-                        break;
+            List<?> childrenParts = getChildren();
+            for (Object next : childrenParts) {
+                if (next instanceof PropertyAwarePart) {
+                    PropertyAwarePart pap = (PropertyAwarePart)next;
+                    List<?> childrenConnections = pap.getTargetConnections();
+                    ConnectionEditPart childConnectionPartToRemove;
+                    for (Object childrenConnection : childrenConnections) {
+                        ConnectionEditPart childConnectionPart = (ConnectionEditPart) childrenConnection;
+                        if (childConnectionPart.getModel() == oldValue) {
+                            childConnectionPartToRemove = childConnectionPart;
+                            pap.removeTargetConnection(childConnectionPartToRemove);
+                            break;
+                        }
                     }
                 }
             }
@@ -253,8 +262,15 @@ public abstract class PropertyAwarePart extends AbstractGraphicalEditPart implem
             //add new connection
             ConnectionEditPart editPart = createOrFindConnection(newValue);
             int modelIndex = getModelSourceConnections().indexOf(newValue);
-            addSourceConnection(editPart, modelIndex);
-
+            if (modelIndex >= 0) {
+                addSourceConnection(editPart, modelIndex);
+            } else {
+                for (Object child : getChildren()) {
+                    if (child instanceof PropertyAwarePart) {
+                        ((PropertyAwarePart) child).refreshSourceConnections();
+                    }
+                }
+            }
         } else {
 
             //remove connection
@@ -268,16 +284,19 @@ public abstract class PropertyAwarePart extends AbstractGraphicalEditPart implem
                     break;
                 }
             }
-            List<PropertyAwarePart> childrenParts = getChildren();
-            for (PropertyAwarePart next : childrenParts) {
-                List<?> childrenConnections = next.getSourceConnections();
-                ConnectionEditPart childConnectionPartToRemove;
-                for (Object childrenConnection : childrenConnections) {
-                    ConnectionEditPart childConnectionPart = (ConnectionEditPart) childrenConnection;
-                    if (childConnectionPart.getModel() == oldValue) {
-                        childConnectionPartToRemove = childConnectionPart;
-                        next.removeSourceConnection(childConnectionPartToRemove);
-                        break;
+            List<?> childrenParts = getChildren();
+            for (Object next : childrenParts) {
+                if (next instanceof PropertyAwarePart) {
+                    PropertyAwarePart pap = (PropertyAwarePart)next;
+                    List<?> childrenConnections = pap.getSourceConnections();
+                    ConnectionEditPart childConnectionPartToRemove;
+                    for (Object childrenConnection : childrenConnections) {
+                        ConnectionEditPart childConnectionPart = (ConnectionEditPart) childrenConnection;
+                        if (childConnectionPart.getModel() == oldValue) {
+                            childConnectionPartToRemove = childConnectionPart;
+                            pap.removeSourceConnection(childConnectionPartToRemove);
+                            break;
+                        }
                     }
                 }
             }

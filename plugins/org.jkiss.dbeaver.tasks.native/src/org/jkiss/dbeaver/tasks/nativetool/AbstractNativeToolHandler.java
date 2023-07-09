@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -263,12 +263,13 @@ public abstract class AbstractNativeToolHandler<SETTINGS extends AbstractNativeT
                     isSuccess = false;
                 }
             }
-            DBPDataSourceContainer dataSourceContainer = settings.getDataSourceContainer();
+
             boolean refreshObjects = isSuccess && !monitor.isCanceled();
-            if (refreshObjects && needsModelRefresh()) {
+            var navigatorModel = task.getProject().getNavigatorModel();
+            if (navigatorModel != null && refreshObjects && needsModelRefresh()) {
                 // Refresh navigator node (script execution can change everything inside)
                 for (BASE_OBJECT object : settings.getDatabaseObjects()) {
-                    final DBNDatabaseNode node = dataSourceContainer.getPlatform().getNavigatorModel().findNode(object);
+                    final DBNDatabaseNode node = navigatorModel.findNode(object);
                     if (node != null) {
                         node.refreshNode(monitor, this);
                     }
@@ -489,10 +490,25 @@ public abstract class AbstractNativeToolHandler<SETTINGS extends AbstractNativeT
 
 
                 if (isLogInputStream) {
+                    Thread readInputThread = new Thread("Reading process input stream") {
+                        @Override
+                        public void run() {
+                            try {
+                                readStream(input.getInputStream());
+                            } catch (IOException e) {
+                                logWriter.println(e.getMessage() + lf);
+                            }
+                        }
+                    };
+                    readInputThread.start();
                     String errorMessage = readStream(input.getErrorStream());
-                    readStream(input.getInputStream());
                     if (!CommonUtils.isEmpty(errorMessage)) {
                         taskErrorMessage = errorMessage;
+                    }
+                    try {
+                        readInputThread.join();
+                    } catch (InterruptedException ignore) {
+                        // ignore
                     }
                 } else {
                     readStream(input.getErrorStream());

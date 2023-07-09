@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ import org.jkiss.dbeaver.model.sql.SQLQueryContainer;
 import org.jkiss.dbeaver.model.sql.SQLUtils;
 import org.jkiss.dbeaver.model.sql.parser.SQLIdentifierDetector;
 import org.jkiss.dbeaver.model.struct.DBSDataManipulator;
+import org.jkiss.dbeaver.tools.transfer.DTConstants;
 import org.jkiss.dbeaver.tools.transfer.DTUtils;
 import org.jkiss.dbeaver.tools.transfer.stream.IAppendableDataExporter;
 import org.jkiss.dbeaver.tools.transfer.stream.IStreamDataExporterSite;
@@ -55,6 +56,7 @@ public class DataExporterSQL extends StreamExporterAbstract implements IAppendab
     private static final String PROP_OMIT_SCHEMA = "omitSchema";
     private static final String PROP_ROWS_IN_STATEMENT = "rowsInStatement";
     private static final String PROP_DATA_FORMAT = "nativeFormat";
+    private static final String PROP_USER_TABLE_NAME = "userTableName";
     private static final char STRING_QUOTE = '\'';
     private static final String PROP_LINE_BEFORE_ROWS = "lineBeforeRows";
     private static final String PROP_KEYWORD_CASE = "keywordCase";
@@ -71,6 +73,7 @@ public class DataExporterSQL extends StreamExporterAbstract implements IAppendab
     private String tableName;
     private DBDAttributeBinding[] columns;
     private boolean oneLineEntry;
+    private String userTableName;
 
     private final String KEYWORD_INSERT_INTO = "INSERT INTO";
     private final String KEYWORD_VALUES = "VALUES";
@@ -140,6 +143,7 @@ public class DataExporterSQL extends StreamExporterAbstract implements IAppendab
         } catch (NumberFormatException e) {
             rowsInStatement = 10;
         }
+        userTableName = CommonUtils.toString(properties.get(PROP_USER_TABLE_NAME));
         useNativeDataFormat = CommonUtils.toBoolean(properties.get(PROP_DATA_FORMAT));
         lineBeforeRows = CommonUtils.toBoolean(properties.get(PROP_LINE_BEFORE_ROWS));
         rowDelimiter = GeneralUtils.getDefaultLineSeparator();
@@ -178,7 +182,7 @@ public class DataExporterSQL extends StreamExporterAbstract implements IAppendab
     }
 
     @Override
-    public void exportHeader(DBCSession session) throws DBException, IOException {
+    public void exportHeader(DBCSession session) {
         if (useNativeDataFormat) {
             if (session instanceof DBDFormatSettingsExt) {
                 ((DBDFormatSettingsExt) session).setUseNativeDateTimeFormat(true);
@@ -186,10 +190,19 @@ public class DataExporterSQL extends StreamExporterAbstract implements IAppendab
         }
         columns = getSite().getAttributes();
         DBPNamedObject source = getSite().getSource();
-        if (source instanceof SQLQueryContainer) {
+        if (CommonUtils.isNotEmpty(userTableName)) {
+            // We will use custom table name in this case. As is.
+            tableName = userTableName;
+        } else if (source instanceof SQLQueryContainer) {
             tableName = DTUtils.getTableNameFromQueryContainer(session.getDataSource(), (SQLQueryContainer) source);
+            if (CommonUtils.isEmpty(tableName)) {
+                tableName = DTUtils.getTargetContainersNameFromQuery((SQLQueryContainer) source);
+            }
         } else {
             tableName = DTUtils.getTableName(session.getDataSource(), source, omitSchema);
+        }
+        if (CommonUtils.isEmpty(tableName)) {
+            tableName = DTConstants.DEFAULT_TABLE_NAME_EXPORT;
         }
 
         rowCount = 0;
@@ -331,7 +344,7 @@ public class DataExporterSQL extends StreamExporterAbstract implements IAppendab
                 } catch (Exception e) {
                     log.warn(e);
                 } finally {
-                    content.release();
+                    DTUtils.closeContents(resultSet, content);
                 }
             } else if (value instanceof File) {
                 out.write("@");

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -62,6 +62,9 @@ public class AthenaDataSourceProvider extends GenericDataSourceProvider implemen
         //jdbc:awsathena://AwsRegion=us-east-1;
         String urlTemplate = driver.getSampleURL();
         String regionName = connectionInfo.getServerName();
+        if (regionName == null) {
+            regionName = connectionInfo.getProviderProperty(AthenaConstants.DRIVER_PROP_REGION);
+        }
         if (CommonUtils.isEmpty(urlTemplate) || !urlTemplate.startsWith(AthenaConstants.JDBC_URL_PREFIX)) {
             return AthenaConstants.JDBC_URL_PREFIX + AthenaConstants.DRIVER_PROP_REGION + "=" + regionName + ";";
         }

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,25 +26,25 @@ import java.util.Date;
 /**
  * TaskRunImpl
  */
-class TaskRunImpl implements DBTTaskRun {
-
-    static final String RUN_LOG_PREFIX = "run_";
-    static final String RUN_LOG_EXT = "log";
-
-    private String id;
-    private Date startTime;
-    private String startUser;
-    private String startedBy;
+public class TaskRunImpl implements DBTTaskRun {
+    private final String id;
+    private final Date startTime;
+    private final String startUser;
+    private final String startedBy;
     private long duration;
     private String errorMessage;
     private String errorStackTrace;
     private String extraMessage;
 
-    TaskRunImpl() {
-        this.id = "void";
-    }
-
-    TaskRunImpl(String id, Date startTime, String startUser, String startedBy, long duration, String errorMessage, String errorStackTrace) {
+    protected TaskRunImpl(
+        @NotNull String id,
+        @NotNull Date startTime,
+        @NotNull String startUser,
+        @NotNull String startedBy,
+        long duration,
+        @Nullable String errorMessage,
+        @Nullable String errorStackTrace
+    ) {
         this.id = id;
         this.startTime = startTime;
         this.startUser = startUser;

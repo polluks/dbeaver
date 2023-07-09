@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,17 +18,18 @@ package org.jkiss.dbeaver.ui.editors.sql.scripts;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IFolder;
-import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.jface.viewers.StructuredSelection;
 import org.eclipse.ui.IEditorInput;
+import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.ide.FileStoreEditorInput;
 import org.eclipse.ui.part.FileEditorInput;
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
+import org.jkiss.dbeaver.model.DBIcon;
 import org.jkiss.dbeaver.model.DBPDataSourceContainer;
 import org.jkiss.dbeaver.model.app.DBPResourceCreator;
 import org.jkiss.dbeaver.model.fs.nio.NIOFile;
@@ -36,7 +37,6 @@ import org.jkiss.dbeaver.model.fs.nio.NIOFileStore;
 import org.jkiss.dbeaver.model.navigator.DBNNode;
 import org.jkiss.dbeaver.model.navigator.DBNNodeWithResource;
 import org.jkiss.dbeaver.model.navigator.DBNResource;
-import org.jkiss.dbeaver.ui.UIIcon;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.editors.EditorUtils;
 import org.jkiss.dbeaver.ui.editors.sql.SQLEditor;
@@ -95,11 +95,11 @@ public class ScriptsHandlerImpl extends AbstractResourceHandler implements DBPRe
     public void updateNavigatorNodeFromResource(@NotNull DBNNodeWithResource node, @NotNull IResource resource) {
         super.updateNavigatorNodeFromResource(node, resource);
         if (resource instanceof IFolder) {
-            if (resource.getParent() instanceof IProject) {
-                node.setResourceImage(UIIcon.SCRIPTS);
+            if (node instanceof DBNResource && ((DBNResource)node).isRootResource(resource)) {
+                node.setResourceImage(DBIcon.TREE_SCRIPT_FOLDER);
             }
         } else {
-            node.setResourceImage(UIIcon.SQL_SCRIPT);
+            node.setResourceImage(DBIcon.TREE_SCRIPT);
         }
     }
 
@@ -113,7 +113,8 @@ public class ScriptsHandlerImpl extends AbstractResourceHandler implements DBPRe
             input = new FileEditorInput((IFile) resource);
         }
         if (input != null) {
-            UIUtils.getActiveWorkbenchWindow().getActivePage().openEditor(input, SQLEditor.class.getName());
+            int matchFlags = IWorkbenchPage.MATCH_INPUT | IWorkbenchPage.MATCH_IGNORE_SIZE;
+            UIUtils.getActiveWorkbenchWindow().getActivePage().openEditor(input, SQLEditor.class.getName(), true, matchFlags);
         } else {
             super.openResource(resource);
         }
@@ -129,17 +130,6 @@ public class ScriptsHandlerImpl extends AbstractResourceHandler implements DBPRe
         }
         return null;
     }
-
-    @NotNull
-    @Override
-    public String getResourceNodeName(@NotNull IResource resource) {
-//        if (resource.getParent() instanceof IProject && resource.equals(getDefaultRoot(resource.getProjectNode()))) {
-//            return "SQL Scripts";
-//        } else {
-            return super.getResourceNodeName(resource);
-//        }
-    }
-
 
     @Override
     public IResource createResource(IFolder folder) throws CoreException, DBException {

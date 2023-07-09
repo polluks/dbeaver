@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -55,7 +55,7 @@ public class GroupingDataContainer implements DBSDataContainer {
         if (ArrayUtils.isEmpty(attributes)) {
             return "Grouping";
         } else {
-            return "Grouping[" + String.join(",", attributes) + "]";
+            return "GROUP BY " + String.join(",", attributes);
         }
     }
 
@@ -71,7 +71,7 @@ public class GroupingDataContainer implements DBSDataContainer {
 
     @Override
     public String[] getSupportedFeatures() {
-        return new String[] {FEATURE_DATA_SELECT};
+        return new String[] {FEATURE_DATA_SELECT, FEATURE_DATA_FILTER};
     }
 
     @NotNull
@@ -87,9 +87,20 @@ public class GroupingDataContainer implements DBSDataContainer {
         DBRProgressMonitor monitor = session.getProgressMonitor();
 
         StringBuilder sqlQuery = new StringBuilder(this.query);
-        SQLUtils.appendQueryOrder(getDataSource(), sqlQuery, null, dataFilter);
+        DBPDataSource dataSource = getDataSource();
+        if (dataSource != null) {
+            SQLUtils.appendQueryOrder(dataSource, sqlQuery, null, dataFilter);
+        }
 
-        statistics.setQueryText(sqlQuery.toString());
+        String sql = sqlQuery.toString();
+        if (dataSource != null && dataFilter.hasConditions()) {
+            sqlQuery.setLength(0);
+            String gbAlias = "gbq_";
+            SQLUtils.appendQueryConditions(dataSource, sqlQuery, gbAlias, dataFilter);
+            sql = "SELECT * FROM (" + sql + ") " + gbAlias + " " + sqlQuery;
+        }
+
+        statistics.setQueryText(sql);
         statistics.addStatementsCount();
 
         monitor.subTask(ModelMessages.model_jdbc_fetch_table_data);
@@ -98,7 +109,7 @@ public class GroupingDataContainer implements DBSDataContainer {
             source,
             session,
             DBCStatementType.SCRIPT,
-            sqlQuery.toString(),
+            sql,
             firstRow,
             maxRows))
         {
@@ -157,5 +168,10 @@ public class GroupingDataContainer implements DBSDataContainer {
 
     public void setGroupingAttributes(@Nullable String[] attributes) {
         this.attributes = attributes;
+    }
+
+    @Override
+    public String toString() {
+        return getName();
     }
 }

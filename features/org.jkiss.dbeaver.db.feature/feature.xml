@@ -2,7 +2,7 @@
 <feature
       id="org.jkiss.dbeaver.db.feature"
       label="%featureName"
-      version="1.0.74.qualifier"
+      version="1.0.100.qualifier"
       provider-name="%providerName">
 
    <description>
@@ -91,6 +91,13 @@
 
    <plugin
          id="org.jkiss.dbeaver.ext.derby"
+         download-size="0"
+         install-size="0"
+         version="0.0.0"
+         unpack="false"/>
+
+   <plugin
+         id="org.jkiss.dbeaver.ext.duckdb"
          download-size="0"
          install-size="0"
          version="0.0.0"
@@ -188,6 +195,13 @@
          unpack="false"/>
 
    <plugin
+         id="org.jkiss.dbeaver.ext.tidb"
+         download-size="0"
+         install-size="0"
+         version="0.0.0"
+         unpack="false"/>
+
+   <plugin
          id="org.jkiss.dbeaver.ext.opendistro"
          download-size="0"
          install-size="0"
@@ -228,6 +242,13 @@
          install-size="0"
          version="0.0.0"
          unpack="false"/>
+
+   <plugin
+           id="org.jkiss.dbeaver.ext.trino"
+           download-size="0"
+           install-size="0"
+           version="0.0.0"
+           unpack="false"/>
 
    <plugin
          id="org.jkiss.dbeaver.ext.vertica"

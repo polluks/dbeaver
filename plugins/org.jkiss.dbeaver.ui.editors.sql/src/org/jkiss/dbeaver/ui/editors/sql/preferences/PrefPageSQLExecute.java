@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  * Copyright (C) 2011-2012 Eugene Fradkin (eugene.fradkin@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -60,6 +60,7 @@ public class PrefPageSQLExecute extends TargetPrefPage
     private Button fetchResultSetsCheck;
     private Button resetCursorCheck;
     private Button maxEditorCheck;
+    private Button showStatisticsForQueriesWithResultsCheck;
 
     private Text statementDelimiterText;
     private Button ignoreNativeDelimiter;
@@ -125,12 +126,42 @@ public class PrefPageSQLExecute extends TargetPrefPage
 
         // General settings
         {
-            Composite commonGroup = UIUtils.createControlGroup(composite, SQLEditorMessages.pref_page_sql_editor_group_common, 2, GridData.FILL_HORIZONTAL | GridData.VERTICAL_ALIGN_BEGINNING, 0);
+            Composite commonGroup = UIUtils.createControlGroup(
+                composite,
+                SQLEditorMessages.pref_page_sql_editor_group_common,
+                2,
+                GridData.FILL_HORIZONTAL | GridData.VERTICAL_ALIGN_BEGINNING,
+                0
+            );
             {
-                invalidateBeforeExecuteCheck = UIUtils.createCheckbox(commonGroup, SQLEditorMessages.pref_page_sql_editor_label_invalidate_before_execute, null, false, 2);
-                soundOnQueryEnd = UIUtils.createCheckbox(commonGroup, SQLEditorMessages.pref_page_sql_editor_label_sound_on_query_end, null, false, 2);
-                updateDefaultAfterExecute = UIUtils.createCheckbox(commonGroup, SQLEditorMessages.pref_page_sql_editor_label_refresh_defaults_after_execute, SQLEditorMessages.pref_page_sql_editor_label_refresh_defaults_after_execute_tip, false, 2);
-                clearOutputBeforeExecute = UIUtils.createCheckbox(commonGroup, SQLEditorMessages.pref_page_sql_editor_label_clear_output_before_execute, SQLEditorMessages.pref_page_sql_editor_label_clear_output_before_execute_tip, false, 2);
+                invalidateBeforeExecuteCheck = UIUtils.createCheckbox(
+                    commonGroup,
+                    SQLEditorMessages.pref_page_sql_editor_label_invalidate_before_execute,
+                    null,
+                    false,
+                    2
+                );
+                soundOnQueryEnd = UIUtils.createCheckbox(
+                    commonGroup,
+                    SQLEditorMessages.pref_page_sql_editor_label_sound_on_query_end,
+                    null,
+                    false,
+                    2
+                );
+                updateDefaultAfterExecute = UIUtils.createCheckbox(
+                    commonGroup,
+                    SQLEditorMessages.pref_page_sql_editor_label_refresh_defaults_after_execute,
+                    SQLEditorMessages.pref_page_sql_editor_label_refresh_defaults_after_execute_tip,
+                    false,
+                    2
+                );
+                clearOutputBeforeExecute = UIUtils.createCheckbox(
+                    commonGroup,
+                    SQLEditorMessages.pref_page_sql_editor_label_clear_output_before_execute,
+                    SQLEditorMessages.pref_page_sql_editor_label_clear_output_before_execute_tip,
+                    false,
+                    2
+                );
 
                 UIUtils.createControlLabel(commonGroup, SQLEditorMessages.pref_page_sql_editor_label_sql_timeout + UIMessages.label_sec);
                 executeTimeoutText = new Spinner(commonGroup, SWT.BORDER);
@@ -179,6 +210,13 @@ public class PrefPageSQLExecute extends TargetPrefPage
             fetchResultSetsCheck = UIUtils.createCheckbox(scriptsGroup, SQLEditorMessages.pref_page_sql_editor_checkbox_fetch_resultsets, null, false, 2);
             resetCursorCheck = UIUtils.createCheckbox(scriptsGroup, SQLEditorMessages.pref_page_sql_editor_checkbox_reset_cursor, null, false, 2);
             maxEditorCheck = UIUtils.createCheckbox(scriptsGroup, SQLEditorMessages.pref_page_sql_editor_checkbox_max_editor_on_script_exec, null, false, 2);
+            showStatisticsForQueriesWithResultsCheck = UIUtils.createCheckbox(
+                scriptsGroup,
+                SQLEditorMessages.pref_page_sql_editor_checkbox_show_statistics_for_queries_with_results,
+                SQLEditorMessages.pref_page_sql_editor_checkbox_show_statistics_for_queries_with_results_tip,
+                false,
+                2
+            );
         }
         // Parameters
         {
@@ -190,7 +228,6 @@ public class PrefPageSQLExecute extends TargetPrefPage
             namedParameterPrefixText = UIUtils.createLabelText(paramsGroup, SQLEditorMessages.pref_page_sql_editor_text_named_parameter_prefix, "", SWT.BORDER, new GridData(32, SWT.DEFAULT));
             namedParameterPrefixText.setTextLimit(1);
             controlCommandPrefixText = UIUtils.createLabelText(paramsGroup, SQLEditorMessages.pref_page_sql_editor_text_control_command_prefix, "", SWT.BORDER, new GridData(32, SWT.DEFAULT));
-            controlCommandPrefixText.setTextLimit(1);
             enableParametersInEmbeddedCode = UIUtils.createCheckbox(paramsGroup, SQLEditorMessages.pref_page_sql_editor_enable_parameters_in_ddl, SQLEditorMessages.pref_page_sql_editor_enable_parameters_in_ddl_tip, false, 2);
             enableVariables = UIUtils.createCheckbox(paramsGroup, SQLEditorMessages.pref_page_sql_editor_enable_variables, SQLEditorMessages.pref_page_sql_editor_enable_variables_tip, false, 2);
 
@@ -243,6 +280,9 @@ public class PrefPageSQLExecute extends TargetPrefPage
             fetchResultSetsCheck.setSelection(store.getBoolean(SQLPreferenceConstants.SCRIPT_FETCH_RESULT_SETS));
             resetCursorCheck.setSelection(store.getBoolean(SQLPreferenceConstants.RESET_CURSOR_ON_EXECUTE));
             maxEditorCheck.setSelection(store.getBoolean(SQLPreferenceConstants.MAXIMIZE_EDITOR_ON_SCRIPT_EXECUTE));
+            showStatisticsForQueriesWithResultsCheck.setSelection(
+                store.getBoolean(SQLPreferenceConstants.SHOW_STATISTICS_FOR_QUERIES_WITH_RESULTS)
+            );
 
             statementDelimiterText.setText(store.getString(ModelPreferences.SCRIPT_STATEMENT_DELIMITER));
             ignoreNativeDelimiter.setSelection(store.getBoolean(ModelPreferences.SCRIPT_IGNORE_NATIVE_DELIMITER));
@@ -277,6 +317,10 @@ public class PrefPageSQLExecute extends TargetPrefPage
             store.setValue(SQLPreferenceConstants.SCRIPT_FETCH_RESULT_SETS, fetchResultSetsCheck.getSelection());
             store.setValue(SQLPreferenceConstants.RESET_CURSOR_ON_EXECUTE, resetCursorCheck.getSelection());
             store.setValue(SQLPreferenceConstants.MAXIMIZE_EDITOR_ON_SCRIPT_EXECUTE, maxEditorCheck.getSelection());
+            store.setValue(
+                SQLPreferenceConstants.SHOW_STATISTICS_FOR_QUERIES_WITH_RESULTS,
+                showStatisticsForQueriesWithResultsCheck.getSelection()
+            );
 
             store.setValue(ModelPreferences.SCRIPT_STATEMENT_DELIMITER, statementDelimiterText.getText());
             store.setValue(ModelPreferences.SCRIPT_IGNORE_NATIVE_DELIMITER, ignoreNativeDelimiter.getSelection());

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,9 +27,9 @@ import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.DBPDataSourceContainer;
+import org.jkiss.dbeaver.model.DBPDataSourceContainerProvider;
 import org.jkiss.dbeaver.model.DBPImage;
 import org.jkiss.dbeaver.model.DBPObject;
-import org.jkiss.dbeaver.model.IDataSourceContainerProvider;
 import org.jkiss.dbeaver.model.edit.DBECommandContext;
 import org.jkiss.dbeaver.model.edit.DBEObjectEditor;
 import org.jkiss.dbeaver.model.navigator.*;
@@ -37,6 +37,7 @@ import org.jkiss.dbeaver.model.navigator.meta.DBXTreeFolder;
 import org.jkiss.dbeaver.model.navigator.meta.DBXTreeNode;
 import org.jkiss.dbeaver.model.navigator.meta.DBXTreeNodeHandler;
 import org.jkiss.dbeaver.model.preferences.DBPPropertyDescriptor;
+import org.jkiss.dbeaver.model.rm.RMConstants;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.VoidProgressMonitor;
 import org.jkiss.dbeaver.model.struct.DBSObject;
@@ -65,7 +66,7 @@ import java.util.List;
 /**
  * NodeListControl
  */
-public abstract class NodeListControl extends ObjectListControl<DBNNode> implements IDataSourceContainerProvider, INavigatorModelView, INavigatorListener {
+public abstract class NodeListControl extends ObjectListControl<DBNNode> implements DBPDataSourceContainerProvider, INavigatorModelView, INavigatorListener {
     private static final Log log = Log.getLog(NodeListControl.class);
 
     private final IWorkbenchSite workbenchSite;
@@ -274,7 +275,12 @@ public abstract class NodeListControl extends ObjectListControl<DBNNode> impleme
     @Override
     protected Object getObjectValue(DBNNode item)
     {
-        return item instanceof DBSWrapper ? ((DBSWrapper)item).getObject() : item;
+        if (item instanceof DBSWrapper) {
+            return ((DBSWrapper)item).getObject();
+        } else if (item instanceof DBNObjectNode) {
+            return ((DBNObjectNode) item).getNodeObject();
+        }
+        return item;
     }
 
     @Override
@@ -344,7 +350,7 @@ public abstract class NodeListControl extends ObjectListControl<DBNNode> impleme
 
     private class NodeRenderer extends ViewerRenderer {
         @Override
-        public boolean isHyperlink(Object cellValue)
+        public boolean isHyperlink(Object element, Object cellValue)
         {
             Object ownerObject = null;
             if (rootNode instanceof DBNDatabaseNode) {
@@ -398,7 +404,8 @@ public abstract class NodeListControl extends ObjectListControl<DBNNode> impleme
                 return false;
             }
             DBEObjectEditor objectEditor = DBWorkbench.getPlatform().getEditorsRegistry().getObjectManager(curClass, DBEObjectEditor.class);
-            return objectEditor != null && editableValue instanceof DBPObject && objectEditor.canEditObject((DBPObject) editableValue);
+            return objectEditor != null && editableValue instanceof DBPObject && objectEditor.canEditObject((DBPObject) editableValue)
+                && DBWorkbench.getPlatform().getWorkspace().hasRealmPermission(RMConstants.PERMISSION_METADATA_EDITOR);
         }
 
         @Override

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -66,6 +66,7 @@ public class VerticalButton extends Canvas {
         super(parent, style | SWT.NO_FOCUS);
 
         setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_CENTER));
+        setFont(parent.getFont());
         parent.addItem(this);
 
         this.addPaintListener(this::paint);
@@ -242,28 +243,30 @@ public class VerticalButton extends Canvas {
         int xOffset = 0;
         int yOffset = BORDER_MARGIN;
 
+        Transform transform = null;
+
         String text = getText();
         if (!CommonUtils.isEmpty(text)) {
             // Offset shift. Windows only? (14048)
             boolean shiftOffset = IS_TRANSFORM_BUG_PRESENT && RuntimeUtils.isWindows() && (DPIUtil.getDeviceZoom() >= 200);
 
-            Transform tr = new Transform(e.display);
+            transform = new Transform(e.display);
 
             e.gc.setAntialias(SWT.ON);
             if ((getStyle() & SWT.RIGHT) == SWT.RIGHT) {
-                tr.translate(size.x, 0);
-                tr.rotate(90);
+                transform.translate(size.x, 0);
+                transform.rotate(90);
                 if (shiftOffset) {
                     yOffset -= size.x / 2;
                 }
             } else {
-                tr.translate(0, size.y);
-                tr.rotate(-90);
+                transform.translate(0, size.y);
+                transform.rotate(-90);
                 if (shiftOffset) {
                     xOffset -= size.y / 2;
                 }
             }
-            e.gc.setTransform(tr);
+            e.gc.setTransform(transform);
 
             xOffset += VERT_INDENT;
         }
@@ -284,6 +287,10 @@ public class VerticalButton extends Canvas {
         if (!CommonUtils.isEmpty(text)) {
             e.gc.setForeground(UIStyles.getDefaultTextForeground());
             e.gc.drawString(this.text, xOffset, yOffset);
+        }
+
+        if (transform != null) {
+            transform.dispose();
         }
     }
 

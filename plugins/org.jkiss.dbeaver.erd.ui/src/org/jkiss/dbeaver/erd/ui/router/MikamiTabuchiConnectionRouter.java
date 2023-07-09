@@ -1,6 +1,6 @@
     /*
      * DBeaver - Universal Database Manager
-     * Copyright (C) 2010-2022 DBeaver Corp and others
+     * Copyright (C) 2010-2023 DBeaver Corp and others
      *
      * Licensed under the Apache License, Version 2.0 (the "License");
      * you may not use this file except in compliance with the License.
@@ -17,12 +17,12 @@
     package org.jkiss.dbeaver.erd.ui.router;
 
 
-    import org.eclipse.draw2dl.*;
-    import org.eclipse.draw2dl.LayoutListener.Stub;
-    import org.eclipse.draw2dl.geometry.Point;
-    import org.eclipse.draw2dl.geometry.PointList;
-    import org.eclipse.draw2dl.geometry.PrecisionPoint;
-    import org.eclipse.draw2dl.geometry.Rectangle;
+    import org.eclipse.draw2d.*;
+    import org.eclipse.draw2d.LayoutListener.Stub;
+    import org.eclipse.draw2d.geometry.Point;
+    import org.eclipse.draw2d.geometry.PointList;
+    import org.eclipse.draw2d.geometry.PrecisionPoint;
+    import org.eclipse.draw2d.geometry.Rectangle;
     import org.jkiss.dbeaver.ui.UIUtils;
     import org.jkiss.utils.CommonUtils;
 

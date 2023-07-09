@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 
 import java.util.Collections;
 import java.util.List;
@@ -79,15 +79,14 @@ public class PostgreTableBaseTest {
 
         PostgreRole testUser = new PostgreRole(null, "tester", "test", true);
         testDatabase = testDataSource.createDatabaseImpl(monitor, "testdb", testUser, null, null, null);
-        testSchema = new PostgreSchema(testDatabase, "testSchema", testUser);
+        testSchema = new PostgreSchema(testDatabase, "test_schema", testUser);
 
-        Mockito.when(mockDataSourceContainer.getPlatform()).thenReturn(DBWorkbench.getPlatform());
         Mockito.when(mockDataSourceContainer.getPreferenceStore()).thenReturn(DBWorkbench.getPlatform().getPreferenceStore());
 
-        Mockito.when(mockResults.getString("relname")).thenReturn("sampleTable");
-        long sampleId = 111111;
-        Mockito.when(mockResults.getLong("oid")).thenReturn(sampleId);
-        Mockito.when(mockResults.getLong("relowner")).thenReturn(sampleId);
+//        Mockito.when(mockResults.getString("relname")).thenReturn("sampleTable");
+//        long sampleId = 111111;
+//        Mockito.when(mockResults.getLong("oid")).thenReturn(sampleId);
+//        Mockito.when(mockResults.getLong("relowner")).thenReturn(sampleId);
 
         postgreExecutionContext = new PostgreExecutionContext(testDatabase, "Test");
 
@@ -98,7 +97,7 @@ public class PostgreTableBaseTest {
                 return false;
             }
         };
-        testTableRegular.setName("testTableRegular");
+        testTableRegular.setName("test_table_regular");
         testTableRegular.setPartition(false);
         PostgreTestUtils.addColumn(testTableRegular, "column1", "int4", 1);
 
@@ -117,12 +116,12 @@ public class PostgreTableBaseTest {
                 return false;
             }
         };
-        tableRegular.setName("testTable");
+        tableRegular.setName("test_table");
         tableRegular.setPartition(false);
         PostgreTestUtils.addColumn(tableRegular, "column1", "int4", 1);
 
         String expectedDDL =
-                "CREATE TABLE testSchema.testTable (" + lineBreak +
+                "CREATE TABLE test_schema.test_table (" + lineBreak +
                 "\tcolumn1 int4 NULL" + lineBreak +
                 ");" + lineBreak;
 
@@ -138,13 +137,13 @@ public class PostgreTableBaseTest {
                 return false;
             }
         };
-        tableRegular.setName("testTable");
+        tableRegular.setName("test_table");
         tableRegular.setPartition(false);
         PostgreTestUtils.addColumn(tableRegular, "column1", "int4", 1);
         PostgreTestUtils.addColumn(tableRegular, "column2", "varchar", 2);
 
         String expectedDDL =
-                "CREATE TABLE testSchema.testTable (" + lineBreak +
+                "CREATE TABLE test_schema.test_table (" + lineBreak +
                 "\tcolumn1 int4 NULL," + lineBreak +
                 "\tcolumn2 varchar NULL" + lineBreak +
                 ");" + lineBreak;
@@ -167,7 +166,7 @@ public class PostgreTableBaseTest {
 
         String script = SQLUtils.generateScript(testDataSource, actions.toArray(new DBEPersistAction[0]), false);
 
-        String expectedDDL = "COMMENT ON TABLE testSchema.testTableRegular IS 'Test comment';" + lineBreak;
+        String expectedDDL = "COMMENT ON TABLE test_schema.test_table_regular IS 'Test comment';" + lineBreak;
         Assert.assertEquals(expectedDDL, script);
     }
 
@@ -186,7 +185,7 @@ public class PostgreTableBaseTest {
 
         String script = SQLUtils.generateScript(testDataSource, actions.toArray(new DBEPersistAction[0]), false);
 
-        String expectedDDL = "COMMENT ON FOREIGN TABLE testSchema.testForeignTable IS 'Test comment';" + lineBreak;
+        String expectedDDL = "COMMENT ON FOREIGN TABLE test_schema.\"testForeignTable\" IS 'Test comment';" + lineBreak;
         Assert.assertEquals(expectedDDL, script);
     }
 
@@ -202,7 +201,7 @@ public class PostgreTableBaseTest {
 
         String script = SQLUtils.generateScript(testDataSource, actions.toArray(new DBEPersistAction[0]), false);
 
-        String expectedDDL = "COMMENT ON VIEW testSchema.testView IS 'Test comment';" + lineBreak;
+        String expectedDDL = "COMMENT ON VIEW test_schema.\"testView\" IS 'Test comment';" + lineBreak;
         Assert.assertEquals(expectedDDL, script);
     }
 
@@ -221,7 +220,7 @@ public class PostgreTableBaseTest {
 
         String script = SQLUtils.generateScript(testDataSource, actions.toArray(new DBEPersistAction[0]), false);
 
-        String expectedDDL = "COMMENT ON MATERIALIZED VIEW testSchema.testMView IS 'Test comment';" + lineBreak;
+        String expectedDDL = "COMMENT ON MATERIALIZED VIEW test_schema.\"testMView\" IS 'Test comment';" + lineBreak;
         Assert.assertEquals(expectedDDL, script);
     }
 
@@ -229,7 +228,7 @@ public class PostgreTableBaseTest {
 
     @Test
     public void generateChangeOwnerQuery_whenProvidedView_thenShouldGenerateQuerySuccessfully() {
-        Assert.assertEquals("ALTER TABLE " + testSchema.getName() + "." + testView.getName() + " OWNER TO someOwner",
+        Assert.assertEquals("ALTER TABLE " + testSchema.getName() + ".\"" + testView.getName() + "\" OWNER TO someOwner",
             testView.generateChangeOwnerQuery("someOwner"));
     }
 

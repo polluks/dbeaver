@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,9 @@
 package org.jkiss.dbeaver.registry;
 
 import org.eclipse.core.runtime.IConfigurationElement;
+import org.eclipse.core.runtime.IContributor;
 import org.jkiss.code.NotNull;
+import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.DBIcon;
 import org.jkiss.dbeaver.model.DBPDataSourceProvider;
@@ -26,6 +28,7 @@ import org.jkiss.dbeaver.model.DBPImage;
 import org.jkiss.dbeaver.model.connection.DBPDataSourceProviderDescriptor;
 import org.jkiss.dbeaver.model.impl.AbstractDescriptor;
 import org.jkiss.dbeaver.model.impl.PropertyDescriptor;
+import org.jkiss.dbeaver.model.impl.ProviderPropertyDescriptor;
 import org.jkiss.dbeaver.model.impl.sql.BasicSQLDialect;
 import org.jkiss.dbeaver.model.navigator.meta.*;
 import org.jkiss.dbeaver.model.preferences.DBPPropertyDescriptor;
@@ -58,7 +61,7 @@ public class DataSourceProviderDescriptor extends AbstractDescriptor implements 
     private DataSourceProviderRegistry registry;
     private DataSourceProviderDescriptor parentProvider;
     private final String id;
-    private final ObjectType implType;
+    private ObjectType implType;
     private final String name;
     private final String description;
     private final boolean temporary;
@@ -70,6 +73,7 @@ public class DataSourceProviderDescriptor extends AbstractDescriptor implements 
     private final List<DBPPropertyDescriptor> driverProperties = new ArrayList<>();
     private final List<DriverDescriptor> drivers = new ArrayList<>();
     private final List<NativeClientDescriptor> nativeClients = new ArrayList<>();
+    private final List<DBPDataSourceProviderDescriptor> childrenProviders = new ArrayList<>();
     @NotNull
     private SQLDialectMetadata scriptDialect;
     private boolean inheritClients;
@@ -111,6 +115,8 @@ public class DataSourceProviderDescriptor extends AbstractDescriptor implements 
             this.parentProvider = registry.getDataSourceProvider(parentId);
             if (this.parentProvider == null) {
                 log.error("Provider '" + parentId + "' not found");
+            } else {
+                this.parentProvider.addChildrenProvider(this);
             }
         }
     }
@@ -161,9 +167,9 @@ public class DataSourceProviderDescriptor extends AbstractDescriptor implements 
                 {
                     for (IConfigurationElement propsElement : driversElement.getChildren(RegistryConstants.TAG_PROVIDER_PROPERTIES)) {
                         String driversSpec = propsElement.getAttribute("drivers");
-                        List<DBPPropertyDescriptor> providerProperties = new ArrayList<>();
+                        List<ProviderPropertyDescriptor> providerProperties = new ArrayList<>();
                         for (IConfigurationElement prop : propsElement.getChildren(PropertyDescriptor.TAG_PROPERTY_GROUP)) {
-                            providerProperties.addAll(PropertyDescriptor.extractProperties(prop));
+                            providerProperties.addAll(ProviderPropertyDescriptor.extractProviderProperties(prop));
                         }
                         List<DriverDescriptor> appDrivers;
                         if (CommonUtils.isEmpty(driversSpec) || driversSpec.equals("*")) {
@@ -260,8 +266,7 @@ public class DataSourceProviderDescriptor extends AbstractDescriptor implements 
     }
 
     @NotNull
-    public DBPDataSourceProvider getInstance(DriverDescriptor driver)
-    {
+    public DBPDataSourceProvider getInstance(DriverDescriptor driver) {
         if (instance == null) {
             initProviderBundle(driver);
             try {
@@ -276,6 +281,11 @@ public class DataSourceProviderDescriptor extends AbstractDescriptor implements 
             }
         }
         return instance;
+    }
+
+    void replaceImplClass(IContributor contributor, String providerClass) {
+        this.replaceContributor(contributor);
+        this.implType = new ObjectType(providerClass);
     }
 
     @Override
@@ -334,8 +344,15 @@ public class DataSourceProviderDescriptor extends AbstractDescriptor implements 
         return eDrivers;
     }
 
-    public DriverDescriptor getDriver(String id)
-    {
+    /**
+     * Retrieves an original or, if another one replaced it, substituted driver by the given {@code id}.
+     *
+     * @param id identifier of the driver to retrieve
+     * @return driver or {@code null} if no driver was found
+     */
+    @Nullable
+    @Override
+    public DriverDescriptor getDriver(@NotNull String id) {
         for (DriverDescriptor driver : drivers) {
             if (driver.getId().equals(id)) {
                 while (driver.getReplacedBy() != null) {
@@ -344,6 +361,23 @@ public class DataSourceProviderDescriptor extends AbstractDescriptor implements 
                 return driver;
             }
         }
+        return null;
+    }
+
+    /**
+     * Retrieves a driver by the given {@code id}.
+     *
+     * @param id identifier of the driver to retrieve
+     * @return driver or {@code null} if no driver was found
+     */
+    @Nullable
+    public DriverDescriptor getOriginalDriver(@NotNull String id) {
+        for (DriverDescriptor driver : drivers) {
+            if (driver.getId().equals(id)) {
+                return driver;
+            }
+        }
+
         return null;
     }
 
@@ -376,6 +410,16 @@ public class DataSourceProviderDescriptor extends AbstractDescriptor implements 
         } else {
             return this.drivers.remove(driver);
         }
+    }
+
+    @NotNull
+    @Override
+    public List<DBPDataSourceProviderDescriptor> getChildrenProviders() {
+        return childrenProviders;
+    }
+
+    private void addChildrenProvider(@NotNull DataSourceProviderDescriptor descriptor) {
+        childrenProviders.add(descriptor);
     }
 
     //////////////////////////////////////

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,10 +16,10 @@
  */
 package org.jkiss.dbeaver.parser.common.grammar.nfa;
 
+import org.jkiss.dbeaver.parser.common.grammar.GrammarRule;
+
 import java.util.ArrayList;
 import java.util.List;
-
-import org.jkiss.dbeaver.parser.common.grammar.GrammarRule;
 
 /**
  * Non-deterministic finite automaton representing a complete graph of the grammar
@@ -34,8 +34,7 @@ public class GrammarNfa {
         return state;
     }
 
-    public GrammarNfaTransition createTransition(GrammarNfaState from, GrammarNfaState to,
-            GrammarNfaOperation operation) {
+    public GrammarNfaTransition createTransition(GrammarNfaState from, GrammarNfaState to, GrammarNfaOperation operation) {
         GrammarNfaTransition transition = new GrammarNfaTransition(from, to, operation);
         this.transitions.add(transition);
         from.getNext().add(transition);
@@ -53,5 +52,11 @@ public class GrammarNfa {
     public void removeTransition(GrammarNfaTransition n) {
         this.transitions.remove(n);
         n.getFrom().remove(n);
+    }
+
+    public void compact() {
+        for (GrammarNfaState s : this.states) {
+            s.compact();
+        }
     }
 }

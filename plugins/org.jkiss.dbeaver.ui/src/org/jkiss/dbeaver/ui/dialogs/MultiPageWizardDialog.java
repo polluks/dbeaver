@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,6 +38,7 @@ import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.*;
 import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.IWorkbenchWizard;
+import org.jkiss.code.NotNull;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.ui.*;
 import org.jkiss.dbeaver.ui.preferences.PreferenceStoreDelegate;
@@ -89,7 +90,9 @@ public class MultiPageWizardDialog extends TitleAreaDialog implements IWizardCon
     }
 
     protected Point getInitialSize() {
-        return new Point(700, 500);
+        Point minSize = new Point(700, 500);
+        Point suggestedSize = super.getInitialSize();
+        return new Point(Math.max(minSize.x, suggestedSize.x), Math.max(minSize.y, suggestedSize.y));
     }
 
     public IWizard getWizard() {
@@ -124,7 +127,7 @@ public class MultiPageWizardDialog extends TitleAreaDialog implements IWizardCon
         if (isModalWizard() || UIUtils.isInDialog()) {
             return SWT.TITLE | SWT.MAX | SWT.RESIZE | SWT.APPLICATION_MODAL;
         }
-        return SWT.CLOSE | SWT.MAX | SWT.MIN | SWT.TITLE | SWT.BORDER | SWT.RESIZE | getDefaultOrientation();
+        return SWT.CLOSE | SWT.MAX | SWT.TITLE | SWT.BORDER | SWT.RESIZE | getDefaultOrientation();
     }
 
     protected boolean isModalWizard() {
@@ -134,16 +137,19 @@ public class MultiPageWizardDialog extends TitleAreaDialog implements IWizardCon
     @Override
     protected Control createContents(Composite parent) {
         Control contents = super.createContents(parent);
+        applyDialogFont(contents);
 
-        // Select first page
-        pagesTree.select(pagesTree.getItem(0));
-        changePage();
+        // Show the first page first - it may initialize state required later
+        showPage((IWizardPage) pagesTree.getItem(0).getData());
 
         // Set title and image from first page
-        IDialogPage firstPage = (IDialogPage) pagesTree.getItem(0).getData();
+        IWizardPage firstPage = getStartingPage();
         setTitle(firstPage.getTitle());
         setTitleImage(firstPage.getImage());
         setMessage(firstPage.getDescription());
+
+        // Afterwards show the starting page
+        showPage(firstPage);
 
         updateButtons();
 
@@ -277,6 +283,8 @@ public class MultiPageWizardDialog extends TitleAreaDialog implements IWizardCon
                 // Create page contents
                 page.createControl(pageArea);
                 pageControl = page.getControl();
+                applyDialogFont(pageControl);
+
                 if (pageControl != null) {
                     //Point pageSize = pageControl.computeSize(SWT.DEFAULT, SWT.DEFAULT);
                     //if (pageSize.x > maxSize.x) maxSize.x = pageSize.x;
@@ -301,6 +309,7 @@ public class MultiPageWizardDialog extends TitleAreaDialog implements IWizardCon
 
             prevPage = page;
             pageArea.layout();
+            prevPage.getControl().setFocus();
             if (pageCreated && isAutoLayoutAvailable()) {
                 UIUtils.asyncExec(() -> {
                     if (wizard.getContainer().getShell() != null) {
@@ -381,6 +390,15 @@ public class MultiPageWizardDialog extends TitleAreaDialog implements IWizardCon
                 changePage();
                 return;
             }
+            for (TreeItem child : item.getItems()) {
+                if (child.getData() == page) {
+                    pagesTree.setSelection(child);
+                    changePage();
+                    return;
+                }
+            }
+        }
+        for (TreeItem item : pagesTree.getItems()) {
             if (item.getData() instanceof ICompositeDialogPageContainer) {
                 IDialogPage[] subPages = ((ICompositeDialogPageContainer) item.getData()).getDialogPages(false, false);
                 if (!ArrayUtils.isEmpty(subPages)) {
@@ -394,13 +412,7 @@ public class MultiPageWizardDialog extends TitleAreaDialog implements IWizardCon
                     }
                 }
             }
-            for (TreeItem child : item.getItems()) {
-                if (child.getData() == page) {
-                    pagesTree.setSelection(child);
-                    changePage();
-                    return;
-                }
-            }
+
         }
     }
 
@@ -618,6 +630,11 @@ public class MultiPageWizardDialog extends TitleAreaDialog implements IWizardCon
     @Override
     public Object getSelectedPage() {
         return getCurrentPage();
+    }
+
+    @NotNull
+    protected IWizardPage getStartingPage() {
+        return (IWizardPage) pagesTree.getItem(0).getData();
     }
 
     protected void finishPressed() {

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,6 +38,8 @@ import org.jkiss.dbeaver.model.navigator.DBNDatabaseNode;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.struct.DBSDataContainer;
 import org.jkiss.dbeaver.model.struct.DBSObject;
+import org.jkiss.dbeaver.runtime.DBWorkbench;
+import org.jkiss.dbeaver.ui.DataEditorFeatures;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.controls.resultset.*;
 import org.jkiss.dbeaver.ui.editors.AbstractDatabaseObjectEditor;
@@ -46,6 +48,7 @@ import org.jkiss.dbeaver.ui.navigator.actions.NavigatorHandlerObjectOpen;
 import org.jkiss.dbeaver.utils.RuntimeUtils;
 
 import java.util.Collections;
+import java.util.Map;
 
 /**
  * AbstractDataEditor
@@ -77,6 +80,10 @@ public abstract class AbstractDataEditor<OBJECT_TYPE extends DBSObject> extends 
 
         if (!loaded && !isSuspendDataQuery()) {
             if (isReadyToRun()) {
+                DataEditorFeatures.DATA_EDIT_OPEN.use(
+                    Map.of("objectType", getDatabaseObject().getClass().getSimpleName())
+                );
+
                 resultSetView.setStatus(getDataQueryMessage());
                 refreshWithFilters();
                 loaded = true;
@@ -152,7 +159,7 @@ public abstract class AbstractDataEditor<OBJECT_TYPE extends DBSObject> extends 
             return;
         }
 
-        final DBNDatabaseNode targetNode = executionContext.getDataSource().getContainer().getPlatform().getNavigatorModel().getNodeByObject(monitor, dataContainer, false);
+        final DBNDatabaseNode targetNode = DBWorkbench.getPlatform().getNavigatorModel().getNodeByObject(monitor, dataContainer, false);
         if (targetNode == null) {
             UIUtils.showMessageBox(null, "Open link", "Can't navigate to '" + DBUtils.getObjectFullName(dataContainer, DBPEvaluationContext.UI) + "' - navigator node not found", SWT.ICON_ERROR);
             return;

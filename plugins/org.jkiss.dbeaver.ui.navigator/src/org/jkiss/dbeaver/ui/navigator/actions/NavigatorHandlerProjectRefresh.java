@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ import org.eclipse.core.commands.ExecutionException;
 import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.handlers.HandlerUtil;
 import org.jkiss.dbeaver.model.DBPMessageType;
-import org.jkiss.dbeaver.model.app.DBPPlatformEclipse;
+import org.jkiss.dbeaver.model.app.DBPPlatformDesktop;
 import org.jkiss.dbeaver.model.runtime.DefaultProgressMonitor;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.runtime.DBeaverNotifications;
@@ -36,7 +36,7 @@ public class NavigatorHandlerProjectRefresh extends NavigatorHandlerObjectBase {
         try {
             workbenchWindow.run(true, true, monitor -> {
                 try {
-                    DBPPlatformEclipse.getInstance().getWorkspace().refreshWorkspaceContents(new DefaultProgressMonitor(monitor));
+                    DBPPlatformDesktop.getInstance().getWorkspace().refreshWorkspaceContents(new DefaultProgressMonitor(monitor));
                 } catch (Exception e) {
                     throw new InvocationTargetException(e);
                 }

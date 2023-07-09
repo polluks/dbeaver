@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2022 DBeaver Corp and others
+ * Copyright (C) 2010-2023 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,8 +18,7 @@ package org.jkiss.dbeaver.ui.editors.sql;
 
 import org.jkiss.dbeaver.ui.editors.sql.internal.SQLEditorMessages;
 
-public class SQLPreferenceConstants
-{
+public class SQLPreferenceConstants {
 
     public enum EmptyScriptCloseBehavior {
         NOTHING(SQLEditorMessages.script_close_behavior_do_not_delete),
@@ -63,9 +62,11 @@ public class SQLPreferenceConstants
     public static final String INSERT_SINGLE_PROPOSALS_AUTO            = "SQLEditor.ContentAssistant.insert.single.proposal";
     public static final String ENABLE_HIPPIE                           = "SQLEditor.ContentAssistant.activate.hippie";
     public static final String ENABLE_AUTO_ACTIVATION                  = "SQLEditor.ContentAssistant.auto.activation.enable";
+    public static final String ENABLE_EXPERIMENTAL_FEATURES            = "SQLEditor.ContentAssistant.experimental.enable";
     public static final String ENABLE_KEYSTROKE_ACTIVATION             = "SQLEditor.ContentAssistant.auto.keystrokes.activation";
     public static final String AUTO_ACTIVATION_DELAY                   = "SQLEditor.ContentAssistant.auto.activation.delay";
     public static final String PROPOSAL_INSERT_CASE                    = "SQLEditor.ContentAssistant.insert.case";
+    public static final String TAB_AUTOCOMPLETION                      = "SQLEditor.ContentAssistant.autocompletion.tab";
     public static final String PROPOSAL_REPLACE_WORD                   = "SQLEditor.ContentAssistant.replace.word";
     public static final String PROPOSAL_SORT_ALPHABETICALLY            = "SQLEditor.ContentAssistant.proposals.sort.alphabetically";
     public static final String HIDE_DUPLICATE_PROPOSALS                = "SQLEditor.ContentAssistant.hide.duplicates";
@@ -76,6 +77,7 @@ public class SQLPreferenceConstants
     public static final String PROPOSALS_MATCH_CONTAINS                = "SQLEditor.ContentAssistant.matching.fuzzy";
     public static final String SHOW_COLUMN_PROCEDURES                  = "SQLEditor.ContentAssistant.show.column.procedures";
     public static final String SHOW_SERVER_HELP_TOPICS                 = "SQLEditor.ContentAssistant.show.helpTopics";
+    public static final String SHOW_VALUES                             = "SQLEditor.ContentAssistant.show.values";
 
     public static final String MARK_OCCURRENCES_UNDER_CURSOR           = "SQLEditor.markOccurrences";
     public static final String MARK_OCCURRENCES_FOR_SELECTION          = "SQLEditor.markOccurrences.forSelection";
@@ -95,14 +97,17 @@ public class SQLPreferenceConstants
     public static final String SQLEDITOR_CLOSE_COMMENTS                = "SQLEditor.closeComments";
     public static final String SQLEDITOR_CLOSE_BLOCKS                  = "SQLEditor.closeBlocks";
 
+    public static final String SMART_WORD_ITERATOR                     = "SQLEditor.smartWordIterator";
+
     // Matching brackets
     public final static String MATCHING_BRACKETS                        = "SQLEditor.matchingBrackets";
     public final static String MATCHING_BRACKETS_HIGHLIGHT              = "SQLEditor.matchingBracketsHighlight";
     // Reuse "AbstractTextEditor.Color.Foreground" color
-    public final static String MATCHING_BRACKETS_COLOR                  = "AbstractTextEditor.Color.Foreground";//"org.jkiss.dbeaver.sql.editor.color.matchingBrackets.foreground";
+    public final static String MATCHING_BRACKETS_COLOR                  = "AbstractTextEditor.Color.Foreground";
 
     public final static String RESET_CURSOR_ON_EXECUTE                  = "SQLEditor.resetCursorOnExecute";
     public final static String MAXIMIZE_EDITOR_ON_SCRIPT_EXECUTE        = "SQLEditor.maxEditorOnScriptExecute";
+    public static final String SHOW_STATISTICS_FOR_QUERIES_WITH_RESULTS = "SQLEditor.showStatisticsForQueriesWithResults";
 
     public final static String SQL_FORMAT_KEYWORD_CASE_AUTO             = "SQLEditor.format.keywordCaseAuto";
     public final static String SQL_FORMAT_EXTRACT_FROM_SOURCE           = "SQLEditor.format.extractFromSource";
@@ -113,6 +118,7 @@ public class SQLPreferenceConstants
     public final static String REFRESH_DEFAULTS_AFTER_EXECUTE           = "SQLEditor.refreshDefaultsAfterExecute";
     public final static String CLEAR_OUTPUT_BEFORE_EXECUTE              = "SQLEditor.clearOutputBeforeExecute";
 
+    public static final String RESULT_SET_MAX_TABS_PER_QUERY            = "SQLEditor.resultSet.queryTabLimit";
     public final static String RESULT_SET_CLOSE_ON_ERROR                = "SQLEditor.resultSet.closeOnError";
     public final static String RESULT_SET_REPLACE_CURRENT_TAB           = "SQLEditor.resultSet.replaceCurrentTab"; //$NON-NLS-1$
     public final static String RESULT_SET_ORIENTATION                   = "SQLEditor.resultSet.orientation";
@@ -124,6 +130,7 @@ public class SQLPreferenceConstants
     public static final String SCRIPT_BIND_EMBEDDED_READ                = "SQLEditor.script.bind.embedded.read"; //$NON-NLS-1$
     public static final String SCRIPT_BIND_EMBEDDED_WRITE               = "SQLEditor.script.bind.embedded.write"; //$NON-NLS-1$
     public static final String SCRIPT_BIND_COMMENT_TYPE                 = "SQLEditor.script.bind.commentType"; //$NON-NLS-1$
+    public static final String SCRIPT_BIG_FILE_LENGTH_BOUNDARY          = "SQLEditor.script.bigFileLengthBoundary"; //$NON-NLS-1$
 
     public static final String SCRIPT_DELETE_EMPTY                      = "script.delete.empty"; //$NON-NLS-1$
     public static final String SCRIPT_AUTO_FOLDERS                      = "script.auto.folders"; //$NON-NLS-1$
