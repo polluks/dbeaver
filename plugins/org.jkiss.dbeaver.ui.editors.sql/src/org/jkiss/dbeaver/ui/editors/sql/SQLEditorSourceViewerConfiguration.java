@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,7 +37,6 @@ import org.eclipse.jface.text.rules.Token;
 import org.eclipse.jface.text.source.IAnnotationHover;
 import org.eclipse.jface.text.source.ISourceViewer;
 import org.eclipse.swt.graphics.Color;
-import org.eclipse.swt.graphics.RGB;
 import org.eclipse.ui.editors.text.TextSourceViewerConfiguration;
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
@@ -47,6 +46,7 @@ import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
 import org.jkiss.dbeaver.model.sql.SQLConstants;
 import org.jkiss.dbeaver.model.sql.SQLDialect;
 import org.jkiss.dbeaver.model.sql.parser.SQLParserPartitions;
+import org.jkiss.dbeaver.ui.UIStyles;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.editors.sql.indent.SQLAutoIndentStrategy;
 import org.jkiss.dbeaver.ui.editors.sql.indent.SQLCommentAutoIndentStrategy;
@@ -309,10 +309,23 @@ public class SQLEditorSourceViewerConfiguration extends TextSourceViewerConfigur
         addContentTypeDamageRepairer(reconciler, SQLParserPartitions.CONTENT_TYPE_SQL_MULTILINE_COMMENT, SQLConstants.CONFIG_COLOR_COMMENT);
         // Add a "damager-repairer" for changes within one-line SQL comments.
         addContentTypeDamageRepairer(reconciler, SQLParserPartitions.CONTENT_TYPE_SQL_COMMENT, SQLConstants.CONFIG_COLOR_COMMENT);
-        // Add a "damager-repairer" for changes within string literals.
-        addContentTypeDamageRepairer(reconciler, SQLParserPartitions.CONTENT_TYPE_SQL_STRING, SQLConstants.CONFIG_COLOR_STRING);
-        // Add a "damager-repairer" for changes within quoted literals.
-        addContentTypeDamageRepairer(reconciler, SQLParserPartitions.CONTENT_TYPE_SQL_QUOTED, SQLConstants.CONFIG_COLOR_DATATYPE);
+        SQLEditorBase sqlEditor = this.getSQLEditor();
+        if (SQLEditorUtils.isSQLSyntaxParserApplied(sqlEditor.getEditorInput())) {
+            // Add a "damager-repairer" for changes within string literals.
+            addContentTypeDamageRepairer(reconciler, SQLParserPartitions.CONTENT_TYPE_SQL_STRING);
+            if (sqlEditor.isAdvancedHighlightingEnabled()) {
+                // Add a "damager-repairer" for changes within quoted literals.
+                addContentTypeDamageRepairer(reconciler, SQLParserPartitions.CONTENT_TYPE_SQL_QUOTED);
+            } else {
+                // Add a "damager-repairer" for changes within quoted literals.
+                addContentTypeDamageRepairer(reconciler, SQLParserPartitions.CONTENT_TYPE_SQL_QUOTED, SQLConstants.CONFIG_COLOR_DATATYPE);
+            }
+        } else {
+            // Add a "damager-repairer" for changes within string literals.
+            addContentTypeDamageRepairer(reconciler, SQLParserPartitions.CONTENT_TYPE_SQL_STRING, SQLConstants.CONFIG_COLOR_STRING);
+            // Add a "damager-repairer" for changes within quoted literals.
+            addContentTypeDamageRepairer(reconciler, SQLParserPartitions.CONTENT_TYPE_SQL_QUOTED, SQLConstants.CONFIG_COLOR_DATATYPE);
+        }
         // Add a "damager-repairer" for changes within control commands.
         addContentTypeDamageRepairer(reconciler, SQLParserPartitions.CONTENT_TYPE_SQL_CONTROL);
 
@@ -328,7 +341,11 @@ public class SQLEditorSourceViewerConfiguration extends TextSourceViewerConfigur
         @NotNull String contentType,
         @NotNull String colorId
     ) {
-        addContentTypeDamageRepairer(reconciler, contentType, new SingleTokenScanner(new TextAttribute(ruleManager.getColor(colorId))));
+        Color color = ruleManager.getColor(colorId);
+        if (UIStyles.isDarkHighContrastTheme()) {
+            color = UIUtils.getInvertedColor(color);
+        }
+        addContentTypeDamageRepairer(reconciler, contentType, new SingleTokenScanner(new TextAttribute(color)));
     }
 
     private void addContentTypeDamageRepairer(
@@ -392,7 +409,7 @@ public class SQLEditorSourceViewerConfiguration extends TextSourceViewerConfigur
 
     @Override
     public IHyperlinkPresenter getHyperlinkPresenter(ISourceViewer sourceViewer) {
-        return new MultipleHyperlinkPresenter(new RGB(0, 0, 255)) {
+        return new MultipleHyperlinkPresenter(editor.getViewerConfiguration().getPreferenceStore()) {
 
         };
     }

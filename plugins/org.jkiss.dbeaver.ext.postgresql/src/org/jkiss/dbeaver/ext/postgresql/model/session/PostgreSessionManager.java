@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,8 @@
  */
 package org.jkiss.dbeaver.ext.postgresql.model.session;
 
+import org.jkiss.code.NotNull;
+import org.jkiss.dbeaver.DBDatabaseException;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.ext.postgresql.model.PostgreDataSource;
 import org.jkiss.dbeaver.model.DBPDataSource;
@@ -26,10 +28,10 @@ import org.jkiss.dbeaver.model.exec.jdbc.JDBCPreparedStatement;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCResultSet;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCSession;
 
+import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
@@ -47,14 +49,16 @@ public class PostgreSessionManager implements DBAServerSessionManager<PostgreSes
         this.dataSource = dataSource;
     }
 
+    @NotNull
     @Override
     public DBPDataSource getDataSource()
     {
         return dataSource;
     }
 
+    @NotNull
     @Override
-    public Collection<PostgreSession> getSessions(DBCSession session, Map<String, Object> options) throws DBException
+    public List<PostgreSession> getSessions(@NotNull DBCSession session, @NotNull Map<String, Object> options) throws DBException
     {
         try {
             try (JDBCPreparedStatement dbStat = ((JDBCSession) session).prepareStatement(generateSessionReadQuery(options))) {
@@ -67,21 +71,27 @@ public class PostgreSessionManager implements DBAServerSessionManager<PostgreSes
                 }
             }
         } catch (SQLException e) {
-            throw new DBException(e, session.getDataSource());
+            throw new DBDatabaseException(e, session.getDataSource());
         }
     }
 
     @Override
-    public void alterSession(DBCSession session, PostgreSession sessionType, Map<String, Object> options) throws DBException
+    public void alterSession(@NotNull DBCSession session, @NotNull String sessionId, @NotNull Map<String, Object> options) throws DBException
     {
         try {
             try (Statement dbStat = ((JDBCSession) session).createStatement()) {
-                dbStat.execute("SELECT pg_catalog.pg_terminate_backend(" + sessionType.getPid() + ")");
+                dbStat.execute("SELECT pg_catalog.pg_terminate_backend(" + sessionId + ")");
             }
         }
         catch (SQLException e) {
-            throw new DBException(e, session.getDataSource());
+            throw new DBDatabaseException(e, session.getDataSource());
         }
+    }
+
+    @NotNull
+    @Override
+    public Map<String, Object> getTerminateOptions() {
+        return Map.of();
     }
 
     @Override
@@ -89,8 +99,9 @@ public class PostgreSessionManager implements DBAServerSessionManager<PostgreSes
         return true;
     }
 
+    @NotNull
     @Override
-    public String generateSessionReadQuery(Map<String, Object> options) {
+    public String generateSessionReadQuery(@NotNull Map<String, Object> options) {
         return "SELECT sa.* FROM pg_catalog.pg_stat_activity sa";
     }
 }

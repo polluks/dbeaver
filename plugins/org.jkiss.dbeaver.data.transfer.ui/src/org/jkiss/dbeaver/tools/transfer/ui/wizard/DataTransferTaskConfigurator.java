@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -57,6 +57,7 @@ import org.jkiss.dbeaver.tools.transfer.internal.DTMessages;
 import org.jkiss.dbeaver.tools.transfer.ui.internal.DTUIMessages;
 import org.jkiss.dbeaver.ui.DBeaverIcons;
 import org.jkiss.dbeaver.ui.UIUtils;
+import org.jkiss.dbeaver.ui.UIWidgets;
 import org.jkiss.dbeaver.ui.navigator.NavigatorUtils;
 import org.jkiss.dbeaver.ui.navigator.dialogs.ObjectBrowserDialog;
 import org.jkiss.utils.CommonUtils;
@@ -121,7 +122,7 @@ public class DataTransferTaskConfigurator implements DBTTaskConfigurator, DBTTas
             objectsTable.setHeaderVisible(true);
             UIUtils.createTableColumn(objectsTable, SWT.NONE, DTUIMessages.data_transfer_task_configurator_table_column_text_object);
             UIUtils.createTableColumn(objectsTable, SWT.NONE, DTUIMessages.data_transfer_task_configurator_table_column_text_data_source);
-            UIUtils.createTableContextMenu(objectsTable, null);
+            UIWidgets.createTableContextMenu(objectsTable, null);
 
             Composite buttonsPanel = UIUtils.createComposite(group, isExport ? 4 : 3);
             UIUtils.createDialogButton(buttonsPanel, DTUIMessages.data_transfer_task_configurator_dialog_button_label_add_table, new SelectionAdapter() {
@@ -140,7 +141,7 @@ public class DataTransferTaskConfigurator implements DBTTaskConfigurator, DBTTas
                         group.getShell(),
                         isExport ? DTUIMessages.data_transfer_task_configurator_tables_title_choose_source : DTUIMessages.data_transfer_task_configurator_tables_title_choose_target,
                         rootNode,
-                        selNode,
+                        CommonUtils.singletonOrEmpty(selNode),
                         new Class[]{DBSInstance.class, DBSObjectContainer.class, tableClass},
                         new Class[]{tableClass},
                         null);
@@ -430,17 +431,19 @@ public class DataTransferTaskConfigurator implements DBTTaskConfigurator, DBTTas
         @Override
         public String getErrorMessage() {
             if (objectsTable.getItemCount() == 0) {
-                return "No objects selected";
+                return DTUIMessages.data_transfer_error_no_objects_selected;
             }
             for (DataTransferPipe pipe : dtWizard.getSettings().getDataPipes()) {
                 if (!dtWizard.getSettings().isProducerOptional()) {
                     if (pipe.getProducer() == null || !pipe.getProducer().isConfigurationComplete()) {
-                        return "Source not specified for " + (pipe.getConsumer() == null ? "?" : pipe.getConsumer().getObjectName());
+                        return NLS.bind(DTUIMessages.data_transfer_error_source_not_specified,
+                            (pipe.getConsumer() == null ? "?" : pipe.getConsumer().getObjectName()));
                     }
                 }
                 if (!dtWizard.getSettings().isConsumerOptional()) {
                     if (pipe.getConsumer() == null || !pipe.getConsumer().isConfigurationComplete()) {
-                        return "Target not specified for " + (pipe.getProducer() == null ? "?" : pipe.getProducer().getObjectName());
+                        return NLS.bind(DTUIMessages.data_transfer_error_target_not_specified,
+                            (pipe.getProducer() == null ? "?" : pipe.getProducer().getObjectName()));
                     }
                 }
             }

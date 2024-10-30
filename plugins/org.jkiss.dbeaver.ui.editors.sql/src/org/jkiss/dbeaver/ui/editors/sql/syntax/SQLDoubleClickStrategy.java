@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -175,11 +175,11 @@ public class SQLDoubleClickStrategy implements ITextDoubleClickStrategy {
      *
      * @param startPosition the starting position for the search
      * @param openBracket the open bracket character
-     * @param closeBracket the close bracker character
+     * @param closeBracket the close bracket character
      * @param document the document being searched
      * @return the location of the closing bracket
      */
-     protected int searchForClosingBracket( int startPosition, char openBracket, char closeBracket, IDocument document ) throws BadLocationException {
+     protected int searchForClosingBracket(int startPosition, char openBracket, char closeBracket, IDocument document ) throws BadLocationException {
         int stack = 1;
         int closePosition = startPosition + 1;
         int length = document.getLength();

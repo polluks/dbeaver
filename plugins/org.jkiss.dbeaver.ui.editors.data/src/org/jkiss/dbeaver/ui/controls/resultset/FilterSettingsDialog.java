@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -77,7 +77,7 @@ class FilterSettingsDialog extends HelpEnabledDialog {
     private ToolItem moveUpButton;
     private ToolItem moveDownButton;
     private ToolItem moveBottomButton;
-    private Comparator<DBDAttributeBinding> activeSorter = POSITION_SORTER;
+    private final Comparator<DBDAttributeBinding> activeSorter = POSITION_SORTER;
     private FilterSettingsTreeEditor treeEditor;
 
     FilterSettingsDialog(ResultSetViewer resultSetViewer)
@@ -108,7 +108,10 @@ class FilterSettingsDialog extends HelpEnabledDialog {
         Composite composite = super.createDialogArea(parent);
 
         TabFolder tabFolder = new TabFolder(composite, SWT.NONE);
-        tabFolder.setLayoutData(new GridData(GridData.FILL_BOTH));
+        GridData gd = new GridData(GridData.FILL_BOTH);
+        gd.minimumWidth = 200;
+        gd.widthHint = 400;
+        tabFolder.setLayoutData(gd);
 
         {
             Composite columnsGroup = UIUtils.createPlaceholder(tabFolder, 1);
@@ -117,7 +120,7 @@ class FilterSettingsDialog extends HelpEnabledDialog {
                 @Override
                 protected TreeViewer doCreateTreeViewer(Composite parent, int style) {
                     columnsViewer = new TreeViewer(parent, style);
-                    columnsController = new ViewerColumnController<>(getClass().getSimpleName(), columnsViewer);
+                    columnsController = new ViewerColumnController<>(FilterSettingsDialog.class.getSimpleName(), columnsViewer);
                     return columnsViewer;
                 }
             };
@@ -174,7 +177,7 @@ class FilterSettingsDialog extends HelpEnabledDialog {
             columnsController.addBooleanColumn(ResultSetMessages.controls_resultset_filter_column_pinned, null, SWT.LEFT, true, false, item -> {
                 final DBDAttributeBinding binding = (DBDAttributeBinding) item;
                 final DBDAttributeConstraint constraint = getBindingConstraint(binding);
-                return constraint.hasOption(SpreadsheetPresentation.ATTR_OPTION_PINNED);
+                return constraint.hasOption(DBDAttributeConstraintBase.ATTR_OPTION_PINNED);
             }, new EditingSupport(columnsViewer) {
                 @Override
                 protected CellEditor getCellEditor(Object element) {
@@ -191,7 +194,7 @@ class FilterSettingsDialog extends HelpEnabledDialog {
                 protected Object getValue(Object element) {
                     final DBDAttributeBinding binding = (DBDAttributeBinding) element;
                     final DBDAttributeConstraint constraint = getBindingConstraint(binding);
-                    return constraint.hasOption(SpreadsheetPresentation.ATTR_OPTION_PINNED);
+                    return constraint.hasOption(DBDAttributeConstraintBase.ATTR_OPTION_PINNED);
                 }
 
                 @Override
@@ -199,9 +202,9 @@ class FilterSettingsDialog extends HelpEnabledDialog {
                     final DBDAttributeBinding binding = (DBDAttributeBinding) element;
                     final DBDAttributeConstraint constraint = getBindingConstraint(binding);
                     if (CommonUtils.getBoolean(value, false)) {
-                        constraint.setOption(SpreadsheetPresentation.ATTR_OPTION_PINNED, SpreadsheetPresentation.getNextPinIndex(dataFilter));
+                        constraint.setOption(DBDAttributeConstraintBase.ATTR_OPTION_PINNED, SpreadsheetPresentation.getNextPinIndex(dataFilter));
                     } else {
-                        constraint.removeOption(SpreadsheetPresentation.ATTR_OPTION_PINNED);
+                        constraint.removeOption(DBDAttributeConstraintBase.ATTR_OPTION_PINNED);
                     }
                 }
             });
@@ -259,7 +262,7 @@ class FilterSettingsDialog extends HelpEnabledDialog {
             });
 
             final Tree columnsTree = columnsViewer.getTree();
-            GridData gd = new GridData(GridData.FILL_BOTH);
+            gd = new GridData(GridData.FILL_BOTH);
             gd.heightHint = 300;
             columnsTree.setLayoutData(gd);
             columnsTree.setHeaderVisible(true);
@@ -326,7 +329,7 @@ class FilterSettingsDialog extends HelpEnabledDialog {
             }
             TabItem libsTab = new TabItem(tabFolder, SWT.NONE);
             libsTab.setText(ResultSetMessages.controls_resultset_filter_group_columns);
-            libsTab.setToolTipText("Set criteria and order for individual column(s)");
+            libsTab.setToolTipText(ResultSetMessages.controls_resultset_filter_group_columns_tooltip_text);
             libsTab.setControl(columnsGroup);
         }
 
@@ -337,7 +340,10 @@ class FilterSettingsDialog extends HelpEnabledDialog {
         refreshData();
 
         // Pack UI
-        UIUtils.asyncExec(() -> UIUtils.packColumns(columnsViewer.getTree(), true, new float[] { 0.45f, 0.05f, 0.05f, 0.05f, 0.05f, 0.35f}));
+        UIUtils.asyncExec(() -> {
+            UIUtils.resizeShell(getShell());
+            UIUtils.packColumns(columnsViewer.getTree(), true, new float[] { 0.45f, 0.05f, 0.05f, 0.05f, 0.05f, 0.35f});
+        });
         //UIUtils.packColumns(filterViewer.getTable());
 
         if (!resultSetViewer.supportsDataFilter()) {
@@ -444,7 +450,7 @@ class FilterSettingsDialog extends HelpEnabledDialog {
 
         TabItem libsTab = new TabItem(tabFolder, SWT.NONE);
         libsTab.setText(ResultSetMessages.controls_resultset_filter_group_custom);
-        libsTab.setToolTipText("Set custom criteria and order for whole query");
+        libsTab.setToolTipText(ResultSetMessages.controls_resultset_filter_group_custom_tooltip_text);
         libsTab.setControl(filterGroup);
     }
 

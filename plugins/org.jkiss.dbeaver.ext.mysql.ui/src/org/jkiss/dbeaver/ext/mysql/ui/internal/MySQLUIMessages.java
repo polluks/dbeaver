@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  * Copyright (C) 2011-2012 Eugene Fradkin (eugene.fradkin@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -55,6 +55,8 @@ public final class MySQLUIMessages extends NLS {
     public static String editors_session_editor_confirm;
     public static String editors_session_hide_sleeping_text;
     public static String editors_session_hide_sleeping_tip;
+    public static String editors_session_show_performance_text;
+    public static String editors_session_show_performance_tip;
     public static String editors_user_editor_abstract_load_grants;
     public static String editors_user_editor_general_control_dba_privileges;
     public static String editors_user_editor_general_group_limits;

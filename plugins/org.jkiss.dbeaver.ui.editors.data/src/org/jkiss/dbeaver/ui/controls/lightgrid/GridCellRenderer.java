@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -86,6 +86,7 @@ class GridCellRenderer extends AbstractRenderer {
         {"\u001F", "US"},
         {"\u007F", "DEL"}
     };
+    private static final int LEVEL_INDENT = 5;
 
     protected Color colorLineFocused;
 
@@ -142,6 +143,10 @@ class GridCellRenderer extends AbstractRenderer {
 
         int columnAlign = cellInfo.align;
         int x = image == null ? LEFT_MARGIN : LEFT_MARGIN / 2;
+
+        if (columnAlign == IGridContentProvider.ALIGN_LEFT) {
+            x += row.getLevel() * LEVEL_INDENT;
+        }
 
         if (image != null && columnAlign != IGridContentProvider.ALIGN_RIGHT) {
             int y = bounds.y + (bounds.height - imageBounds.height) / 2;
@@ -250,8 +255,11 @@ class GridCellRenderer extends AbstractRenderer {
     }
 
     boolean isOverLink(GridColumn column, int row, int x, int y) {
-        IGridContentProvider contentProvider = grid.getContentProvider();
         IGridRow rowElement = grid.getRow(row);
+        if (rowElement == null) {
+            return false;
+        }
+        IGridContentProvider contentProvider = grid.getContentProvider();
         IGridContentProvider.CellInformation cellInfo = grid.getContentProvider().getCellInfo(
             column, rowElement, false);
 
@@ -269,7 +277,9 @@ class GridCellRenderer extends AbstractRenderer {
             Rectangle imageBounds;
             if (isToggle) {
                 String cellText = grid.getCellText(cellInfo.text);
-                Point textSize = grid.sizingGC.textExtent(cellText);
+                GC sizingGC = new GC(grid);
+                Point textSize = sizingGC.textExtent(cellText);
+                sizingGC.dispose();
                 imageBounds = new Rectangle(0, 0, textSize.x, textSize.y);
             } else {
                 DBPImage cellImage = cellInfo.image;
@@ -281,6 +291,7 @@ class GridCellRenderer extends AbstractRenderer {
                 }
                 imageBounds = image.getBounds();
             }
+            x -= rowElement.getLevel() * LEVEL_INDENT;
             int verMargin = (grid.getItemHeight() - imageBounds.height) / 2;
 
             int leftMargin = LEFT_MARGIN / 2;
@@ -294,7 +305,8 @@ class GridCellRenderer extends AbstractRenderer {
                     break;
                 case IGridContentProvider.ALIGN_RIGHT:
                     int width = column.getWidth();
-                    if (x >= origin.x + width - (leftMargin + imageBounds.width) && x <= origin.x + width - RIGHT_MARGIN &&
+                    x += RIGHT_MARGIN;
+                    if (x >= origin.x + width - (leftMargin + imageBounds.width) && x <= origin.x + width &&
                         y >= origin.y + verMargin && y <= origin.y + verMargin + imageBounds.height) {
                         return true;
                     }
@@ -324,8 +336,11 @@ class GridCellRenderer extends AbstractRenderer {
         final Color disabledForeground = UIUtils.getSharedColor(UIUtils.blend(activeForeground.getRGB(), activeBackground.getRGB(), 50));
 
         int start = 0;
+        int index = 0;
 
-        for (int index = 0; index < text.length(); index++) {
+        while (index < text.length()) {
+            boolean matched = false;
+
             for (String[] mapping : SPECIAL_CHARACTERS_MAP) {
                 final String expected = mapping[0];
                 final String replacement = mapping[1];
@@ -342,7 +357,12 @@ class GridCellRenderer extends AbstractRenderer {
 
                     index += expected.length();
                     start = index;
+                    matched = true;
                 }
+            }
+
+            if (!matched) {
+                index += 1;
             }
         }
 
@@ -359,6 +379,10 @@ class GridCellRenderer extends AbstractRenderer {
         @NotNull Color disabledForeground,
         boolean highlight
     ) {
+        if (segment.isEmpty()) {
+            return false;
+        }
+
         final Point extent = gc.textExtent(segment);
 
         if (extent.x > bounds.width) {
@@ -402,6 +426,10 @@ class GridCellRenderer extends AbstractRenderer {
         @NotNull Rectangle bounds,
         boolean highlight
     ) {
+        if (text.isEmpty()) {
+            return;
+        }
+
         gc.setTextAntialias(SWT.ON);
         gc.setForeground(foreground);
 

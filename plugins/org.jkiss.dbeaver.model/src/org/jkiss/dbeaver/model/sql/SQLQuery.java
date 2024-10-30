@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,10 +21,19 @@ import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.schema.Database;
 import net.sf.jsqlparser.schema.Table;
+import net.sf.jsqlparser.statement.Commit;
+import net.sf.jsqlparser.statement.RollbackStatement;
 import net.sf.jsqlparser.statement.Statement;
 import net.sf.jsqlparser.statement.alter.Alter;
+import net.sf.jsqlparser.statement.alter.sequence.AlterSequence;
+import net.sf.jsqlparser.statement.create.function.CreateFunction;
 import net.sf.jsqlparser.statement.create.index.CreateIndex;
+import net.sf.jsqlparser.statement.create.procedure.CreateProcedure;
+import net.sf.jsqlparser.statement.create.schema.CreateSchema;
+import net.sf.jsqlparser.statement.create.sequence.CreateSequence;
+import net.sf.jsqlparser.statement.create.synonym.CreateSynonym;
 import net.sf.jsqlparser.statement.create.table.CreateTable;
+import net.sf.jsqlparser.statement.create.view.AlterView;
 import net.sf.jsqlparser.statement.create.view.CreateView;
 import net.sf.jsqlparser.statement.delete.Delete;
 import net.sf.jsqlparser.statement.drop.Drop;
@@ -61,6 +70,8 @@ public class SQLQuery implements SQLScriptElement {
     private final DBPDataSource dataSource;
     @NotNull
     private String originalText;
+
+    private Boolean isEndsWithDelimiter = null;
     @NotNull
     private String text;
     private int offset;
@@ -151,7 +162,7 @@ public class SQLQuery implements SQLScriptElement {
                         plainSelect = (PlainSelect) ((SubSelect) fromItem).getSelectBody();
                         fromItem = plainSelect.getFromItem();
                     }
-                    if (fromItem instanceof Table &&
+                    if (fromItem instanceof Table fromTable &&
                         isPotentiallySingleSourceSelect(plainSelect))
                     {
                         boolean hasSubSelects = false, hasDirectSelects = false;
@@ -163,7 +174,7 @@ public class SQLQuery implements SQLScriptElement {
                             }
                         }
                         if (hasDirectSelects || !hasSubSelects) {
-                            fillSingleSource((Table) fromItem);
+                            fillSingleSource(fromTable);
                         }
                     }
                     if (!CommonUtils.isEmpty(plainSelect.getJoins()) && fromItem instanceof Table) {
@@ -178,21 +189,21 @@ public class SQLQuery implements SQLScriptElement {
                         selectItems = items;
                     }
                 }
-            } else if (statement instanceof Insert) {
+            } else if (statement instanceof Insert insert) {
                 type = SQLQueryType.INSERT;
-                fillSingleSource(((Insert) statement).getTable());
-            } else if (statement instanceof Update) {
+                fillSingleSource(insert.getTable());
+            } else if (statement instanceof Update update) {
                 type = SQLQueryType.UPDATE;
-                Table table = ((Update) statement).getTable();
+                Table table = update.getTable();
                 if (table != null) {
                     fillSingleSource(table);
                 }
-            } else if (statement instanceof Delete) {
+            } else if (statement instanceof Delete delete) {
                 type = SQLQueryType.DELETE;
-                if (((Delete) statement).getTable() != null) {
-                    fillSingleSource(((Delete) statement).getTable());
+                if (delete.getTable() != null) {
+                    fillSingleSource(delete.getTable());
                 } else {
-                    List<Table> tables = ((Delete) statement).getTables();
+                    List<Table> tables = delete.getTables();
                     if (tables != null && tables.size() == 1) {
                         fillSingleSource(tables.get(0));
                     }
@@ -205,6 +216,10 @@ public class SQLQuery implements SQLScriptElement {
                 type = SQLQueryType.DDL;
             } else if (statement instanceof Merge) {
                 type = SQLQueryType.MERGE;
+            } else if (statement instanceof Commit) {
+                type = SQLQueryType.COMMIT;
+            } else if (statement instanceof RollbackStatement) {
+                type = SQLQueryType.ROLLBACK;
             } else {
                 type = SQLQueryType.UNKNOWN;
             }
@@ -416,6 +431,14 @@ public class SQLQuery implements SQLScriptElement {
         this.data = data;
     }
 
+    public Boolean isEndsWithDelimiter() {
+        return this.isEndsWithDelimiter;
+    }
+
+    public void setEndsWithDelimiter(boolean value) {
+        this.isEndsWithDelimiter = value;
+    }
+
     @NotNull
     public SQLQueryType getType() {
         parseQuery();
@@ -494,6 +517,30 @@ public class SQLQuery implements SQLScriptElement {
             ((Drop) statement).getName() != null && ((Drop) statement).getType().equalsIgnoreCase("table");
     }
 
+    public boolean isModifying() {
+        if (getType() == SQLQueryType.UNKNOWN) {
+            return false;
+        }
+        if (statement instanceof Select) {
+            SelectBody selectBody = ((Select) statement).getSelectBody();
+            if (selectBody instanceof PlainSelect plainSelectBody) {
+                return plainSelectBody.isForUpdate() || plainSelectBody.getIntoTables() != null;
+            }
+            return false;
+        } else {
+            return true;
+        }
+    }
+
+    public boolean isMutatingStatement() {
+        parseQuery();
+        return statement != null && (statement instanceof Drop || statement instanceof Delete || statement instanceof Update ||
+            statement instanceof Insert || statement instanceof CreateTable || statement instanceof CreateIndex ||
+            statement instanceof CreateView || statement instanceof CreateFunction || statement instanceof CreateProcedure ||
+            statement instanceof CreateSchema || statement instanceof CreateSequence || statement instanceof CreateSynonym ||
+            statement instanceof Alter || statement instanceof AlterView || statement instanceof AlterSequence);
+    }
+
     private static class SingleTableMeta implements DBCEntityMetaData {
 
         private final String catalogName;
@@ -551,25 +598,6 @@ public class SQLQuery implements SQLScriptElement {
             return CommonUtils.equalObjects(catalogName, md2.catalogName) &&
                 CommonUtils.equalObjects(schemaName, md2.schemaName) &&
                 CommonUtils.equalObjects(tableName, md2.tableName);
-        }
-    }
-
-    public boolean isModifiyng() {
-        if (getType() == SQLQueryType.UNKNOWN) {
-            return false;
-        }
-        if (statement instanceof Select) {
-            SelectBody selectBody = ((Select) statement).getSelectBody();
-            if (selectBody instanceof PlainSelect) {
-                if (((PlainSelect) selectBody).isForUpdate() ||
-                    ((PlainSelect) selectBody).getIntoTables() != null)
-                {
-                    return true;
-                }
-            }
-            return false;
-        } else {
-            return true;
         }
     }
 

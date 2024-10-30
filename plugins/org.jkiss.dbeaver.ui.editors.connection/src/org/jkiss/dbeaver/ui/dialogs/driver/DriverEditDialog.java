@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
  */
 package org.jkiss.dbeaver.ui.dialogs.driver;
 
-import org.eclipse.core.runtime.IStatus;
 import org.eclipse.jface.dialogs.IDialogConstants;
 import org.eclipse.jface.dialogs.IDialogSettings;
 import org.eclipse.jface.viewers.*;
@@ -31,12 +30,11 @@ import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.layout.RowLayout;
 import org.eclipse.swt.widgets.*;
+import org.eclipse.ui.IWorkbenchCommandConstants;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
-import org.jkiss.dbeaver.model.DBConstants;
 import org.jkiss.dbeaver.model.DBFileController;
 import org.jkiss.dbeaver.model.DBIcon;
-import org.jkiss.dbeaver.model.DBPDataSource;
 import org.jkiss.dbeaver.model.connection.DBPDriver;
 import org.jkiss.dbeaver.model.connection.DBPDriverLibrary;
 import org.jkiss.dbeaver.registry.DataSourceProviderDescriptor;
@@ -44,20 +42,15 @@ import org.jkiss.dbeaver.registry.DataSourceProviderRegistry;
 import org.jkiss.dbeaver.registry.driver.*;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.runtime.properties.PropertySourceCustom;
-import org.jkiss.dbeaver.ui.DBeaverIcons;
-import org.jkiss.dbeaver.ui.IHelpContextIds;
-import org.jkiss.dbeaver.ui.ShellUtils;
-import org.jkiss.dbeaver.ui.UIUtils;
+import org.jkiss.dbeaver.ui.*;
 import org.jkiss.dbeaver.ui.controls.CSmartCombo;
 import org.jkiss.dbeaver.ui.dialogs.HelpEnabledDialog;
-import org.jkiss.dbeaver.ui.dialogs.StandardErrorDialog;
 import org.jkiss.dbeaver.ui.dialogs.connection.ClientHomesPanel;
 import org.jkiss.dbeaver.ui.dialogs.connection.ConnectionPropertiesControl;
 import org.jkiss.dbeaver.ui.internal.UIConnectionMessages;
 import org.jkiss.dbeaver.ui.internal.UIMessages;
 import org.jkiss.dbeaver.ui.preferences.PrefPageDriversClasspath;
 import org.jkiss.dbeaver.ui.properties.PropertyTreeViewer;
-import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.dbeaver.utils.RuntimeUtils;
 import org.jkiss.utils.ArrayUtils;
 import org.jkiss.utils.CommonUtils;
@@ -70,7 +63,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * DriverEditDialog
@@ -110,6 +103,8 @@ public class DriverEditDialog extends HelpEnabledDialog {
     private Button anonymousDriverCheck;
     private Button allowsEmptyPasswordCheck;
     private Button nonInstantiableCheck;
+    private Button propagateDriverPropertiesCheck;
+    private Button threadSafeCheck;
 
     private boolean showAddFiles = false;
 
@@ -193,7 +188,7 @@ public class DriverEditDialog extends HelpEnabledDialog {
 
         final Composite group = super.createDialogArea(parent);
         GridData gd = new GridData(GridData.FILL_BOTH);
-        gd.widthHint = 500;
+        gd.widthHint = 700;
         group.setLayoutData(gd);
 
         {
@@ -308,15 +303,24 @@ public class DriverEditDialog extends HelpEnabledDialog {
         optionsPanel.setLayoutData(gd);
         optionsPanel.setLayout(new RowLayout());
         embeddedDriverCheck = UIUtils.createCheckbox(optionsPanel, UIConnectionMessages.dialog_edit_driver_embedded_label, UIConnectionMessages.dialog_edit_driver_embedded_tip, driver.isEmbedded(), 1);
+        propagateDriverPropertiesCheck = UIUtils.createCheckbox(
+            optionsPanel,
+            UIConnectionMessages.dialog_edit_driver_propagate_driver_properties_label,
+            UIConnectionMessages.dialog_edit_driver_propagate_driver_properties_tip,
+            driver.isPropagateDriverProperties(),
+            1
+        );
         anonymousDriverCheck = UIUtils.createCheckbox(optionsPanel, UIConnectionMessages.dialog_edit_driver_anonymous_label, UIConnectionMessages.dialog_edit_driver_anonymous_tip, driver.isAnonymousAccess(), 1);
         allowsEmptyPasswordCheck = UIUtils.createCheckbox(optionsPanel, UIConnectionMessages.dialog_edit_driver_allows_empty_password_label, UIConnectionMessages.dialog_edit_driver_allows_empty_password_tip, driver.isAnonymousAccess(), 1);
         nonInstantiableCheck = UIUtils.createCheckbox(optionsPanel, UIConnectionMessages.dialog_edit_driver_use_legacy_instantiation_label, UIConnectionMessages.dialog_edit_driver_use_legacy_instantiation_tip, !driver.isInstantiable(), 1);
+        threadSafeCheck = UIUtils.createCheckbox(optionsPanel, "Thread safe driver", "Driver is thread safe (default). Otherwise DBeaver will lock all driver invocations to protect it from any data corruptions.", driver.isThreadSafeDriver(), 1);
 
         if (isReadOnly) {
             embeddedDriverCheck.setEnabled(false);
             anonymousDriverCheck.setEnabled(false);
             allowsEmptyPasswordCheck.setEnabled(false);
             nonInstantiableCheck.setEnabled(false);
+            threadSafeCheck.setEnabled(false);
         }
 
         Group infoGroup = UIUtils.createControlGroup(propsGroup, UIConnectionMessages.dialog_edit_driver_description, 4, -1, -1);
@@ -379,8 +383,7 @@ public class DriverEditDialog extends HelpEnabledDialog {
                 @Override
                 public void update(ViewerCell cell) {
                     final Object element = cell.getElement();
-                    if (element instanceof DBPDriverLibrary) {
-                        DBPDriverLibrary lib = (DBPDriverLibrary) element;
+                    if (element instanceof DBPDriverLibrary lib) {
                         String displayName = lib.getDisplayName();
                         if (lib.getPreferredVersion() != null) {
                             displayName += " [" + lib.getPreferredVersion() + "]";
@@ -411,9 +414,12 @@ public class DriverEditDialog extends HelpEnabledDialog {
 
                 @Override
                 public String getToolTipText(Object element) {
-                    if (element instanceof DBPDriverLibrary) {
-                        Path localFile = ((DBPDriverLibrary) element).getLocalFile();
+                    if (element instanceof DBPDriverLibrary dl) {
+                        Path localFile = dl.getLocalFile();
                         return localFile == null ? "N/A" : localFile.toAbsolutePath().toString();
+                    } else if (element instanceof DriverDescriptor.DriverFileInfo dfi) {
+                        Path localFile = dfi.getFile();
+                        return localFile == null ? "N/A" : localFile.toString();
                     }
                     return super.getToolTipText(element);
                 }
@@ -422,6 +428,8 @@ public class DriverEditDialog extends HelpEnabledDialog {
             libTable.getControl().setLayoutData(new GridData(GridData.FILL_BOTH));
             libTable.getControl().addListener(SWT.Selection, event -> changeLibSelection());
             libTable.addDoubleClickListener(event -> editSelectedLibrary());
+            UIWidgets.setControlContextMenu(libTable.getTree(), manager ->
+                UIWidgets.fillDefaultTreeContextMenu(manager, libTable.getTree()));
 
             // Find driver class
             boolean isReadOnly = !provider.isDriversManagable();
@@ -450,7 +458,9 @@ public class DriverEditDialog extends HelpEnabledDialog {
             findClassButton.setText(UIConnectionMessages.dialog_edit_driver_button_bind_class);
             findClassButton.addListener(SWT.Selection, event -> {
                 try {
-                    DriverClassFindJob classFinder = new DriverClassFindJob(driver, java.sql.Driver.class.getName(), true);
+                    DriverDescriptor test = new DriverDescriptor(driver.getProviderDescriptor(), "test", driver);
+                    saveDriverSettings(test);
+                    DriverClassFindJob classFinder = new DriverClassFindJob(test, java.sql.Driver.class.getName(), true);
                     UIUtils.runInProgressDialog(classFinder);
 
                     if (classListCombo != null && !classListCombo.isDisposed()) {
@@ -551,6 +561,24 @@ public class DriverEditDialog extends HelpEnabledDialog {
                 UIUtils.showPreferencesFor(null, null, PrefPageDriversClasspath.PAGE_ID);
             }
         });
+        UIUtils.createToolButton(libsControlGroup, ActionUtils.findCommandName(IWorkbenchCommandConstants.FILE_EXPORT), new SelectionAdapter() {
+            @Override
+            public void widgetSelected(SelectionEvent e) {
+                for (DBPDriverLibrary lib : libraries) {
+                    if (!driver.isLibraryResolved(lib)) {
+                        if (!UIUtils.confirmAction(getShell(), "Not all files present",
+                            "Driver files weren't downloaded. " +
+                            "You need to click '" + UIConnectionMessages.dialog_edit_driver_button_update_version + "' before exporting.\n" +
+                            "Are you sure you want to continue with incomplete files?")
+                        ) {
+                            return;
+                        }
+                        break;
+                    }
+                }
+                DriverEditHelpers.exportDriverLibraries(getShell(), libraries);
+            }
+        });
 
         changeLibContent();
 
@@ -565,12 +593,13 @@ public class DriverEditDialog extends HelpEnabledDialog {
         if (selectedLibrary instanceof DriverLibraryMavenArtifact) {
             editMavenArtifact();
         } else if (selectedLibrary instanceof DriverLibraryLocal) {
-            Path localFile = selectedLibrary.getLocalFile();
-            if (localFile != null) {
-                if (Files.isDirectory(localFile)) {
-                    ShellUtils.launchProgram(localFile.toAbsolutePath().toString());
-                } else {
-                    ShellUtils.showInSystemExplorer(localFile.toAbsolutePath().toString());
+            DriverEditHelpers.showFileInExplorer(selectedLibrary.getLocalFile());
+        } else {
+            IStructuredSelection selection = (IStructuredSelection) libTable.getSelection();
+            if (!selection.isEmpty()) {
+                Object element = selection.getFirstElement();
+                if (element instanceof DriverDescriptor.DriverFileInfo dfi) {
+                    DriverEditHelpers.showFileInExplorer(dfi.getFile());
                 }
             }
         }
@@ -785,11 +814,12 @@ public class DriverEditDialog extends HelpEnabledDialog {
         driverPortText.setText(CommonUtils.notEmpty(original ? driver.getOrigDefaultPort() : driver.getDefaultPort()));
         driverDatabaseText.setText(CommonUtils.notEmpty(original ? driver.getOrigDefaultDatabase() : driver.getDefaultDatabase()));
         driverUserText.setText(CommonUtils.notEmpty(original ? driver.getOrigDefaultUser() : driver.getDefaultUser()));
-
+        propagateDriverPropertiesCheck.setSelection(original ? driver.isOrigPropagateDriverProperties() : driver.isPropagateDriverProperties());
         embeddedDriverCheck.setSelection(original ? driver.isOrigEmbedded() : driver.isEmbedded());
         anonymousDriverCheck.setSelection(original ? driver.isOrigAnonymousAccess() : driver.isAnonymousAccess());
         allowsEmptyPasswordCheck.setSelection(original ? driver.isOrigAllowsEmptyPassword() : driver.isAllowsEmptyPassword());
         nonInstantiableCheck.setSelection(original ? !driver.isOrigInstantiable() : !driver.isInstantiable());
+        threadSafeCheck.setSelection(driver.isThreadSafeDriver());
 
         if (original) {
             resetLibraries();
@@ -836,31 +866,7 @@ public class DriverEditDialog extends HelpEnabledDialog {
             }
         }
 
-        // Set props
-        driver.setName(driverNameText.getText());
-        driver.setDescription(CommonUtils.notEmpty(driverDescText.getText()));
-        driver.setDriverClassName(driverClassText.getText());
-        driver.setSampleURL(driverURLText.getText());
-        driver.setDriverDefaultPort(driverPortText.getText());
-        driver.setDriverDefaultDatabase(driverDatabaseText.getText());
-        driver.setDriverDefaultUser(driverUserText.getText());
-        driver.setEmbedded(embeddedDriverCheck.getSelection());
-        driver.setAnonymousAccess(anonymousDriverCheck.getSelection());
-        driver.setAllowsEmptyPassword(allowsEmptyPasswordCheck.getSelection());
-        driver.setInstantiable(!nonInstantiableCheck.getSelection());
-
-//        driver.setAnonymousAccess(anonymousCheck.getSelection());
-        driver.setModified(true);
-
-        driver.setDriverParameters(driverPropertySource.getPropertiesWithDefaults());
-        driver.setConnectionProperties(connectionPropertySource.getPropertyValues());
-
-        // Store client homes
-        if (clientHomesPanel != null) {
-            driver.setNativeClientLocations(clientHomesPanel.getLocalLocations());
-        }
-
-        driver.setDriverLibraries(libraries);
+        saveDriverSettings(this.driver);
 
         DriverDescriptor oldDriver = provider.getDriverByName(driver.getCategory(), driver.getName());
         if (oldDriver != null && oldDriver != driver && !oldDriver.isDisabled() && oldDriver.getReplacedBy() == null) {
@@ -877,13 +883,43 @@ public class DriverEditDialog extends HelpEnabledDialog {
         super.okPressed();
     }
 
+    private void saveDriverSettings(DriverDescriptor drv) {
+        // Set props
+        drv.setName(driverNameText.getText());
+        drv.setDescription(CommonUtils.notEmpty(driverDescText.getText()));
+        drv.setDriverClassName(driverClassText.getText());
+        drv.setSampleURL(driverURLText.getText());
+        drv.setDriverDefaultPort(driverPortText.getText());
+        drv.setDriverDefaultDatabase(driverDatabaseText.getText());
+        drv.setDriverDefaultUser(driverUserText.getText());
+        drv.setEmbedded(embeddedDriverCheck.getSelection());
+        drv.setPropagateDriverProperties(propagateDriverPropertiesCheck.getSelection());
+        drv.setAnonymousAccess(anonymousDriverCheck.getSelection());
+        drv.setAllowsEmptyPassword(allowsEmptyPasswordCheck.getSelection());
+        drv.setInstantiable(!nonInstantiableCheck.getSelection());
+        drv.setThreadSafeDriver(threadSafeCheck.getSelection());
+
+//        driver.setAnonymousAccess(anonymousCheck.getSelection());
+        drv.setModified(true);
+
+        drv.setDriverParameters(driverPropertySource.getPropertiesWithDefaults());
+        drv.setConnectionProperties(connectionPropertySource.getPropertyValues());
+
+        // Store client homes
+        if (clientHomesPanel != null) {
+            drv.setNativeClientLocations(clientHomesPanel.getLocalLocations());
+        }
+
+        drv.setDriverLibraries(libraries);
+    }
+
     // Distributed products only!
     private void syncDriverLibraries() throws DBException {
         List<DBPDriverLibrary> oldLibs = driver.getEnabledDriverLibraries();
         for (DBPDriverLibrary oldLib : oldLibs) {
             if (!libraries.contains(oldLib)) {
                 // Remove old library files
-                List<DBPDriver> usedBy = getDriversByLibrary(oldLib);
+                List<DBPDriver> usedBy = DriverEditHelpers.getDriversByLibrary(oldLib);
                 if (usedBy.size() <= 1) {
                     syncRemoveDriverLibFile(oldLib);
                 }
@@ -905,7 +941,6 @@ public class DriverEditDialog extends HelpEnabledDialog {
                 if (Files.isDirectory(localFilePath)) {
                     synAddDriverLibDirectory(newLib, localFilePath, shortFileName);
                 } else {
-                    ((DriverLibraryLocal) newLib).setPath(shortFileName);
                     syncAddDriverLibFile(newLib, localFilePath, shortFileName);
                 }
             }
@@ -928,9 +963,8 @@ public class DriverEditDialog extends HelpEnabledDialog {
     }
 
     private void synAddDriverLibDirectory(DBPDriverLibrary newLib, Path localFilePath, String shortFileName) throws DBException {
-        try {
-            List<Path> dirFiles = Files.list(localFilePath).collect(Collectors.toList());
-            for (Path file : dirFiles) {
+        try (Stream<Path> list = Files.list(localFilePath)) {
+            for (Path file : list.toList()) {
                 shortFileName = shortFileName + "/" + file.getFileName().toString();
                 if (Files.isDirectory(file)) {
                     synAddDriverLibDirectory(newLib, file, shortFileName + "/" + file.getFileName().toString());
@@ -946,92 +980,28 @@ public class DriverEditDialog extends HelpEnabledDialog {
     private void syncAddDriverLibFile(DBPDriverLibrary library, Path localFilePath, String shortFileName) throws DBException {
         DBFileController fileController = DBWorkbench.getPlatform().getFileController();
 
-        String filePath = DBConstants.DEFAULT_DRIVERS_FOLDER + "/" + driver.getId() + "/" + shortFileName;
+        String driverFilePath = driver.getId() + "/" + shortFileName;
+        if (library instanceof DriverLibraryLocal libraryLocal) {
+            libraryLocal.setPath(driverFilePath);
+        }
+
         try {
             byte[] fileData = Files.readAllBytes(localFilePath);
             fileController.saveFileData(
                 DBFileController.TYPE_DATABASE_DRIVER,
-                filePath,
+                driverFilePath,
                 fileData);
         } catch (IOException e) {
             throw new DBException("IO error while saving driver file", e);
         }
         DriverDescriptor.DriverFileInfo fileInfo = new DriverDescriptor.DriverFileInfo(
-            shortFileName, null, DBPDriverLibrary.FileType.jar, Path.of(filePath));
+            driverFilePath, null, DBPDriverLibrary.FileType.jar, Path.of(driverFilePath));
         fileInfo.setFileCRC(DriverDescriptor.calculateFileCRC(localFilePath));
         driver.addLibraryFile(library, fileInfo);
     }
 
-    private static List<DBPDriver> getDriversByLibrary(DBPDriverLibrary oldLib) {
-        List<DBPDriver> drivers = new ArrayList<>();
-        for (DataSourceProviderDescriptor dspd : DataSourceProviderRegistry.getInstance().getDataSourceProviders()) {
-            for (DBPDriver driver : dspd.getDrivers()) {
-                for (DBPDriverLibrary library : driver.getDriverLibraries()) {
-                    if (CommonUtils.equalObjects(library.getPath(), oldLib.getPath())) {
-                        drivers.add(driver);
-                    }
-                }
-            }
-        }
-        return drivers;
-    }
-
-
-    public static void showBadConfigDialog(final Shell shell, final String message, final DBException error) {
-        //log.debug(message);
-        Runnable runnable = () -> {
-            DBPDataSource dataSource = error.getDataSource();
-            String title = NLS.bind(UIConnectionMessages.dialog_edit_driver_dialog_bad_configuration, dataSource.getContainer().getDriver().getName());
-            new BadDriverConfigDialog(shell, title, message == null ? title : message, error).open();
-        };
-        UIUtils.syncExec(runnable);
-    }
-
-    private static class BadDriverConfigDialog extends StandardErrorDialog {
-
-        private final DBPDataSource dataSource;
-
-        BadDriverConfigDialog(Shell shell, String title, String message, DBException error) {
-            super(
-                shell == null ? UIUtils.getActiveWorkbenchShell() : shell,
-                title,
-                message,
-                RuntimeUtils.stripStack(GeneralUtils.makeExceptionStatus(error)),
-                IStatus.ERROR);
-            dataSource = error.getDataSource();
-        }
-
-        @Override
-        protected void createButtonsForButtonBar(Composite parent) {
-            createButton(parent, IDialogConstants.RETRY_ID, "Open Driver &Configuration", true);
-            createButton(parent, IDialogConstants.OK_ID, IDialogConstants.OK_LABEL, false);
-            createDetailsButton(parent);
-        }
-
-        @Override
-        protected void buttonPressed(int id) {
-            if (id == IDialogConstants.RETRY_ID) {
-                UIUtils.asyncExec(() -> {
-                    DriverEditDialog dialog = new DriverEditDialog(
-                        UIUtils.getActiveWorkbenchShell(),
-                        dataSource.getContainer().getDriver());
-                    dialog.open();
-                });
-                super.buttonPressed(IDialogConstants.OK_ID);
-            }
-            super.buttonPressed(id);
-        }
-    }
 
     private class LibContentProvider implements ITreeContentProvider {
-        @Override
-        public void dispose() {
-        }
-
-        @Override
-        public void inputChanged(Viewer viewer, Object oldInput, Object newInput) {
-        }
-
         @Override
         public Object[] getElements(Object inputElement) {
             if (inputElement instanceof Collection) {
@@ -1047,7 +1017,7 @@ public class DriverEditDialog extends HelpEnabledDialog {
                 if (CommonUtils.isEmpty(files)) {
                     return null;
                 }
-                return files.toArray(new Object[files.size()]);
+                return files.toArray(new Object[0]);
             }
             return new Object[0];
         }

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,15 +24,13 @@ import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.graphics.Image;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
-import org.eclipse.swt.widgets.Composite;
-import org.eclipse.swt.widgets.Group;
-import org.eclipse.swt.widgets.Label;
-import org.eclipse.swt.widgets.Text;
+import org.eclipse.swt.widgets.*;
 import org.jkiss.dbeaver.ext.postgresql.PostgreConstants;
 import org.jkiss.dbeaver.ext.postgresql.PostgreMessages;
 import org.jkiss.dbeaver.ext.postgresql.PostgreUtils;
 import org.jkiss.dbeaver.ext.postgresql.model.impls.PostgreServerType;
 import org.jkiss.dbeaver.model.DBPDataSourceContainer;
+import org.jkiss.dbeaver.model.DBPImage;
 import org.jkiss.dbeaver.model.connection.DBPConnectionConfiguration;
 import org.jkiss.dbeaver.model.connection.DBPDriver;
 import org.jkiss.dbeaver.model.connection.DBPDriverConfigurationType;
@@ -55,12 +53,10 @@ import java.util.Locale;
 public class PostgreConnectionPage extends ConnectionPageWithAuth implements IDialogPageProvider {
     
     private Text urlText;
-    private Label hostLabel;
     private Text hostText;
-    private Label portLabel;
     private Text portText;
-    private Label dbLabel;
     private Text dbText;
+    private Button showNonDefault;
     private Text roleText; //TODO: make it a combo and fill it with appropriate roles
     private ClientHomesSelector homesSelector;
     private boolean activated = false;
@@ -74,14 +70,16 @@ public class PostgreConnectionPage extends ConnectionPageWithAuth implements IDi
     public Image getImage() {
         final DBPDriver driver = site.getDriver();
 
-        PostgreServerType serverType = PostgreUtils.getServerType(driver);
+        DBPImage logoImage = driver.getLogoImage();
+        if (logoImage != null) {
+            return DBeaverIcons.getImage(logoImage);
+        }
+        PostgreServerType serverType = getServerType(driver);
         return DBeaverIcons.getImage(serverType.getIcon());
     }
 
     @Override
     public void createControl(Composite composite) {
-        //Composite group = new Composite(composite, SWT.NONE);
-        //group.setLayout(new GridLayout(1, true));
         final ModifyListener textListener = e -> {
             if (activated) {
                 updateUrl();
@@ -121,9 +119,9 @@ public class PostgreConnectionPage extends ConnectionPageWithAuth implements IDi
         urlText.addModifyListener(e -> site.updateButtons());
 
         final DBPDriver driver = site.getDriver();
-        PostgreServerType serverType = PostgreUtils.getServerType(driver);
+        PostgreServerType serverType = getServerType(driver);
 
-        hostLabel = UIUtils.createControlLabel(
+        Label hostLabel = UIUtils.createControlLabel(
             addrGroup,
             serverType.isCloudServer()
                 ? PostgreMessages.dialog_setting_connection_cloud_instance
@@ -138,7 +136,7 @@ public class PostgreConnectionPage extends ConnectionPageWithAuth implements IDi
         addControlToGroup(GROUP_CONNECTION, hostText);
 
         if (serverType.needsPort()) {
-            portLabel = UIUtils.createControlLabel(addrGroup, PostgreMessages.dialog_setting_connection_port);
+            Label portLabel = UIUtils.createControlLabel(addrGroup, PostgreMessages.dialog_setting_connection_port);
             addControlToGroup(GROUP_CONNECTION, portLabel);
             portText = new Text(addrGroup, SWT.BORDER);
             gd = new GridData(GridData.VERTICAL_ALIGN_BEGINNING);
@@ -151,21 +149,33 @@ public class PostgreConnectionPage extends ConnectionPageWithAuth implements IDi
             gd.horizontalSpan = 3;
         }
 
-        dbLabel = UIUtils.createControlLabel(addrGroup, PostgreMessages.dialog_setting_connection_database);
+        Label dbLabel = UIUtils.createControlLabel(addrGroup, PostgreMessages.dialog_setting_connection_database);
         addControlToGroup(GROUP_CONNECTION, dbLabel);
         dbText = new Text(addrGroup, SWT.BORDER);
         gd = new GridData(GridData.FILL_HORIZONTAL);
         gd.grabExcessHorizontalSpace = true;
-        gd.horizontalSpan = 3;
         dbText.setLayoutData(gd);
         dbText.addModifyListener(textListener);
         dbText.setMessage(PostgreMessages.dialog_database_name_hint);
         addControlToGroup(GROUP_CONNECTION, dbText);
 
+        showNonDefault = UIUtils.createCheckbox(
+            addrGroup,
+            PostgreMessages.dialog_setting_connection_nondefaultDatabase,
+            PostgreMessages.dialog_setting_connection_nondefaultDatabase_tip,
+            false,
+            2);
+        //addControlToGroup(GROUP_CONNECTION, showNonDefault);
+
         createAuthPanel(mainGroup, 1);
 
         if (isSessionRoleSupported() || serverType.supportsClient()) {
-            Group advancedGroup = UIUtils.createControlGroup(mainGroup, "Advanced", 4, GridData.HORIZONTAL_ALIGN_BEGINNING, 0);
+            Group advancedGroup = UIUtils.createControlGroup(
+                mainGroup,
+                PostgreMessages.dialog_setting_connection_advanced_group_label,
+                4,
+                GridData.HORIZONTAL_ALIGN_BEGINNING,
+                0);
 
             if (isSessionRoleSupported()) {
                 roleText = UIUtils.createLabelText(advancedGroup, PostgreMessages.dialog_setting_session_role, null, SWT.BORDER);
@@ -184,6 +194,15 @@ public class PostgreConnectionPage extends ConnectionPageWithAuth implements IDi
 
         createDriverPanel(mainGroup);
         setControl(mainGroup);
+    }
+
+    /**
+     * Returns server type for correct classes initialization
+     *
+     * @param driver to read server type from custom properties
+     */
+    public PostgreServerType getServerType(DBPDriver driver) {
+        return PostgreUtils.getServerType(driver);
     }
 
     protected boolean isSessionRoleSupported() {
@@ -239,6 +258,11 @@ public class PostgreConnectionPage extends ConnectionPageWithAuth implements IDi
             }
             dbText.setText(databaseName);
         }
+        if (showNonDefault != null) {
+            showNonDefault.setSelection(CommonUtils.getBoolean(
+                connectionInfo.getProviderProperty(PostgreConstants.PROP_SHOW_NON_DEFAULT_DB),
+                DBWorkbench.getPlatform().getPreferenceStore().getBoolean(PostgreConstants.PROP_SHOW_NON_DEFAULT_DB)));
+        }
         if (roleText != null) {
             roleText.setText(CommonUtils.notEmpty(connectionInfo.getProviderProperty(PostgreConstants.PROP_CHOSEN_ROLE)));
         }
@@ -272,6 +296,9 @@ public class PostgreConnectionPage extends ConnectionPageWithAuth implements IDi
         }
         if (dbText != null) {
             connectionInfo.setDatabaseName(dbText.getText().trim());
+        }
+        if (showNonDefault != null) {
+            connectionInfo.setProviderProperty(PostgreConstants.PROP_SHOW_NON_DEFAULT_DB, String.valueOf(showNonDefault.getSelection()));
         }
         if (roleText != null) {
             connectionInfo.setProviderProperty(PostgreConstants.PROP_CHOSEN_ROLE, roleText.getText().trim());

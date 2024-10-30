@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,6 +40,7 @@ import org.jkiss.utils.CommonUtils;
 import org.jkiss.utils.Pair;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -56,9 +57,12 @@ public class SQLRuleManager {
     private TPRule[] allRules = new TPRule[0];
     @NotNull
     private SQLSyntaxManager syntaxManager;
+    @Nullable
+    private TPRuleProvider ruleProvider;
 
     public SQLRuleManager(@NotNull SQLSyntaxManager syntaxManager) {
         this.syntaxManager = syntaxManager;
+        this.ruleProvider = GeneralUtils.adapt(syntaxManager.getDialect(), TPRuleProvider.class);
     }
 
     @NotNull
@@ -85,16 +89,23 @@ public class SQLRuleManager {
     }
 
     public void loadRules() {
-        loadRules(null, false);
+        loadRules((DBPDataSourceContainer) null, false);
     }
 
     public void loadRules(@Nullable DBPDataSource dataSource, boolean minimalRules) {
+        if (dataSource == null) {
+            loadRules((DBPDataSourceContainer) null, minimalRules);
+        } else {
+            loadRules(dataSource.getContainer(), minimalRules);
+        }
+    }
+
+    public void loadRules(@Nullable DBPDataSourceContainer dataSourceContainer, boolean minimalRules) {
         SQLDialect dialect = syntaxManager.getDialect();
-        TPRuleProvider ruleProvider = GeneralUtils.adapt(dialect, TPRuleProvider.class);
-        DBPDataSourceContainer dataSourceContainer = dataSource == null ? null : dataSource.getContainer();
 
         final TPToken keywordToken = new TPTokenDefault(SQLTokenType.T_KEYWORD);
         final TPToken typeToken = new TPTokenDefault(SQLTokenType.T_TYPE);
+        final TPToken functionToken = new TPTokenDefault(SQLTokenType.T_FUNCTION);
         final TPToken stringToken = new TPTokenDefault(SQLTokenType.T_STRING);
         final TPToken quotedToken = new TPTokenDefault(SQLTokenType.T_QUOTED);
         final TPToken numberToken = new TPTokenDefault(SQLTokenType.T_NUMBER);
@@ -111,11 +122,11 @@ public class SQLRuleManager {
         List<TPRule> rules = new ArrayList<>();
 
         if (ruleProvider != null) {
-            ruleProvider.extendRules(dataSourceContainer, rules, TPRuleProvider.RulePosition.INITIAL);
+            Collections.addAll(rules, ruleProvider.extendRules(dataSourceContainer, TPRuleProvider.RulePosition.INITIAL));
         }
 
         if (ruleProvider != null) {
-            ruleProvider.extendRules(dataSourceContainer, rules, TPRuleProvider.RulePosition.CONTROL);
+            Collections.addAll(rules, ruleProvider.extendRules(dataSourceContainer, TPRuleProvider.RulePosition.CONTROL));
         }
 
         if (!minimalRules) {
@@ -176,7 +187,7 @@ public class SQLRuleManager {
             }
         }
         if (ruleProvider != null) {
-            ruleProvider.extendRules(dataSourceContainer, rules, TPRuleProvider.RulePosition.QUOTES);
+            Collections.addAll(rules, ruleProvider.extendRules(dataSourceContainer, TPRuleProvider.RulePosition.QUOTES));
         }
         
         // Add rule for single-line comments.
@@ -221,12 +232,12 @@ public class SQLRuleManager {
         }
 
         if (ruleProvider != null) {
-            ruleProvider.extendRules(dataSourceContainer, rules, TPRuleProvider.RulePosition.KEYWORDS);
+            Collections.addAll(rules, ruleProvider.extendRules(dataSourceContainer, TPRuleProvider.RulePosition.KEYWORDS));
         }
 
         if (!minimalRules) {
             // Add word rule for keywords, functions, types, and constants.
-            SQLWordRule wordRule = new SQLWordRule(delimRule, typeToken, otherToken, dialect);
+            SQLWordRule wordRule = new SQLWordRule(delimRule, functionToken, otherToken, dialect);
             for (String reservedWord : dialect.getReservedWords()) {
                 DBPKeywordType keywordType = dialect.getKeywordType(reservedWord);
                 // Functions without parentheses has type 'DBPKeywordType.OTHER' (#8710)
@@ -236,6 +247,8 @@ public class SQLRuleManager {
                     wordRule.addWord(reservedWord, keywordToken);
                 }
             }
+
+            DBPDataSource dataSource = dataSourceContainer != null ? dataSourceContainer.getDataSource() : null;
             if (dataSource != null) {
                 for (String type : dialect.getDataTypes(dataSource)) {
                     wordRule.addWord(type, typeToken);
@@ -264,7 +277,7 @@ public class SQLRuleManager {
         }
 
         if (ruleProvider != null) {
-            ruleProvider.extendRules(dataSourceContainer, rules, TPRuleProvider.RulePosition.FINAL);
+            Collections.addAll(rules, ruleProvider.extendRules(dataSourceContainer, TPRuleProvider.RulePosition.FINAL));
         }
 
         allRules = rules.toArray(new TPRule[0]);

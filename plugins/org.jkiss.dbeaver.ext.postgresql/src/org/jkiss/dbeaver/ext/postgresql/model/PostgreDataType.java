@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,12 +18,16 @@ package org.jkiss.dbeaver.ext.postgresql.model;
 
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
+import org.jkiss.dbeaver.DBDatabaseException;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ext.postgresql.PostgreConstants;
 import org.jkiss.dbeaver.ext.postgresql.PostgreUtils;
 import org.jkiss.dbeaver.model.*;
-import org.jkiss.dbeaver.model.exec.*;
+import org.jkiss.dbeaver.model.exec.DBCAttributeMetaData;
+import org.jkiss.dbeaver.model.exec.DBCException;
+import org.jkiss.dbeaver.model.exec.DBCFeatureNotSupportedException;
+import org.jkiss.dbeaver.model.exec.DBCLogicalOperator;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCPreparedStatement;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCResultSet;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCSession;
@@ -33,6 +37,7 @@ import org.jkiss.dbeaver.model.impl.jdbc.JDBCUtils;
 import org.jkiss.dbeaver.model.impl.jdbc.cache.JDBCObjectCache;
 import org.jkiss.dbeaver.model.impl.jdbc.struct.JDBCDataType;
 import org.jkiss.dbeaver.model.meta.ForTest;
+import org.jkiss.dbeaver.model.meta.IPropertyValueValidator;
 import org.jkiss.dbeaver.model.meta.Property;
 import org.jkiss.dbeaver.model.meta.PropertyLength;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
@@ -49,7 +54,7 @@ import java.util.*;
  * PostgreTypeType
  */
 public class PostgreDataType extends JDBCDataType<PostgreSchema> 
-    implements PostgreClass, PostgreScriptObject, DBPQualifiedObject, DBPImageProvider, DBSBindableDataType {
+    implements PostgreClass, PostgreScriptObject, DBPQualifiedObject, DBPImageProvider, DBSBindableDataType, DBPNamedObject2 {
 
     private static final Log log = Log.getLog(PostgreDataType.class);
 
@@ -166,10 +171,12 @@ public class PostgreDataType extends JDBCDataType<PostgreSchema>
         this.arrayDelimiter = JDBCUtils.safeGetString(dbResult, "typdelim"); //$NON-NLS-1$
         this.classId = JDBCUtils.safeGetLong(dbResult, "typrelid"); //$NON-NLS-1$
         this.elementTypeId = JDBCUtils.safeGetLong(dbResult, "typelem"); //$NON-NLS-1$
-        this.inputFunc = JDBCUtils.safeGetString(dbResult, "typinput"); //$NON-NLS-1$
-        this.outputFunc = JDBCUtils.safeGetString(dbResult, "typoutput"); //$NON-NLS-1$
-        this.receiveFunc = JDBCUtils.safeGetString(dbResult, "typreceive"); //$NON-NLS-1$
-        this.sendFunc = JDBCUtils.safeGetString(dbResult, "typsend"); //$NON-NLS-1$
+        if (getDataSource().getServerType().supportsCustomDataTypes()) {
+            this.inputFunc = JDBCUtils.safeGetString(dbResult, "typinput"); //$NON-NLS-1$
+            this.outputFunc = JDBCUtils.safeGetString(dbResult, "typoutput"); //$NON-NLS-1$
+            this.receiveFunc = JDBCUtils.safeGetString(dbResult, "typreceive"); //$NON-NLS-1$
+            this.sendFunc = JDBCUtils.safeGetString(dbResult, "typsend"); //$NON-NLS-1$
+        }
         if (getDataSource().isServerVersionAtLeast(8, 3)) {
             this.arrayItemTypeId = JDBCUtils.safeGetLong(dbResult, "typarray"); //$NON-NLS-1$
             this.modInFunc = JDBCUtils.safeGetString(dbResult, "typmodin"); //$NON-NLS-1$
@@ -205,7 +212,7 @@ public class PostgreDataType extends JDBCDataType<PostgreSchema>
         this.attributeCache = hasAttributes() ? new AttributeCache() : null;
 
         if (typeCategory == PostgreTypeCategory.E) {
-            readEnumValues(session);
+            readEnumValues(session.getProgressMonitor());
         }
         description = JDBCUtils.safeGetString(dbResult, "description"); //$NON-NLS-1$
     }
@@ -303,22 +310,36 @@ public class PostgreDataType extends JDBCDataType<PostgreSchema>
         this.extraDataType = extraDataType;
     }
 
-    private void readEnumValues(JDBCSession session) throws DBException {
-        try (JDBCPreparedStatement dbStat = session.prepareStatement(
-            "SELECT e.enumlabel \n" +
-                "FROM pg_catalog.pg_enum e\n" +
-                "WHERE e.enumtypid=?\n" +
-                "ORDER BY e.enumsortorder")) {
-            dbStat.setLong(1, getObjectId());
-            try (JDBCResultSet rs = dbStat.executeQuery()) {
-                List<String> values = new ArrayList<>();
-                while (rs.nextRow()) {
-                    values.add(JDBCUtils.safeGetString(rs, 1));
+    private void readEnumValues(@NotNull DBRProgressMonitor monitor) throws DBException {
+        if (getDataSource().isSupportsEnumTable()) {
+            List<PostgreEnumValue> cachedObjects = getDatabase().getEnumValueCache()
+                .getAllObjects(monitor, getDatabase());
+            enumValues = cachedObjects.stream()
+                .filter(e -> e.getEnumTypId() == getObjectId())
+                .sorted(Comparator.comparing(PostgreEnumValue::getEnumSortOrder))
+                .map(PostgreEnumValue::getEnumLabel)
+                .toArray();
+        }
+    }
+
+    private void readNewEnumValues(DBRProgressMonitor monitor) throws DBException {
+        try (JDBCSession session = DBUtils.openMetaSession(monitor, this, "Refresh enum values")) {
+            try (JDBCPreparedStatement dbStat = session.prepareStatement(
+                "SELECT e.enumlabel \n" +
+                    "FROM pg_catalog.pg_enum e\n" +
+                    "WHERE e.enumtypid=?\n" +
+                    "ORDER BY e.enumsortorder")) {
+                dbStat.setLong(1, getObjectId());
+                try (JDBCResultSet rs = dbStat.executeQuery()) {
+                    List<String> values = new ArrayList<>();
+                    while (rs.nextRow()) {
+                        values.add(JDBCUtils.safeGetString(rs, 1));
+                    }
+                    enumValues = values.toArray();
                 }
-                enumValues = values.toArray();
+            } catch (SQLException e) {
+                throw new DBDatabaseException("Error reading enum values", e, getDataSource());
             }
-        } catch (SQLException e) {
-            throw new DBException("Error reading enum values", e, getDataSource());
         }
     }
 
@@ -327,11 +348,12 @@ public class PostgreDataType extends JDBCDataType<PostgreSchema>
     }
 
     @Override
-    @Property(viewable = true, order = 1)
+    @Property(viewable = true, editable = true, order = 1)
     public String getName() {
         return super.getName();
     }
 
+    @NotNull
     @Override
     public String getFullTypeName() {
         return super.getFullTypeName();
@@ -353,6 +375,7 @@ public class PostgreDataType extends JDBCDataType<PostgreSchema>
         return getParentObject().getDatabase();
     }
 
+    @NotNull
     @Override
     public DBPDataKind getDataKind() {
         if (dataKind != null) {
@@ -626,16 +649,27 @@ public class PostgreDataType extends JDBCDataType<PostgreSchema>
         if (attributeCache != null) {
             attributeCache.clearCache();
         }
-        if (typeCategory == PostgreTypeCategory.E) {
-            try (JDBCSession session = DBUtils.openMetaSession(monitor, this, "Refresh enum values")) {
-                readEnumValues(session);
-            }
+        if (enumValues != null) {
+            getDatabase().getEnumValueCache().clearCache();
+            enumValues = null;
         }
         return this;
     }
 
-    @Property(viewable = true, optional = true, order = 16)
-    public Object[] getEnumValues() {
+    @Property(viewable = true, order = 16, visibleIf = EnumTypeValidator.class)
+    public Object[] getEnumValues(DBRProgressMonitor monitor) {
+        if (typeCategory == PostgreTypeCategory.E && ArrayUtils.isEmpty(enumValues)) {
+            try {
+                readEnumValues(monitor);
+                if (ArrayUtils.isEmpty(enumValues)) {
+                    // Probably new objects not cached yet. Let's read them.
+                    readNewEnumValues(monitor);
+                }
+            } catch (DBException e) {
+                log.error("Can't read enum values of type " + getFullTypeName());
+                enumValues = new Object[]{0};
+            }
+        }
         return enumValues;
     }
 
@@ -1078,6 +1112,13 @@ public class PostgreDataType extends JDBCDataType<PostgreSchema>
             name,
             typeLength,
             dbResult);
+    }
+
+    public static class EnumTypeValidator implements IPropertyValueValidator<PostgreDataType, Object> {
+        @Override
+        public boolean isValidValue(PostgreDataType object, Object value) throws IllegalArgumentException {
+            return object.getTypeCategory() == PostgreTypeCategory.E;
+        }
     }
 
 }

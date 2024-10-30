@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ public class SQLServerExternalTableManager extends SQLServerBaseTableManager<SQL
         SQLServerTableColumn.class);
 
     @Override
-    protected SQLServerExternalTable createDatabaseObject(DBRProgressMonitor monitor, DBECommandContext context, Object container, Object copyFrom, Map<String, Object> options) throws DBException {
+    protected SQLServerExternalTable createDatabaseObject(@NotNull DBRProgressMonitor monitor, @NotNull DBECommandContext context, Object container, Object copyFrom, @NotNull Map<String, Object> options) throws DBException {
         final SQLServerSchema schema = (SQLServerSchema) container;
         final SQLServerExternalTable table = new SQLServerExternalTable(schema);
         setNewObjectName(monitor, schema, table);
@@ -48,7 +48,7 @@ public class SQLServerExternalTableManager extends SQLServerBaseTableManager<SQL
     }
 
     @Override
-    public boolean canCreateObject(Object container) {
+    public boolean canCreateObject(@NotNull Object container) {
         return false;
     }
 

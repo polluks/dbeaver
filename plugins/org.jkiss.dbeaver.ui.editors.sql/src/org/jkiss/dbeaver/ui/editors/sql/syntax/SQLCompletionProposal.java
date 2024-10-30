@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -58,6 +58,8 @@ public class SQLCompletionProposal extends SQLCompletionProposalBase implements 
     private static final Log log = Log.getLog(SQLCompletionProposal.class);
 
     private String replacementLast;
+    
+    private boolean isNeverAddSpaceAfter = false;
 
     public SQLCompletionProposal(
         SQLCompletionRequest request,
@@ -70,12 +72,16 @@ public class SQLCompletionProposal extends SQLCompletionProposalBase implements 
         DBPNamedObject object,
         Map<String, Object> params)
     {
-        super(request.getContext(), request.getWordDetector(), displayString, replacementString, cursorPosition, image, proposalType, description, object, params);
-        int divPos = this.replacementFull.lastIndexOf(getContext().getSyntaxManager().getStructSeparator());
+        super(request, displayString, replacementString, cursorPosition, image, proposalType, description, object, params);
+        int divPos = this.replacementFull.lastIndexOf(request.getContext().getSyntaxManager().getStructSeparator());
         if (divPos == -1) {
             this.replacementLast = null;
         } else {
             this.replacementLast = this.replacementFull.substring(divPos + 1);
+        }
+        Object paramAlias = params.get(SQLCompletionProposalBase.PARAM_NO_SPACE);
+        if (paramAlias != null && ((boolean) paramAlias)) {
+            isNeverAddSpaceAfter = true;
         }
     }
 
@@ -90,7 +96,7 @@ public class SQLCompletionProposal extends SQLCompletionProposalBase implements 
             if (replacementAfter != null) {
                 replaceOn += replacementAfter;
             }
-            if (getDataSource() != null) {
+            if (!isNeverAddSpaceAfter && getDataSource() != null) {
                 if (getDataSource().getContainer().getPreferenceStore().getBoolean(SQLPreferenceConstants.INSERT_SPACE_AFTER_PROPOSALS)) {
                     boolean insertTrailingSpace;
                     boolean hasClosingParenthesis = false;
@@ -108,15 +114,14 @@ public class SQLCompletionProposal extends SQLCompletionProposalBase implements 
                     } else {
                         if (docLen <= replacementSum + 2) {
                             insertTrailingSpace = true;
-                        } else if (Character.isWhitespace(document.getChar(replacementSum))) {
-                            insertTrailingSpace = docLen > replacementSum + 1 && (!Character.isSpaceChar(document.getChar(replacementSum + 1)));
                         } else {
-                            insertTrailingSpace = true;
+                            final char ch = document.getChar(replacementSum);
+                            insertTrailingSpace = !Character.isWhitespace(ch) || ch == '\r' || ch == '\n';
                         }
                         if (insertTrailingSpace) {
                             replaceOn += ' ';
+                            cursorPosition++;
                         }
-                        cursorPosition++;
                     }
                 }
             }
@@ -183,8 +188,9 @@ public class SQLCompletionProposal extends SQLCompletionProposalBase implements 
         if (event == null) {
             return false;
         }
-        SQLSyntaxManager syntaxManager = getContext().getSyntaxManager();
-        DBPDataSource dataSource = getContext().getDataSource();
+        this.getRequest().getActivityTracker().implicitlyTriggered();
+        SQLSyntaxManager syntaxManager = this.getRequest().getContext().getSyntaxManager();
+        DBPDataSource dataSource = this.getRequest().getContext().getDataSource();
         final SQLWordPartDetector wordDetector = new SQLWordPartDetector(document, syntaxManager, offset);
         String wordPart = wordDetector.getWordPart();
         int divPos = wordPart.lastIndexOf(syntaxManager.getStructSeparator());
@@ -260,7 +266,7 @@ public class SQLCompletionProposal extends SQLCompletionProposalBase implements 
                 StyledString.createColorRegistryStyler(SQLConstants.CONFIG_COLOR_KEYWORD, null));
         } else if (getProposalType() == DBPKeywordType.FUNCTION) {
             return new StyledString(getDisplayString(),
-                StyledString.createColorRegistryStyler(SQLConstants.CONFIG_COLOR_DATATYPE, null));
+                StyledString.createColorRegistryStyler(SQLConstants.CONFIG_COLOR_FUNCTION, null));
         } else {
             return new StyledString(getDisplayString());
         }
@@ -268,7 +274,7 @@ public class SQLCompletionProposal extends SQLCompletionProposalBase implements 
 
     @Override
     public IInformationControlCreator getInformationControlCreator() {
-        if (hasStructObject()) {
+        if (hasStructObject() && this.getRequest().getActivityTracker().isAdditionalInfoExpected()) {
             return SuggestionInformationControlCreator.INSTANCE;
         } else {
             return null;

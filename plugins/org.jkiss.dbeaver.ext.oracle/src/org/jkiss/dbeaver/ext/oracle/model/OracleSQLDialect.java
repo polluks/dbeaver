@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -45,10 +45,11 @@ import org.jkiss.dbeaver.model.struct.rdb.DBSProcedure;
 import org.jkiss.dbeaver.model.struct.rdb.DBSProcedureType;
 import org.jkiss.utils.ArrayUtils;
 import org.jkiss.utils.CommonUtils;
+import org.jkiss.utils.SecurityUtils;
 
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.Locale;
-import java.util.UUID;
 
 /**
  * Oracle SQL dialect
@@ -497,6 +498,11 @@ public class OracleSQLDialect extends JDBCSQLDialect
         return preferenceStore == null || preferenceStore.getBoolean(OracleConstants.PREF_DISABLE_SCRIPT_ESCAPE_PROCESSING);
     }
 
+    @Override
+    public boolean supportsUuid() {
+        return false;
+    }
+
     @NotNull
     @Override
     public String[] getScriptDelimiters() {
@@ -702,6 +708,16 @@ public class OracleSQLDialect extends JDBCSQLDialect
         return false;
     }
 
+    @Override
+    public String getOffsetLimitQueryPart(int offset, int limit) {
+        return String.format("OFFSET %d ROWS FETCH NEXT %d ROWS ONLY", offset, limit);
+    }
+
+    @Override
+    public String getClobComparingPart(@NotNull String columnName) {
+        return "DBMS_LOB.COMPARE(%s,?) = 0".formatted(columnName);
+    }
+
     @Nullable
     @Override
     public String getAutoIncrementKeyword() {
@@ -733,6 +749,12 @@ public class OracleSQLDialect extends JDBCSQLDialect
 
     @NotNull
     @Override
+    public String getBlobDataType() {
+        return OracleConstants.TYPE_NAME_BLOB;
+    }
+
+    @NotNull
+    @Override
     public String getUuidDataType() {
         return OracleConstants.TYPE_UUID;
     }
@@ -741,6 +763,27 @@ public class OracleSQLDialect extends JDBCSQLDialect
     @Override
     public String getBooleanDataType() {
         return OracleConstants.TYPE_BOOLEAN;
+    }
+
+    @NotNull
+    @Override
+    public String getAlterColumnOperation() {
+        return OracleConstants.OPERATION_MODIFY;
+    }
+
+    @Override
+    public boolean supportsNoActionIndex() {
+        return false;
+    }
+
+    @Override
+    public boolean supportsAlterColumnSet() {
+        return false;
+    }
+
+    @Override
+    public boolean supportsAlterHasColumn() {
+        return false;
     }
 
     @Override
@@ -757,6 +800,13 @@ public class OracleSQLDialect extends JDBCSQLDialect
     @NotNull
     @Override
     public String getCreateSchemaQuery(@NotNull String schemaName) {
-        return "CREATE USER \"" + schemaName + "\" IDENTIFIED BY \"" + UUID.randomUUID() + "\"";
+        return "CREATE USER " + schemaName + " IDENTIFIED BY \"" + SecurityUtils.generatePassword(10) + "\"";
+    }
+
+    @Override
+    public EnumSet<ProjectionAliasVisibilityScope> getProjectionAliasVisibilityScope() {
+        return EnumSet.of(
+            ProjectionAliasVisibilityScope.ORDER_BY
+        );
     }
 }

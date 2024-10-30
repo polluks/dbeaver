@@ -13,16 +13,21 @@
     <packaging>pom</packaging>
 
     <modules>
+        <module>org.jkiss.dbeaver.launcher</module>
         <module>org.jkiss.dbeaver.model</module>
         <module>org.jkiss.dbeaver.model.ai</module>
         <module>org.jkiss.dbeaver.model.event</module>
-<!--        <module>org.jkiss.dbeaver.model.dpi</module>-->
+        <module>org.jkiss.dbeaver.model.dashboard</module>
         <module>org.jkiss.dbeaver.model.jdbc</module>
+        <module>org.jkiss.dbeaver.model.lsm</module>
+        <module>org.jkiss.dbeaver.model.nio</module>
+        <module>org.jkiss.dbeaver.model.rcp</module>
         <module>org.jkiss.dbeaver.model.sm</module>
         <module>org.jkiss.dbeaver.model.sql</module>
-        <module>org.jkiss.dbeaver.model.lsm</module>
+        <module>org.jkiss.dbeaver.model.sql.jdbc</module>
         <module>org.jkiss.dbeaver.registry</module>
-        <module>org.jkiss.dbeaver.parser</module>
+        <module>org.jkiss.dbeaver.dpi.app</module>
+        <module>org.jkiss.dbeaver.dpi.model</module>
 
         <module>org.jkiss.dbeaver.cmp.simple</module>
         <module>org.jkiss.dbeaver.erd.model</module>
@@ -32,15 +37,16 @@
         <module>org.jkiss.dbeaver.ext.athena</module>
         <module>org.jkiss.dbeaver.ext.bigquery</module>
         <module>org.jkiss.dbeaver.ext.clickhouse</module>
+        <module>org.jkiss.dbeaver.ext.cubrid</module>
         <module>org.jkiss.dbeaver.ext.databricks</module>
         <module>org.jkiss.dbeaver.ext.db2</module>
         <module>org.jkiss.dbeaver.ext.db2.zos</module>
         <module>org.jkiss.dbeaver.ext.db2.i</module>
         <module>org.jkiss.dbeaver.ext.derby</module>
+        <module>org.jkiss.dbeaver.ext.dameng</module>
         <module>org.jkiss.dbeaver.ext.duckdb</module>
-        <module>org.jkiss.dbeaver.ext.elasticsearch</module>
+        <module>org.jkiss.dbeaver.ext.es</module>
         <module>org.jkiss.dbeaver.ext.exasol</module>
-        <module>org.jkiss.dbeaver.ext.opendistro</module>
         <module>org.jkiss.dbeaver.ext.firebird</module>
         <module>org.jkiss.dbeaver.ext.greenplum</module>
         <module>org.jkiss.dbeaver.ext.h2</module>
@@ -69,19 +75,24 @@
         <module>org.jkiss.dbeaver.ext.kognitio</module>
         <module>org.jkiss.dbeaver.ext.datavirtuality</module>
         <module>org.jkiss.dbeaver.ext.denodo</module>
-
+        <module>org.jkiss.dbeaver.ext.altibase</module>
+        <module>org.jkiss.dbeaver.ext.gaussdb</module>
+        
         <module>org.jkiss.dbeaver.tasks.native</module>
 
         <module>org.jkiss.dbeaver.data.office</module>
         <module>org.jkiss.dbeaver.data.transfer</module>
         <module>org.jkiss.dbeaver.data.gis</module>
+
+        <module>org.jkiss.dbeaver.debug.core</module>
+
         <module>org.jkiss.dbeaver.net.ssh</module>
         <module>org.jkiss.dbeaver.net.ssh.jsch</module>
         <module>org.jkiss.dbeaver.net.ssh.sshj</module>
         <module>org.jkiss.dbeaver.slf4j</module>
-        <module>org.jkiss.dbeaver.team.git</module>
 
         <module>org.jkiss.dbeaver.headless</module>
+
     </modules>
 
     <profiles>
@@ -90,6 +101,7 @@
             <activation><property><name>!headless-platform</name></property></activation>
             <!-- Desktop (swt/jface) components -->
             <modules>
+                <module>org.jkiss.dbeaver.launcher</module>
                 <module>org.jkiss.dbeaver.core</module>
                 <module>org.jkiss.dbeaver.ui.app.standalone</module>
                 <module>org.jkiss.dbeaver.ui.app.eclipse</module>
@@ -98,6 +110,8 @@
                 <module>org.jkiss.dbeaver.ext.athena.ui</module>
                 <module>org.jkiss.dbeaver.ext.bigquery.ui</module>
                 <module>org.jkiss.dbeaver.ext.clickhouse.ui</module>
+                <module>org.jkiss.dbeaver.ext.cubrid.ui</module>
+                <module>org.jkiss.dbeaver.ext.dameng.ui</module>
                 <module>org.jkiss.dbeaver.ext.exasol.ui</module>
                 <module>org.jkiss.dbeaver.ext.db2.ui</module>
 
@@ -116,6 +130,7 @@
                 <module>org.jkiss.dbeaver.ext.snowflake.ui</module>
                 <module>org.jkiss.dbeaver.ext.vertica.ui</module>
                 <module>org.jkiss.dbeaver.ext.tidb.ui</module>
+                <module>org.jkiss.dbeaver.ext.altibase.ui</module>
 
                 <module>org.jkiss.dbeaver.ext.wmi</module>
 
@@ -140,6 +155,10 @@
                 <module>org.jkiss.dbeaver.ui.search</module>
                 <module>org.jkiss.dbeaver.ui.statistics</module>
 
+                <module>org.jkiss.dbeaver.ui.swt.linux</module>
+                <module>org.jkiss.dbeaver.ui.swt.macos</module>
+                <module>org.jkiss.dbeaver.ui.swt.windows</module>
+
                 <module>org.jkiss.dbeaver.erd.ui</module>
                 <module>org.jkiss.dbeaver.tasks.native.ui</module>
                 <module>org.jkiss.dbeaver.tasks.ui</module>
@@ -149,21 +168,22 @@
                 <module>org.jkiss.dbeaver.data.office.ui</module>
                 <module>org.jkiss.dbeaver.ext.sample.database</module>
                 <module>org.jkiss.dbeaver.ext.ui.locks</module>
-                <module>org.jkiss.dbeaver.ext.ui.svg</module>
-<!--                <module>org.jkiss.dbeaver.ext.ui.colortheme</module>-->
                 <module>org.jkiss.dbeaver.ext.ui.tipoftheday</module>
-                <module>org.jkiss.dbeaver.ext.import_config</module>
+                <module>org.jkiss.dbeaver.ext.config.migration</module>
                 <module>org.jkiss.dbeaver.ext.format.sqlworkbenchj</module>
                 <module>org.jkiss.dbeaver.cmp.simple.ui</module>
 
-                <module>org.jkiss.dbeaver.debug.core</module>
                 <module>org.jkiss.dbeaver.debug.ui</module>
 
                 <module>org.jkiss.dbeaver.data.transfer.ui</module>
                 <module>org.jkiss.dbeaver.data.gis.view</module>
                 <module>org.jkiss.dbeaver.net.ssh.ui</module>
+                
+                <module>org.jkiss.dbeaver.ext.gaussdb.ui</module>
 
                 <module>org.jkiss.dbeaver.team.git.ui</module>
+
+                <module>org.jkiss.dbeaver.ext.test</module>
             </modules>
         </profile>
     </profiles>

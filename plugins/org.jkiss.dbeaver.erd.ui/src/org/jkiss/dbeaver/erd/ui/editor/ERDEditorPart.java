@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,16 +16,14 @@
  */
 package org.jkiss.dbeaver.erd.ui.editor;
 
-import org.eclipse.core.runtime.IProgressMonitor;
-import org.eclipse.core.runtime.IStatus;
-import org.eclipse.core.runtime.MultiStatus;
-import org.eclipse.core.runtime.Status;
+import org.eclipse.core.runtime.*;
 import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.draw2d.IFigure;
 import org.eclipse.draw2d.PrintFigureOperation;
 import org.eclipse.draw2d.geometry.Dimension;
 import org.eclipse.draw2d.geometry.Insets;
 import org.eclipse.gef.*;
+import org.eclipse.gef.commands.Command;
 import org.eclipse.gef.commands.CommandStack;
 import org.eclipse.gef.editparts.ScalableFreeformRootEditPart;
 import org.eclipse.gef.editparts.ZoomManager;
@@ -76,11 +74,16 @@ import org.jkiss.dbeaver.erd.ui.export.ERDExportFormatHandler;
 import org.jkiss.dbeaver.erd.ui.export.ERDExportFormatRegistry;
 import org.jkiss.dbeaver.erd.ui.internal.ERDUIActivator;
 import org.jkiss.dbeaver.erd.ui.internal.ERDUIMessages;
+import org.jkiss.dbeaver.erd.ui.model.ERDContainerDecorated.NodeVisualInfo;
 import org.jkiss.dbeaver.erd.ui.model.ERDContentProviderDecorated;
 import org.jkiss.dbeaver.erd.ui.model.ERDDecorator;
 import org.jkiss.dbeaver.erd.ui.model.ERDDecoratorDefault;
 import org.jkiss.dbeaver.erd.ui.model.EntityDiagram;
+import org.jkiss.dbeaver.erd.ui.notations.ERDNotationDescriptor;
+import org.jkiss.dbeaver.erd.ui.notations.ERDNotationRegistry;
 import org.jkiss.dbeaver.erd.ui.part.*;
+import org.jkiss.dbeaver.erd.ui.router.ERDConnectionRouterDescriptor;
+import org.jkiss.dbeaver.erd.ui.router.ERDConnectionRouterRegistry;
 import org.jkiss.dbeaver.model.DBPDataSourceContainer;
 import org.jkiss.dbeaver.model.DBPDataSourceTask;
 import org.jkiss.dbeaver.model.DBPNamedObject;
@@ -88,6 +91,7 @@ import org.jkiss.dbeaver.model.app.DBPProject;
 import org.jkiss.dbeaver.model.edit.DBECommandContext;
 import org.jkiss.dbeaver.model.navigator.DBNNode;
 import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
+import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.load.ILoadService;
 import org.jkiss.dbeaver.model.sql.SQLUtils;
 import org.jkiss.dbeaver.model.struct.DBSEntity;
@@ -113,7 +117,7 @@ import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
 /**
- * Editor implementation based on the the example editor skeleton that is built in <i>Building
+ * Editor implementation based on the example editor skeleton that is built in <i>Building
  * an editor </i> in chapter <i>Introduction to .gef </i>
  */
 public abstract class ERDEditorPart extends GraphicalEditorWithFlyoutPalette
@@ -167,6 +171,8 @@ public abstract class ERDEditorPart extends GraphicalEditorWithFlyoutPalette
     private ERDHighlightingManager highlightingManager = new ERDHighlightingManager();
 
     private String exportMruFilename = null;
+    private ERDConnectionRouterDescriptor routerStyle;
+    private ERDNotationDescriptor notationStyle;
 
     /**
      * No-arg constructor
@@ -235,7 +241,7 @@ public abstract class ERDEditorPart extends GraphicalEditorWithFlyoutPalette
     @Override
     public void init(IEditorSite site, IEditorInput input) throws PartInitException
     {
-        rootPart = new ScalableFreeformRootEditPart(false);
+        rootPart = new ScalableFreeformRootEditPart();
         editDomain = new DefaultEditDomain(this);
         setEditDomain(editDomain);
 
@@ -246,6 +252,12 @@ public abstract class ERDEditorPart extends GraphicalEditorWithFlyoutPalette
 
         configPropertyListener = new ConfigPropertyListener();
         ERDUIActivator.getDefault().getPreferenceStore().addPropertyChangeListener(configPropertyListener);
+        if (routerStyle == null) {
+            routerStyle = ERDConnectionRouterRegistry.getInstance().getActiveRouter();
+        }
+        if (notationStyle == null) {
+            notationStyle = ERDNotationRegistry.getInstance().getActiveDescriptor();
+        }
     }
 
     @Override
@@ -461,16 +473,21 @@ public abstract class ERDEditorPart extends GraphicalEditorWithFlyoutPalette
 
         // Set initial (empty) contents
         viewer.setContents(new EntityDiagram(null, "empty", getContentProvider(), getDecorator()));
+        ERDEditorContextMenuProvider provider = createContextProvider();
+        viewer.setContextMenu(provider);
 
         // Set context menu
-        ERDEditorContextMenuProvider provider = new ERDEditorContextMenuProvider(this);
-        viewer.setContextMenu(provider);
         IWorkbenchPartSite site = getSite();
         if (site instanceof IEditorSite) {
             ((IEditorSite)site).registerContextMenu(ERDEditorPart.class.getName() + ".EditorContext", provider, viewer, false);
         } else {
             site.registerContextMenu(ERDEditorPart.class.getName() + ".EditorContext", provider, viewer);
         }
+    }
+
+    @NotNull
+    protected ERDEditorContextMenuProvider createContextProvider() {
+        return new ERDEditorContextMenuProvider(this, true);
     }
 
     private GraphicalViewer createViewer(Composite parent)
@@ -482,7 +499,7 @@ public abstract class ERDEditorPart extends GraphicalEditorWithFlyoutPalette
         // configure the viewer
         viewer.getControl().setBackground(UIUtils.getColorRegistry().get(ERDUIConstants.COLOR_ERD_DIAGRAM_BACKGROUND));
         viewer.setRootEditPart(rootPart);
-        viewer.setKeyHandler(new DBeaverNavigationKeyHandler(viewer));
+        installKeyHandler(viewer);
 
         registerDropTargetListeners(viewer);
 
@@ -490,6 +507,10 @@ public abstract class ERDEditorPart extends GraphicalEditorWithFlyoutPalette
         viewer.setEditPartFactory(getDecorator().createPartFactory());
 
         return viewer;
+    }
+
+    protected void installKeyHandler(GraphicalViewer viewer) {
+        viewer.setKeyHandler(new DBeaverNavigationKeyHandler(viewer));
     }
 
     protected void registerDropTargetListeners(GraphicalViewer viewer) {
@@ -682,16 +703,38 @@ public abstract class ERDEditorPart extends GraphicalEditorWithFlyoutPalette
         return paletteComposite;
     }
 
-    public boolean isLoaded()
-    {
+    public boolean isLoaded() {
         return isLoaded;
     }
 
-    public void refreshDiagram(boolean force, boolean refreshMetadata)
-    {
-        if (isLoaded && force) {
+    /**
+     * The method designed to refresh diagram with metadata request  
+     *
+     * @param rearrange - re-arrange layout
+     * @param reload - load diagram
+     * @param refreshMetadata - reload metadata  
+     */
+    public void refreshDiagram(boolean rearrange, boolean reload, boolean refreshMetadata) {
+        DiagramPart diagramPart = getDiagramPart();
+        if (diagramPart == null) {
+            return;
+        }
+        if (reload) {
             loadDiagram(refreshMetadata);
         }
+        if (rearrange) {
+            diagramPart.resetArrangement();
+        }
+    }
+
+    /**
+     * The method designed to refresh diagram without metadata request  
+     *
+     * @param rearrange - re-arrange layout
+     * @param reload - load diagram 
+     */
+    public void refreshDiagram(boolean rearrange, boolean reload) {
+        refreshDiagram(rearrange, reload, false);
     }
 
     @Override
@@ -842,6 +885,32 @@ public abstract class ERDEditorPart extends GraphicalEditorWithFlyoutPalette
             }
             menu.add(avMenu);
         }
+    }
+
+    /**
+     * Fill ERD notations popup menu
+     *
+     * @param menu - root node
+     */
+    public void fillNotationsMenu(IMenuManager menu) {
+        MenuManager ntMenu = new MenuManager(ERDUIMessages.menu_notation_style);
+        for (ERDNotationDescriptor ntType : ERDNotationRegistry.getInstance().getNotations()) {
+            ntMenu.add(new ChangeERDNotationStyleAction(ntType));
+        }
+        menu.add(ntMenu);
+    }
+
+    /**
+     * Fill ERD routers popup menu
+     *
+     * @param menu - root node
+     */
+    public void fillRoutersMenu(IMenuManager menu) {
+        MenuManager ntMenu = new MenuManager(ERDUIMessages.menu_router_style);
+        for (ERDConnectionRouterDescriptor ntType : ERDConnectionRouterRegistry.getInstance().getDescriptors()) {
+            ntMenu.add(new ChangeERDRouterStyleAction(ntType));
+        }
+        menu.add(ntMenu);
     }
 
     public void fillPartContextMenu(IMenuManager menu, IStructuredSelection selection) {
@@ -1011,22 +1080,23 @@ public abstract class ERDEditorPart extends GraphicalEditorWithFlyoutPalette
 
             toolBarManager.add(ActionUtils.makeCommandContribution(getSite(), ERDUIConstants.CMD_SAVE_AS));
         }
+        fillConfigurationContribution(toolBarManager);
+    }
+    
+    protected void fillConfigurationContribution(IContributionManager toolBarManager) {
         toolBarManager.add(new Separator("configuration"));
-        {
-            Action configAction = new Action(ERDUIMessages.erd_editor_control_action_configuration) {
-                @Override
-                public void run()
-                {
-                    UIUtils.showPreferencesFor(
-                        getSite().getShell(),
-                        ERDEditorPart.this,
-                        ERDPreferencePage.PAGE_ID);
-                    getDiagram().setAttributeStyles(ERDViewStyle.getDefaultStyles(ERDUIActivator.getDefault().getPreferences()));
-                }
-            };
-            configAction.setImageDescriptor(DBeaverIcons.getImageDescriptor(UIIcon.PANEL_CUSTOMIZE));
-            toolBarManager.add(configAction);
-        }
+        Action configAction = new Action(ERDUIMessages.erd_editor_control_action_configuration) {
+            @Override
+            public void run() {
+                UIUtils.showPreferencesFor(
+                    getSite().getShell(),
+                    ERDEditorPart.this,
+                    ERDPreferencePage.PAGE_ID);
+                getDiagram().setAttributeStyles(ERDViewStyle.getDefaultStyles(ERDUIActivator.getDefault().getPreferences()));
+            }
+        };
+        configAction.setImageDescriptor(DBeaverIcons.getImageDescriptor(UIIcon.CONFIGURATION));
+        toolBarManager.add(configAction);
     }
 
     protected abstract void loadDiagram(boolean refreshMetadata);
@@ -1068,6 +1138,53 @@ public abstract class ERDEditorPart extends GraphicalEditorWithFlyoutPalette
         {
             getDiagram().setAttributeStyle(style, !isChecked());
             refreshEntityAndAttributes();
+            refreshDiagram(true, false);
+        }
+    }
+    
+    private class ChangeERDNotationStyleAction extends Action {
+        private final ERDNotationDescriptor notation;
+
+        public ChangeERDNotationStyleAction(@NotNull ERDNotationDescriptor notation) {
+            super(notation.getName(), AS_CHECK_BOX);
+            this.notation = notation;
+        }
+
+        @Override
+        public boolean isChecked() {
+            if (notation == null || getDiagramNotation() == null) {
+                return false;
+            }
+            return notation.getId().equals(getDiagramNotation().getId());
+        }
+
+        @Override
+        public void run() {
+            setDiagramNotation(notation);
+            refreshDiagram(false, true);
+        }
+    }
+
+    private class ChangeERDRouterStyleAction extends Action {
+        private final ERDConnectionRouterDescriptor router;
+
+        public ChangeERDRouterStyleAction(@NotNull ERDConnectionRouterDescriptor router) {
+            super(router.getName(), AS_CHECK_BOX);
+            this.router = router;
+        }
+
+        @Override
+        public boolean isChecked() {
+            if (router == null || getDiagramRouter() == null) {
+                return false;
+            }
+            return router.getId().equals(getDiagramRouter().getId());
+        }
+
+        @Override
+        public void run() {
+            setDiagramRouter(router);
+            refreshDiagram(false, true);
         }
     }
 
@@ -1129,6 +1246,7 @@ public abstract class ERDEditorPart extends GraphicalEditorWithFlyoutPalette
                     }
                 }
             }
+            refreshDiagram(true, false);
         }
     }
 
@@ -1156,24 +1274,36 @@ public abstract class ERDEditorPart extends GraphicalEditorWithFlyoutPalette
                 refreshEntityAndAttributes();
             } else if (ERDConstants.PREF_ATTR_STYLES.equals(event.getProperty())) {
                 refreshEntityAndAttributes();
-            } else if (ERDUIConstants.PREF_DIAGRAM_SHOW_VIEWS.equals(event.getProperty()) || ERDUIConstants.PREF_DIAGRAM_SHOW_PARTITIONS.equals(event.getProperty())) {
-                refreshDiagram(true, true);
+            } else if (ERDUIConstants.PREF_DIAGRAM_SHOW_VIEWS.equals(event.getProperty()) ||
+                ERDUIConstants.PREF_DIAGRAM_SHOW_PARTITIONS.equals(event.getProperty())) {
+                doSave(new NullProgressMonitor());
+                refreshDiagram(true, false);
+            } else if (ERDUIConstants.PREF_NOTATION_TYPE.equals(event.getProperty())) {
+                ERDNotationDescriptor defaultNotation = ERDNotationRegistry.getInstance().getActiveDescriptor();
+                setDiagramNotation(defaultNotation);
+                doSave(new NullProgressMonitor());
+                refreshDiagram(true, false);
+            } else if (ERDUIConstants.PREF_ROUTING_TYPE.equals(event.getProperty())) {
+                ERDConnectionRouterDescriptor defaultRouter = ERDConnectionRouterRegistry.getInstance().getActiveRouter();
+                setDiagramRouter(defaultRouter);
+                doSave(new NullProgressMonitor());
+                refreshDiagram(true, false);
             }
         }
     }
 
     private void refreshEntityAndAttributes() {
-        for (ERDEntity entity : getDiagram().getEntities()) {
+        getDiagram().getEntities().forEach(entity -> {
             entity.reloadAttributes(getDiagram());
-        }
-        for (Object object : getGraphicalViewer().getContents().getChildren()) {
-            if (object instanceof EntityPart) {
-                ((EntityPart) object).refresh();
+        });
+        getGraphicalViewer().getContents().getChildren().forEach(editPart -> {
+            if (editPart instanceof EntityPart) {
+                ((EntityPart) editPart).refresh();
             }
-        }
+        });
     }
 
-    protected class ProgressControl extends ProgressPageControl {
+    public class ProgressControl extends ProgressPageControl {
 
         private final Searcher searcher;
 
@@ -1231,7 +1361,7 @@ public abstract class ERDEditorPart extends GraphicalEditorWithFlyoutPalette
             return searcher;
         }
 
-        private class LoadVisualizer extends ProgressVisualizer<EntityDiagram> {
+        public class LoadVisualizer extends ProgressVisualizer<EntityDiagram> {
             @Override
             public void visualizeLoading()
             {
@@ -1242,21 +1372,9 @@ public abstract class ERDEditorPart extends GraphicalEditorWithFlyoutPalette
             public void completeLoading(EntityDiagram entityDiagram)
             {
                 super.completeLoading(entityDiagram);
-                Control graphicalControl = getGraphicalControl();
-                if (graphicalControl == null) {
-                    return;
-                }
-                graphicalControl.setBackground(UIUtils.getColorRegistry().get(ERDUIConstants.COLOR_ERD_DIAGRAM_BACKGROUND));
-                isLoaded = true;
-                Control control = getGraphicalViewer().getControl();
-                if (control == null || control.isDisposed()) {
-                    return;
-                }
-
                 if (entityDiagram != null) {
                     List<String> errorMessages = entityDiagram.getErrorMessages();
                     if (!errorMessages.isEmpty()) {
-                        // log.debug(message);
                         List<Status> messageStatuses = new ArrayList<>(errorMessages.size());
                         for (String error : errorMessages) {
                             messageStatuses.add(new Status(Status.ERROR, ERDUIActivator.PLUGIN_ID, error));
@@ -1272,32 +1390,74 @@ public abstract class ERDEditorPart extends GraphicalEditorWithFlyoutPalette
                 } else {
                     setInfo("Empty diagram due to error (see error log)");
                 }
-                getCommandStack().flush();
-                if (entityDiagram != null) {
-                    EditPart oldContents = getGraphicalViewer().getContents();
-                    if (oldContents instanceof DiagramPart) {
-                        if (restoreVisualSettings((DiagramPart) oldContents, entityDiagram)) {
-                            entityDiagram.setLayoutManualAllowed(true);
-                            entityDiagram.setLayoutManualDesired(true);
-                        }
-                    }
-                    getGraphicalViewer().setContents(entityDiagram);
-                }
-                //
-                if (zoomCombo != null) {
-                    zoomCombo.setZoomManager(rootPart.getZoomManager());
-                }
-
-                if (progressControl != null) {
-                    //progressControl.refreshActions();
-                }
-                //toolBarManager.getControl().setEnabled(true);
             }
         }
 
     }
 
-    private boolean restoreVisualSettings(DiagramPart oldDiagram, EntityDiagram newDiagram) {
+    /**
+     * The method process entity relation diagram for element visualization
+     * 
+     * @param monitor - DBRProgressMonitor
+     * @param entityDiagram - EntityDiagram
+     * @return - EntityDiagram
+     */
+    public EntityDiagram visuallize(DBRProgressMonitor monitor, EntityDiagram entityDiagram) {
+        if (monitor.isCanceled()) {
+            return entityDiagram;
+        }
+        monitor.beginTask(ERDUIMessages.erd_job_visuallize_content, 4);
+        Control graphicalControl = getGraphicalControl();
+        if (graphicalControl == null) {
+            return entityDiagram;
+        }
+        UIUtils.syncExec(() -> graphicalControl.setBackground(UIUtils.getColorRegistry().get(ERDUIConstants.COLOR_ERD_DIAGRAM_BACKGROUND)));
+        isLoaded = true;
+        Control control = getGraphicalViewer().getControl();
+        if (control == null || control.isDisposed()) {
+            return entityDiagram;
+        }
+        if (monitor.isCanceled()) {
+            return entityDiagram;
+        } else {
+            monitor.worked(1);
+        }
+        UIUtils.syncExec(() -> getCommandStack().flush());
+        if (entityDiagram != null) {
+            if (entityDiagram.isDirty()) {
+                // Associated connections were changed during the loading process
+                getCommandStack().execute(new MarkDirtyCommand());
+            }
+            if (monitor.isCanceled()) {
+                return entityDiagram;
+            } else {
+                monitor.worked(1);
+            }
+            EditPart oldContents = getGraphicalViewer().getContents();
+            if ((oldContents instanceof DiagramPart diagramPart) &&
+                restoreVisualSettings(diagramPart, entityDiagram)) {
+                entityDiagram.setLayoutManualAllowed(true);
+                entityDiagram.setLayoutManualDesired(true);
+            }
+            if (monitor.isCanceled()) {
+                return entityDiagram;
+            } else {
+                monitor.worked(1);
+            }
+            UIUtils.syncExec(() -> getGraphicalViewer().setContents(entityDiagram));
+        }
+        if (monitor.isCanceled()) {
+            return entityDiagram;
+        } else {
+            monitor.worked(1);
+        }
+        if (zoomCombo != null) {
+            zoomCombo.setZoomManager(rootPart.getZoomManager());
+        }
+        return entityDiagram;
+    }
+
+    protected boolean restoreVisualSettings(DiagramPart oldDiagram, EntityDiagram newDiagram) {
         boolean hasChanges = false;
         // Collect visual settings from old diagram and apply them to the new one
         for (ERDEntity newEntity : newDiagram.getEntities()) {
@@ -1318,7 +1478,15 @@ public abstract class ERDEditorPart extends GraphicalEditorWithFlyoutPalette
                 hasChanges = true;
             }
         }
-        return hasChanges;
+        boolean hasLayout = false;
+        for (ERDEntity entity : newDiagram.getEntities()) {
+            NodeVisualInfo visualInfo = newDiagram.getVisualInfo(entity.getObject());
+            if (visualInfo != null && visualInfo.initBounds != null && visualInfo.initBounds.x != 0 && visualInfo.initBounds.y != 0) {
+                hasLayout = true;
+                break;
+            }
+        }
+        return hasChanges && hasLayout;
     }
 
     private class Searcher implements ISearchExecutor {
@@ -1465,15 +1633,26 @@ public abstract class ERDEditorPart extends GraphicalEditorWithFlyoutPalette
         }
 
         @Override
-        public void completeLoading(EntityDiagram result) {
-            super.completeLoading(result);
+        public void completeLoading(EntityDiagram entityDiagram) {
+            super.completeLoading(entityDiagram);
             super.visualizeLoading();
-            if (result != null && !result.getEntities().isEmpty()) {
+            if (entityDiagram != null && !entityDiagram.getEntities().isEmpty()) {
                 setErrorMessage(null);
+            } else {
+                List<String> errorMessages = entityDiagram.getErrorMessages();
+                if (!errorMessages.isEmpty()) {
+                    List<Status> messageStatuses = new ArrayList<>(errorMessages.size());
+                    for (String error : errorMessages) {
+                        messageStatuses.add(new Status(Status.ERROR, ERDUIActivator.PLUGIN_ID, error));
+                    }
+                    MultiStatus status = new MultiStatus(ERDUIActivator.PLUGIN_ID, 0, messageStatuses.toArray(new IStatus[0]), null, null);
+                    DBWorkbench.getPlatformUI().showError(
+                        "VQB Diagram loading errors",
+                        "Error(s) occurred during diagram loading."
+                        + " If these errors are recoverable then fix errors and then refresh/reopen diagram",
+                        status);
+                }
             }
-            getGraphicalViewer().setContents(result);
-            getDiagramPart().rearrangeDiagram();
-            finishLoading();
         }
 
         protected abstract void finishLoading();
@@ -1509,5 +1688,49 @@ public abstract class ERDEditorPart extends GraphicalEditorWithFlyoutPalette
         public void setSelection(ISelection selection, boolean reveal) {
 
         }
+    }
+
+    /**
+     * A special command that marks the editor dirty without the possibility to undo it.
+     */
+    private static class MarkDirtyCommand extends Command {
+        @Override
+        public boolean canExecute() {
+            return true;
+        }
+
+        @Override
+        public boolean canRedo() {
+            return false;
+        }
+
+        @Override
+        public boolean canUndo() {
+            return false;
+        }
+    }
+
+    public ERDNotationDescriptor getDiagramNotation() {
+        return notationStyle;
+    }
+
+    public void setDiagramNotation(ERDNotationDescriptor notation) {
+        this.notationStyle = notation;
+    }
+
+    public ERDConnectionRouterDescriptor getDiagramRouter() {
+        return routerStyle;
+    }
+
+    public void setDiagramRouter(ERDConnectionRouterDescriptor router) {
+        this.routerStyle = router;
+    }
+
+    public ProgressControl getProgressControl() {
+        if (progressControl == null || progressControl.isDisposed()) {
+            progressControl = new ProgressControl((Composite) super.getGraphicalControl(), SWT.SHEET);
+            progressControl.setShowDivider(true);
+        }
+        return this.progressControl;
     }
 }

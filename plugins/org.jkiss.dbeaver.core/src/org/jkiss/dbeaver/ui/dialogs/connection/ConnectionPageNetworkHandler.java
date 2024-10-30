@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,21 +29,28 @@ import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.*;
 import org.eclipse.ui.dialogs.PreferencesUtil;
+import org.jkiss.code.NotNull;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
-import org.jkiss.dbeaver.core.CoreMessages;
 import org.jkiss.dbeaver.model.DBPDataSourceContainer;
+import org.jkiss.dbeaver.model.DBPDataSourceOrigin;
+import org.jkiss.dbeaver.model.DBPDataSourceOriginExternal;
 import org.jkiss.dbeaver.model.connection.DBPConnectionConfiguration;
 import org.jkiss.dbeaver.model.net.DBWHandlerConfiguration;
 import org.jkiss.dbeaver.model.net.DBWNetworkProfile;
+import org.jkiss.dbeaver.model.secret.DBSSecretController;
 import org.jkiss.dbeaver.registry.configurator.UIPropertyConfiguratorDescriptor;
 import org.jkiss.dbeaver.registry.configurator.UIPropertyConfiguratorRegistry;
 import org.jkiss.dbeaver.registry.network.NetworkHandlerDescriptor;
+import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.ui.*;
+import org.jkiss.dbeaver.ui.internal.UIConnectionMessages;
 import org.jkiss.dbeaver.ui.preferences.PrefPageProjectNetworkProfiles;
 import org.jkiss.utils.CommonUtils;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 
 /**
  * Network handlers edit dialog page
@@ -64,6 +71,7 @@ public class ConnectionPageNetworkHandler extends ConnectionWizardPage implement
     private Combo profileCombo;
     private Button useHandlerCheck;
     private DBWNetworkProfile activeProfile;
+    private final List<DBWNetworkProfile> allProfiles = new ArrayList<>();;
 
     public ConnectionPageNetworkHandler(IDataSourceConnectionEditorSite site, NetworkHandlerDescriptor descriptor) {
         super(ConnectionPageNetworkHandler.class.getSimpleName() + "." + descriptor.getId());
@@ -89,13 +97,8 @@ public class ConnectionPageNetworkHandler extends ConnectionWizardPage implement
             return;
         }
         DBPDataSourceContainer dataSource = site.getActiveDataSource();
-        DBPConnectionConfiguration connectionConfiguration = dataSource.getConnectionConfiguration();
-        handlerConfiguration = connectionConfiguration.getHandler(handlerDescriptor.getId());
 
-        if (handlerConfiguration == null) {
-            handlerConfiguration = new DBWHandlerConfiguration(handlerDescriptor, dataSource);
-            connectionConfiguration.updateHandler(handlerConfiguration);
-        }
+        loadHandlerConfiguration(dataSource);
 
         Composite composite = new Composite(parent, SWT.NONE);
         composite.setLayout(new GridLayout(1, false));
@@ -104,15 +107,18 @@ public class ConnectionPageNetworkHandler extends ConnectionWizardPage implement
         Composite buttonsGroup = UIUtils.createComposite(composite, 5);
         buttonsGroup.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
 
-        useHandlerCheck = UIUtils.createCheckbox(buttonsGroup,
-            NLS.bind(CoreMessages.dialog_tunnel_checkbox_use_handler, handlerDescriptor.getLabel()), false);
-        useHandlerCheck.addSelectionListener(new SelectionAdapter() {
-            @Override
-            public void widgetSelected(SelectionEvent e) {
-                handlerConfiguration.setEnabled(useHandlerCheck.getSelection());
-                enableHandlerContent();
-            }
-        });
+        if (handlerDescriptor.isPinned()) {
+            useHandlerCheck = UIUtils.createCheckbox(buttonsGroup,
+                NLS.bind(UIConnectionMessages.dialog_tunnel_checkbox_use_handler, handlerDescriptor.getLabel()), false);
+            useHandlerCheck.addSelectionListener(new SelectionAdapter() {
+                @Override
+                public void widgetSelected(SelectionEvent e) {
+                    handlerConfiguration.setEnabled(useHandlerCheck.getSelection());
+                    enableHandlerContent();
+                }
+            });
+        }
+
         UIUtils.createEmptyLabel(buttonsGroup, 1, 1).setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
 
         profileCombo = UIUtils.createLabelCombo(buttonsGroup, "Profile", SWT.READ_ONLY | SWT.DROP_DOWN);
@@ -122,7 +128,9 @@ public class ConnectionPageNetworkHandler extends ConnectionWizardPage implement
         profileCombo.addSelectionListener(new SelectionAdapter() {
             @Override
             public void widgetSelected(SelectionEvent e) {
-                setConnectionConfigProfile(profileCombo.getText());
+                int pi = profileCombo.getSelectionIndex();
+                DBWNetworkProfile profile = pi <= 0 ? null : allProfiles.get(pi - 1);
+                setConnectionConfigProfile(profile);
             }
         });
         ToolBar editToolbar = new ToolBar(buttonsGroup, SWT.HORIZONTAL);
@@ -140,7 +148,8 @@ public class ConnectionPageNetworkHandler extends ConnectionWizardPage implement
                     CommonUtils.isEmpty(profileCombo.getText()) ? null : profileCombo.getText());
                 if (preferenceDialog != null) {
                     if (preferenceDialog.open() == IDialogConstants.OK_ID) {
-                        setConnectionConfigProfile(profileCombo.getText());
+                        int pi = profileCombo.getSelectionIndex();
+                        setConnectionConfigProfile(pi <= 0 ? null : allProfiles.get(pi - 1));
                     }
                 }
             }
@@ -151,28 +160,59 @@ public class ConnectionPageNetworkHandler extends ConnectionWizardPage implement
 
         configurator.createControl(handlerComposite, handlerDescriptor, this::updatePageCompletion);
 
-        configurator.loadSettings(handlerConfiguration);
-        useHandlerCheck.setSelection(handlerConfiguration.isEnabled());
-        enableHandlerContent();
-        updateProfileList();
-
-        if (activeProfile != null) {
-            DBWHandlerConfiguration profileConfig = activeProfile.getConfiguration(handlerDescriptor);
-            if (profileConfig != null) {
-                configurator.loadSettings(profileConfig);
-            }
+        if (useHandlerCheck != null) {
+            useHandlerCheck.setSelection(handlerConfiguration.isEnabled());
         }
+
+        enableHandlerContent();
+        updateProfileList(true);
 
         setControl(composite);
     }
 
-    private void setConnectionConfigProfile(String profileName) {
-        activeProfile = CommonUtils.isEmpty(profileName) ?
-            null : site.getProject().getDataSourceRegistry().getNetworkProfile(profileName);
+    private void loadHandlerConfiguration(DBPDataSourceContainer dataSource) {
+        DBPConnectionConfiguration connectionConfiguration = dataSource.getConnectionConfiguration();
+
+        if (!CommonUtils.isEmpty(connectionConfiguration.getConfigProfileName())) {
+            // Update config from profile
+            DBWNetworkProfile profile = dataSource.getRegistry().getNetworkProfile(
+                connectionConfiguration.getConfigProfileSource(),
+                connectionConfiguration.getConfigProfileName());
+            if (profile != null) {
+                handlerConfiguration = profile.getConfiguration(handlerDescriptor);
+            }
+        }
+        if (handlerConfiguration == null) {
+            handlerConfiguration = connectionConfiguration.getHandler(handlerDescriptor.getId());
+        }
+
+        if (handlerConfiguration == null) {
+            handlerConfiguration = new DBWHandlerConfiguration(handlerDescriptor, dataSource);
+            connectionConfiguration.updateHandler(handlerConfiguration);
+        }
+    }
+
+    @Override
+    protected void updatePageCompletion() {
+        if (isPageComplete()) {
+            setPageComplete(true);
+            setErrorMessage(null);
+        } else {
+            setPageComplete(false);
+            setErrorMessage(configurator.getErrorMessage());
+        }
+    }
+
+    @Override
+    public boolean isPageComplete() {
+        return handlerConfiguration == null || !handlerConfiguration.isEnabled() || configurator.isComplete();
+    }
+
+    private void setConnectionConfigProfile(DBWNetworkProfile profile) {
+        activeProfile = profile;
         DBPDataSourceContainer dataSource = site.getActiveDataSource();
         DBPConnectionConfiguration cfg = dataSource.getConnectionConfiguration();
         String oldProfileId = cfg.getConfigProfileName();
-        saveSettings(site.getActiveDataSource());
 
         if (activeProfile != null) {
             cfg.setConfigProfile(activeProfile);
@@ -186,33 +226,53 @@ public class ConnectionPageNetworkHandler extends ConnectionWizardPage implement
         site.firePropertyChange(this, PROP_CONFIG_PROFILE, oldProfileId, activeProfile == null ? null : activeProfile.getProfileName());
     }
 
-    private void updateProfileList() {
-        DBPConnectionConfiguration cfg = site.getActiveDataSource().getConnectionConfiguration();
-        String profileId = cfg.getConfigProfileName();
-        activeProfile = CommonUtils.isEmpty(profileId) ? null : site.getProject().getDataSourceRegistry().getNetworkProfile(profileId);
+    private void updateProfileList(boolean updateConfiguration) {
+        DBPDataSourceContainer activeDataSource = site.getActiveDataSource();
+        DBPConnectionConfiguration cfg = activeDataSource.getConnectionConfiguration();
+        activeProfile = CommonUtils.isEmpty(cfg.getConfigProfileName()) ? null : site.getProject().getDataSourceRegistry().getNetworkProfile(
+            cfg.getConfigProfileSource(),
+            cfg.getConfigProfileName());
 
         // Refresh profile list
         profileCombo.removeAll();
         profileCombo.add("");
 
-        for (DBWNetworkProfile profile : site.getProject().getDataSourceRegistry().getNetworkProfiles()) {
-            profileCombo.add(profile.getProfileName());
-            if (CommonUtils.equalObjects(profileId, profile.getProfileName())) {
+        allProfiles.clear();
+        DBPDataSourceOrigin dataSourceOrigin = activeDataSource.getOrigin();
+        if (dataSourceOrigin instanceof DBPDataSourceOriginExternal) {
+            allProfiles.addAll(((DBPDataSourceOriginExternal) dataSourceOrigin).getAvailableNetworkProfiles());
+        }
+        allProfiles.addAll(site.getProject().getDataSourceRegistry().getNetworkProfiles());
+        for (DBWNetworkProfile profile : allProfiles) {
+            String profileDisplayName = profile.getProfileName();
+            if (profile.isExternallyProvided()) {
+                profileDisplayName += " - " + dataSourceOrigin.getDisplayName();
+            }
+            profileCombo.add(profileDisplayName);
+            if (CommonUtils.equalObjects(cfg.getConfigProfileName(), profile.getProfileName()) &&
+                CommonUtils.equalObjects(cfg.getConfigProfileSource(), profile.getProfileSource())) {
                 profileCombo.select(profileCombo.getItemCount() - 1);
             }
         }
 
         // Update settings from profile
         if (activeProfile != null) {
-
+            try {
+                DBSSecretController secretController = DBSSecretController.getProjectSecretController(
+                    activeDataSource.getProject());
+                activeProfile.resolveSecrets(secretController);
+            } catch (DBException e) {
+                DBWorkbench.getPlatformUI().showError("Secret resolve error", "Cannot save resolve profile secrets", e);
+            }
         }
 
-        // Update page controls
-        handlerConfiguration = cfg.getHandler(handlerDescriptor.getId());
-        if (handlerConfiguration == null) {
-            handlerConfiguration = new DBWHandlerConfiguration(handlerDescriptor, site.getActiveDataSource());
+        if (updateConfiguration) {
+            loadHandlerConfiguration(activeDataSource);
         }
-        useHandlerCheck.setSelection(handlerConfiguration.isEnabled());
+
+        if (useHandlerCheck != null) {
+            useHandlerCheck.setSelection(handlerConfiguration.isEnabled());
+        }
         configurator.loadSettings(handlerConfiguration);
         enableHandlerContent();
     }
@@ -229,7 +289,10 @@ public class ConnectionPageNetworkHandler extends ConnectionWizardPage implement
         } else if (blockEnableState == null) {
             blockEnableState = ControlEnableState.disable(handlerComposite);
         }
-        useHandlerCheck.setEnabled(!hasProfileConfig);
+        if (useHandlerCheck != null) {
+            useHandlerCheck.setEnabled(!hasProfileConfig);
+            updatePageCompletion();
+        }
     }
 
     @Override
@@ -253,7 +316,12 @@ public class ConnectionPageNetworkHandler extends ConnectionWizardPage implement
     @Override
     public void propertyChange(PropertyChangeEvent event) {
         if (PROP_CONFIG_PROFILE.equals(event.getProperty())) {
-            updateProfileList();
+            updateProfileList(false);
         }
+    }
+
+    @NotNull
+    public NetworkHandlerDescriptor getHandlerDescriptor() {
+        return handlerDescriptor;
     }
 }

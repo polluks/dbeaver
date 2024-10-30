@@ -1,7 +1,7 @@
 /*
  * DBeaver - Universal Database Manager
  * Copyright (C) 2016-2016 Karl Griesser (fullref@gmail.com)
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -157,8 +157,9 @@ public class ExasolScript extends AbstractProcedure<ExasolDataSource, ExasolSche
             return DBSProcedureType.FUNCTION;
     }
 
+    @Nullable
     @Override
-    public Collection<? extends DBSProcedureParameter> getParameters(DBRProgressMonitor monitor) throws DBException {
+    public Collection<? extends DBSProcedureParameter> getParameters(@NotNull DBRProgressMonitor monitor) throws DBException {
         return null;
     }
 

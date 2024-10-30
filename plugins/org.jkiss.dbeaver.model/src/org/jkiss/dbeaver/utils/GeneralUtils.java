@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,12 +21,14 @@ import org.eclipse.core.internal.runtime.AdapterManager;
 import org.eclipse.core.runtime.*;
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
+import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ModelPreferences;
 import org.jkiss.dbeaver.bundle.ModelActivator;
 import org.jkiss.dbeaver.model.app.DBPWorkspace;
 import org.jkiss.dbeaver.model.impl.app.ApplicationDescriptor;
 import org.jkiss.dbeaver.model.impl.app.ApplicationRegistry;
+import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.runtime.IVariableResolver;
 import org.jkiss.utils.Base64;
 import org.jkiss.utils.CommonUtils;
@@ -35,6 +37,7 @@ import org.osgi.framework.Bundle;
 import org.osgi.framework.Version;
 
 import java.io.*;
+import java.lang.reflect.InvocationTargetException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.net.URI;
@@ -52,6 +55,7 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * General non-ui utility methods
@@ -59,15 +63,17 @@ import java.util.regex.Pattern;
 public class GeneralUtils {
     private static final Log log = Log.getLog(GeneralUtils.class);
 
+    public static final Pattern URI_SCHEMA_PATTERN = Pattern.compile("([a-zA-Z0-9-_]+:).+");
+
     public static final String UTF8_ENCODING = StandardCharsets.UTF_8.name();
     public static final String DEFAULT_ENCODING = UTF8_ENCODING;
 
-    public static final Charset UTF8_CHARSET = Charset.forName(UTF8_ENCODING);
+    public static final Charset UTF8_CHARSET = StandardCharsets.UTF_8;
     public static final Charset DEFAULT_FILE_CHARSET = UTF8_CHARSET;
-    public static final Charset ASCII_CHARSET = Charset.forName("US-ASCII");
 
     public static final String DEFAULT_TIMESTAMP_PATTERN = "yyyyMMddHHmm";
     public static final String DEFAULT_DATE_PATTERN = "yyyyMMdd";
+    public static final String RESOURCE_NAME_FORBIDDEN_SYMBOLS_REGEX = "(?U)[^/:'\"\\\\<>|?*]+";
 
     public static final String[] byteToHex = new String[256];
     public static final char[] nibbleToHex = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
@@ -77,10 +83,11 @@ public class GeneralUtils {
         '8', '9', 'a', 'b',
         'c', 'd', 'e', 'f'
     };
-    
+
     public static final String PROP_TRUST_STORE = "javax.net.ssl.trustStore"; //$NON-NLS-1$
     public static final String PROP_TRUST_STORE_TYPE = "javax.net.ssl.trustStoreType"; //$NON-NLS-1$
     public static final String VALUE_TRUST_STORE_TYPE_WINDOWS = "WINDOWS-ROOT"; //$NON-NLS-1$
+    public static final String EMPTY_ENV_VARIABLE_VALUE = "''";
 
     static {
         // Compose byte to hex map
@@ -89,7 +96,8 @@ public class GeneralUtils {
         }
     }
 
-    private static Pattern VAR_PATTERN = Pattern.compile("(\\$\\{([\\w\\.\\-]+)(\\:[^\\}]+)?\\})", Pattern.CASE_INSENSITIVE);
+    private static final Pattern VAR_PATTERN = Pattern.compile(
+        "(\\$\\{([\\w\\.\\-]+)(\\:[^\\$\\{\\}]+)?\\})", Pattern.CASE_INSENSITIVE);
 
     /**
      * Default encoding (UTF-8)
@@ -115,12 +123,6 @@ public class GeneralUtils {
 
     public static String getDefaultLineSeparator() {
         return System.getProperty(StandardConstants.ENV_LINE_SEPARATOR, "\n");
-    }
-
-    public static void writeByteAsHex(Writer out, byte b) throws IOException {
-        int v = b & 0xFF;
-        out.write(HEX_CHAR_TABLE[v >>> 4]);
-        out.write(HEX_CHAR_TABLE[v & 0xF]);
     }
 
     public static void writeBytesAsHex(Writer out, byte[] buf, int off, int len) throws IOException {
@@ -252,6 +254,15 @@ public class GeneralUtils {
                 return e;
             }
         }
+    }
+
+    public static boolean hasCause(Throwable ex, Class<? extends Throwable> causeClass) {
+        for (Throwable e = ex; e != null; e = e.getCause()) {
+            if (causeClass.isAssignableFrom(e.getClass())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @NotNull
@@ -409,6 +420,11 @@ public class GeneralUtils {
         return null;
     }
 
+    @NotNull
+    public static String getProductEarlyAccessURL() {
+        return Platform.getProduct().getProperty("earlyAccessURL");
+    }
+
     public static String getExpressionParseMessage(Exception e) {
         String message = e.getMessage();
         if (message == null) {
@@ -418,8 +434,25 @@ public class GeneralUtils {
         return divPos == -1 ? message : message.substring(divPos + 1);
     }
 
+    public static String trimAllWhitespaces(String str) {
+        int len = str.length();
+        int st = 0;
+        while (st < len && isWhitespaceExt(str.charAt(st))) {
+            st++;
+        }
+        while (st < len && isWhitespaceExt(str.charAt(len - 1))) {
+            len--;
+        }
+        return ((st > 0) || (len < str.length() )) ?
+            str.substring(st, len) : str;
+    }
+
+    public static boolean isWhitespaceExt(char c) {
+        return c <= ' ' || c == 0x160;
+    }
+
     public interface IParameterHandler {
-        boolean setParameter(String name, String  value);
+        boolean setParameter(String name, String value);
     }
 
     public static class MapResolver implements IVariableResolver {
@@ -436,13 +469,6 @@ public class GeneralUtils {
         }
     }
 
-    public static String replaceSystemEnvironmentVariables(String string) {
-        if (string == null) {
-            return null;
-        }
-        return replaceVariables(string, System::getenv);
-    }
-
     public static String replaceSystemPropertyVariables(String string) {
         if (string == null) {
             return null;
@@ -455,7 +481,6 @@ public class GeneralUtils {
         return "${" + name + "}";
     }
 
-    @NotNull
     public static boolean isVariablePattern(String pattern) {
         return pattern.startsWith("${") && pattern.endsWith("}");
     }
@@ -480,15 +505,22 @@ public class GeneralUtils {
         return text.toString();
     }
 
+    /**
+     * recursively iterates through all variables and returns root
+     **/
     @Nullable
-    public static String extractVariableName(@NotNull String string) {
-        Matcher matcher = VAR_PATTERN.matcher(string);
-        if (matcher.find()) {
-            return matcher.group(2);
+    public static String extractVariableName(@NotNull String variablePattern) {
+        Matcher matcher = VAR_PATTERN.matcher(variablePattern);
+        String name = null;
+        String s = variablePattern;
+        while (matcher.find()) {
+            name = matcher.group(2);
+            s = substituteVariable(s, matcher, "");
+            matcher = VAR_PATTERN.matcher(s);
         }
-        return null;
+        return name;
     }
-    
+
     @NotNull
     public static String replaceVariables(@NotNull String string, IVariableResolver resolver) {
         return replaceVariables(string, resolver, false);
@@ -508,9 +540,9 @@ public class GeneralUtils {
                 pos = matcher.end();
                 String matchedName = matcher.group(2);
                 String varName = isUpperCaseVarName ? matchedName.toUpperCase(Locale.ENGLISH) : matchedName;
-                String varValue = null;
+                String varValue;
                 if (resolvedVars != null) {
-                    varValue = resolvedVars.get(varName); 
+                    varValue = resolvedVars.get(varName);
                     if (varValue != null) {
                         string = substituteVariable(string, matcher, varValue);
                         matcher = VAR_PATTERN.matcher(string);
@@ -528,6 +560,9 @@ public class GeneralUtils {
                 if (varValue != null) {
                     if (resolvedVars == null) {
                         resolvedVars = new HashMap<>();
+                        if (EMPTY_ENV_VARIABLE_VALUE.equals(varValue)) {
+                            varValue = "";
+                        }
                         resolvedVars.put(varName, varValue);
                     }
                     string = substituteVariable(string, matcher, varValue);
@@ -559,7 +594,40 @@ public class GeneralUtils {
         return makeExceptionStatus(severity, ex, false);
     }
 
+    public static IStatus transformExceptionsToStatus(@NotNull List<Throwable> exceptions) {
+
+        if (exceptions.isEmpty()) {
+            return new Status(IStatus.ERROR, (Class<?>) null, "Empty exceptions list");
+        }
+        Set<String> exceptionMessageSet = new HashSet<>();
+        IStatus prev = null;
+        for (Throwable exception : exceptions) {
+            String message = exception.getMessage();
+            if (prev == null) {
+                exceptionMessageSet.add(message);
+                prev = new Status(
+                    IStatus.ERROR,
+                    ModelPreferences.PLUGIN_ID,
+                    message,
+                    null);
+            } else {
+                if (exceptionMessageSet.contains(message)) {
+                    continue;
+                }
+                prev = new MultiStatus(ModelPreferences.PLUGIN_ID,
+                    0,
+                    new IStatus[]{prev},
+                    message,
+                    null);
+            }
+        }
+        return prev;
+    }
+
     private static IStatus makeExceptionStatus(int severity, Throwable ex, boolean nested) {
+        if (ex instanceof InvocationTargetException) {
+            ex = ((InvocationTargetException) ex).getTargetException();
+        }
         if (ex instanceof CoreException) {
             return ((CoreException) ex).getStatus();
         }
@@ -707,29 +775,54 @@ public class GeneralUtils {
     }
 
     public static Path getMetadataFolder() {
-        try {
-            final File workspacePath = RuntimeUtils.getLocalFileFromURL(Platform.getInstanceLocation().getURL());
-            Path metaDir = getMetadataFolder(workspacePath.toPath());
-            if (!Files.exists(metaDir)) {
-                try {
-                    Files.createDirectories(metaDir);
-                } catch (IOException e) {
-                    return Platform.getLogFileLocation().toFile().toPath();
-                }
-            }
-            return metaDir;
-        } catch (IOException e) {
-            throw new IllegalStateException("Can't parse workspace location URL", e);
+        if (!DBWorkbench.isPlatformStarted()) {
+            log.warn("Platform not initialized: metadata folder may be not set");
         }
+        DBPWorkspace workspace = DBWorkbench.getPlatform().getWorkspace();
+        Path workspacePath;
+        if (workspace == null) {
+            log.warn("Metadata is read before workspace initialization");
+            try {
+                workspacePath = RuntimeUtils.getLocalPathFromURL(Platform.getInstanceLocation().getURL());
+            } catch (IOException e) {
+                throw new IllegalStateException("Can't parse workspace location URL", e);
+            }
+        } else {
+            workspacePath = workspace.getAbsolutePath();
+        }
+        Path metaDir = getMetadataFolder(workspacePath);
+        if (!Files.exists(metaDir)) {
+            try {
+                Files.createDirectories(metaDir);
+            } catch (IOException e) {
+                return Platform.getLogFileLocation().toFile().toPath();
+            }
+        }
+        return metaDir;
     }
 
     public static Path getMetadataFolder(Path workspaceFolder) {
         return workspaceFolder.resolve(DBPWorkspace.METADATA_FOLDER);
     }
 
+    // Workaround for broken URLs.
+    // In some cases we get file path from URI and it looks like file:/c:/path with spaces/
+    // Thus we can't parse it as URL or URI (because of spaces and special characters)
+    // and we can't parse it as file (because of file:/ prefix - it fail on Windows at least)
+    // So we remove schema prefix if present and convert path to URI.
     @NotNull
     public static URI makeURIFromFilePath(@NotNull String path) throws URISyntaxException {
-        return new URI(path.replace(" ", "%20"));
+        Matcher matcher = URI_SCHEMA_PATTERN.matcher(path);
+        if (matcher.matches()) {
+            String plainPath = path.substring(matcher.end(1));
+            if (RuntimeUtils.isWindows()) {
+                // Trim leading slashes on Windows
+                while (plainPath.startsWith("/") && plainPath.indexOf(':') >= 0)
+                    plainPath = plainPath.substring(1);
+            }
+            return Path.of(plainPath).toUri();
+        }
+        return Path.of(path).toUri();
     }
 
     /////////////////////////////////////////////////////////////////////////
@@ -744,9 +837,7 @@ public class GeneralUtils {
             return adapter.cast(sourceObject);
         }
 
-        if (sourceObject instanceof IAdaptable) {
-            IAdaptable adaptable = (IAdaptable) sourceObject;
-
+        if (sourceObject instanceof IAdaptable adaptable) {
             T result = adaptable.getAdapter(adapter);
             if (result != null) {
                 // Sanity-check
@@ -816,13 +907,58 @@ public class GeneralUtils {
     public static UUID getMixedEndianUUIDFromBytes(byte[] bytes) {
         ByteBuffer source = ByteBuffer.wrap(bytes);
         ByteBuffer target = ByteBuffer.allocate(16).
-                order(ByteOrder.LITTLE_ENDIAN).
-                putInt(source.getInt()).
-                putShort(source.getShort()).
-                putShort(source.getShort()).
-                order(ByteOrder.BIG_ENDIAN).
-                putLong(source.getLong());
+            order(ByteOrder.LITTLE_ENDIAN).
+            putInt(source.getInt()).
+            putShort(source.getShort()).
+            putShort(source.getShort()).
+            order(ByteOrder.BIG_ENDIAN).
+            putLong(source.getLong());
         target.rewind();
         return new UUID(target.getLong(), target.getLong());
+    }
+
+    /**
+     * Validates the resource name, only if the application is running in desktop mode.
+     *
+     * @param name the resource name to validate
+     * @throws DBException if the resource name is invalid
+     */
+    public static void validateResourceName(String name) throws DBException {
+        if (!DBWorkbench.isDistributed() && !DBWorkbench.getPlatform().getApplication().isMultiuser()) {
+            return;
+        }
+        validateResourceNameUnconditionally(name);
+    }
+
+    /**
+     * Validates the resource name unconditionally.
+     *
+     * @param name resource name to validate
+     * @throws DBException if resource name is invalid
+     */
+    public static void validateResourceNameUnconditionally(String name) throws DBException {
+        if (name.startsWith(".")) {
+            throw new DBException("Resource name '" + name + "' can't start with dot");
+        }
+
+        String forbiddenSymbols = name.replaceAll(RESOURCE_NAME_FORBIDDEN_SYMBOLS_REGEX, "");
+        if (CommonUtils.isNotEmpty(forbiddenSymbols)) {
+            String forbiddenExplain = forbiddenSymbols.chars()
+                .mapToObj(c -> Character.toString((char) c))
+                .collect(Collectors.joining(" "));
+            throw new DBException("Resource name '" + name + "' contains illegal characters:  " + forbiddenExplain);
+        }
+    }
+
+    /**
+     * Normalizes line endings by converting Windows ({@code \\r\n}) and
+     * macOS ({@code \r}) line endings to Unix ({@code \n}) line endings.
+     *
+     * @param text the text to normalize
+     * @return the normalized text
+     */
+    @NotNull
+    public static String normalizeLineEndings(@NotNull String text) {
+        return text.replaceAll("(\r\n)|\r", "\n");
     }
 }

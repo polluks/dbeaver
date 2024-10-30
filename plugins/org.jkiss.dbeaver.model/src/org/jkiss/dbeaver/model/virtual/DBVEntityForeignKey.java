@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,17 +22,15 @@ import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.DBPDataSource;
 import org.jkiss.dbeaver.model.DBPDataSourceContainer;
+import org.jkiss.dbeaver.model.DBPEvaluationContext;
 import org.jkiss.dbeaver.model.DBUtils;
-import org.jkiss.dbeaver.model.navigator.DBNDataSource;
-import org.jkiss.dbeaver.model.navigator.DBNDatabaseNode;
-import org.jkiss.dbeaver.model.navigator.DBNNode;
-import org.jkiss.dbeaver.model.navigator.DBNUtils;
+import org.jkiss.dbeaver.model.app.DBPProject;
+import org.jkiss.dbeaver.model.navigator.*;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.VoidProgressMonitor;
 import org.jkiss.dbeaver.model.struct.*;
 import org.jkiss.dbeaver.model.struct.rdb.DBSForeignKeyModifyRule;
 import org.jkiss.dbeaver.model.struct.rdb.DBSTableForeignKey;
-import org.jkiss.dbeaver.runtime.DBWorkbench;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -58,18 +56,16 @@ public class DBVEntityForeignKey implements DBSEntityConstraint, DBSEntityAssoci
     DBVEntityForeignKey(@NotNull DBVEntity entity, DBVEntityForeignKey copy, DBVModel targetModel) {
         this.entity = entity;
 
+        this.refEntityId = copy.refEntityId;
         // Here is a tricky part
         // refEntityId may refer to the current (old model owner) datasource
         // In this case we must fix it and refer to the new model owner.
         DBPDataSourceContainer copyDS = copy.getAssociatedDataSource();
-        if (copyDS == null) {
-            // Refer connection from other project?
-            this.refEntityId = null;
-        } else if (copyDS == copy.getParentObject().getDataSourceContainer()) {
+        if (copyDS != null && copyDS == copy.getParentObject().getDataSourceContainer()) {
             DBPDataSourceContainer newDS = targetModel.getDataSourceContainer();
-            this.refEntityId = copy.refEntityId.replace(copyDS.getId(), newDS.getId());
-        } else {
-            this.refEntityId = copy.refEntityId;
+            if (newDS != null) {
+                this.refEntityId = copy.refEntityId.replace(copyDS.getId(), newDS.getId());
+            }
         }
 
         this.refConstraintId = copy.refConstraintId;
@@ -101,7 +97,7 @@ public class DBVEntityForeignKey implements DBSEntityConstraint, DBSEntityAssoci
 
     @NotNull
     @Override
-    public DBSEntityConstraint getReferencedConstraint(DBRProgressMonitor monitor) throws DBException {
+    public DBSEntityConstraint getReferencedConstraint(@NotNull DBRProgressMonitor monitor) throws DBException {
         return getRealReferenceConstraint(monitor);
     }
 
@@ -133,7 +129,7 @@ public class DBVEntityForeignKey implements DBSEntityConstraint, DBSEntityAssoci
         if (refEntity instanceof DBVEntity) {
             refEntity = ((DBVEntity) refEntity).getRealEntity(monitor);
         }
-        DBNDatabaseNode refNode = DBWorkbench.getPlatform().getNavigatorModel().getNodeByObject(monitor, refEntity, true);
+        DBNDatabaseNode refNode = getParentObject().getProject().getNavigatorModel().getNodeByObject(monitor, refEntity, true);
         if (refNode == null) {
             log.warn("Can't find navigator node for object " + DBUtils.getObjectFullId(refEntity));
             return;
@@ -141,7 +137,7 @@ public class DBVEntityForeignKey implements DBSEntityConstraint, DBSEntityAssoci
         if (refEntityId != null) {
             DBVModel.removeFromCache(this);
         }
-        this.refEntityId = refNode.getNodeItemPath();
+        this.refEntityId = refNode.getNodeUri();
         this.refConstraintId = constraint.getName();
         if (refEntityId != null) {
             DBVModel.addToCache(this);
@@ -153,7 +149,7 @@ public class DBVEntityForeignKey implements DBSEntityConstraint, DBSEntityAssoci
         if (refEntityId == null) {
             throw new DBException("Ref entity ID not set for virtual FK " + getName());
         }
-        DBNNode refNode = DBWorkbench.getPlatform().getNavigatorModel().getNodeByPath(monitor, refEntityId);
+        DBNNode refNode = DBNUtils.getNavigatorModel(entity).getNodeByPath(monitor, refEntityId);
         if (!(refNode instanceof DBNDatabaseNode)) {
             throw new DBException("Can't find reference node " + refEntityId + " for virtual foreign key");
         }
@@ -170,14 +166,16 @@ public class DBVEntityForeignKey implements DBSEntityConstraint, DBSEntityAssoci
         }
     }
 
+    @Nullable
     @Override
     public DBSEntity getAssociatedEntity() {
         DBSEntityConstraint refC = getReferencedConstraint();
         return refC == null ? null : refC.getParentObject();
     }
 
+    @Nullable
     @Override
-    public DBSEntity getAssociatedEntity(DBRProgressMonitor monitor) throws DBException {
+    public DBSEntity getAssociatedEntity(@NotNull DBRProgressMonitor monitor) throws DBException {
         return getReferencedConstraint(monitor).getParentObject();
     }
 
@@ -251,14 +249,16 @@ public class DBVEntityForeignKey implements DBSEntityConstraint, DBSEntityAssoci
         if (refEntityId == null) {
             return null;
         }
-        DBNDataSource dsNode = DBWorkbench.getPlatform().getNavigatorModel().getDataSourceByPath(
-            getParentObject().getProject(),
-            refEntityId);
+        DBPProject project = getParentObject().getProject();
+        DBNModel navModel = project.getNavigatorModel();
+
+        DBNDataSource dsNode = navModel == null ? null : navModel.getDataSourceByPath(project, refEntityId);
         return dsNode == null ? null : dsNode.getDataSourceContainer();
     }
 
     @Override
     public String toString() {
-        return "VFK: " + entity.getName() + "->" + refEntityId + "." + refConstraintId + " (" + attributes + ")";
+        return "VFK: " + entity.getFullyQualifiedName(DBPEvaluationContext.UI) +
+            "->" + refEntityId + "." + refConstraintId + " (" + attributes + ")";
     }
 }

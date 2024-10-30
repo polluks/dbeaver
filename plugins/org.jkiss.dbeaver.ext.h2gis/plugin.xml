@@ -8,7 +8,7 @@
         <!-- H2GIS driver -->
         <datasource
                 class="org.jkiss.dbeaver.ext.h2gis.H2GISDataSourceProvider"
-                description="%datasource.h2gis.description"
+                description="H2GIS datasource"
                 id="h2gis"
                 parent="generic"
                 label="H2GIS"
@@ -48,7 +48,7 @@
                     sampleURL="jdbc:h2:tcp://{host}[:{port}]/{database}"
                     defaultPort="9092"
                     webURL="http://www.h2gis.org/"
-                    description="H2GIS Embedded"
+                    description="H2GIS Server"
                     categories="spatial,sql,server">
 
                     <file type="jar" path="maven:/org.orbisgis:h2gis:RELEASE"/>

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,18 +33,15 @@ import org.jkiss.dbeaver.model.exec.DBCExecutionContext;
 import org.jkiss.dbeaver.model.exec.DBCExecutionPurpose;
 import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
 import org.jkiss.dbeaver.model.qm.filters.QMEventCriteria;
-import org.jkiss.dbeaver.model.qm.meta.QMMConnectionInfo;
-import org.jkiss.dbeaver.model.qm.meta.QMMStatementExecuteInfo;
-import org.jkiss.dbeaver.model.qm.meta.QMMTransactionInfo;
-import org.jkiss.dbeaver.model.qm.meta.QMMTransactionSavepointInfo;
+import org.jkiss.dbeaver.model.qm.meta.*;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.LoggingProgressMonitor;
+import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.utils.CommonUtils;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Query Manager utils
@@ -202,6 +199,9 @@ public class QMUtils {
      * Extract QM session from execution context
      */
     public static String getQmSessionId(DBCExecutionContext executionContext) throws DBException {
+        if (DBWorkbench.getPlatform().getApplication() instanceof QMSessionProvider provider) {
+            return provider.getQmSessionId();
+        }
         DBRProgressMonitor monitor = new LoggingProgressMonitor();
         DBPProject project = executionContext.getDataSource().getContainer().getProject();
         SMSessionContext projectAuthContext = project.getSessionContext();
@@ -228,6 +228,28 @@ public class QMUtils {
         }
 
         return sessionPersistent.getAttribute(QMConstants.QM_SESSION_ID_ATTR);
+    }
+
+    /**
+     * Return close time for events that were ended
+     */
+    public static long getObjectEventTime(QMMObject object, QMEventAction action) {
+        if (action == QMEventAction.END) {
+            return object.getCloseTime();
+        }
+        return object.getOpenTime();
+    }
+
+    /**
+     * Returns workspace session
+     */
+    public static SMSession getWorkspaceSession(DBRProgressMonitor monitor) throws DBException {
+        DBPWorkspace workspace = DBWorkbench.getPlatform().getWorkspace();
+        SMSession workspaceSession = workspace.getAuthContext().getSpaceSession(monitor, workspace, false);
+        if (workspaceSession == null) {
+            throw new DBException("No workspace session");
+        }
+        return workspaceSession;
     }
 
     public static class ListCursorImpl implements QMEventCursor {

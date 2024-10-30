@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  * Copyright (C) 2011-2012 Eugene Fradkin (eugene.fradkin@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -63,13 +63,14 @@ public class ERDUIMessages extends NLS {
     public static String erd_editor_control_action_configuration;
     //ERD editor action item control
 
-    public static String erd_preference_page_title_routing;
+    public static String erd_preference_page_title_advanced;
     public static String erd_preference_page_title_attribute_style;
     public static String erd_preference_page_title_attributes_visibility;
     public static String erd_preference_page_title_diagram_contents;
     public static String erd_preference_page_title_shows_views;
     public static String erd_preference_page_title_shows_partitions;
     public static String erd_preference_page_title_routing_combo;
+    public static String erd_preference_page_title_notation_combo;
     public static String erd_preference_page_title_color_pref;
     public static String erd_preference_page_title_change_border_colors;
     public static String erd_preference_page_title_change_header_colors;
@@ -100,6 +101,8 @@ public class ERDUIMessages extends NLS {
     public static String erd_view_style_selection_item_alphabetical_order;
     public static String erd_view_style_selection_item_alphabetical_order_action;
     public static String menu_view_style;
+    public static String menu_notation_style;
+    public static String menu_router_style;
     public static String menu_attribute_visibility;
     public static String menu_attribute_visibility_default;
     public static String menu_attribute_visibility_entity;
@@ -140,6 +143,17 @@ public class ERDUIMessages extends NLS {
     public static String erd_accessibility_attribute_part_type;
     public static String erd_accessibility_attribute_part_nullability;
     public static String erd_accessibility_attribute_part_comments;
+    public static String erd_error_of_loading_diagram_label;
+    public static String erd_error_of_loading_diagram_title;
+
+    public static String erd_rearrange_diagram_job_title;
+    public static String erd_job_set_diagram_palette;
+    public static String erd_job_rearrange_diagram;
+    public static String erd_job_reset_element_position;
+    public static String erd_job_repaint_diagram;
+    public static String erd_job_layout_diagram;
+    public static String erd_job_visuallize_content;
+    
 
     private ERDUIMessages() {
     }

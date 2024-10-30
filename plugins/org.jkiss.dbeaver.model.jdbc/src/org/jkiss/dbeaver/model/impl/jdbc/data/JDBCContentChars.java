@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -96,7 +96,7 @@ public class JDBCContentChars extends JDBCContentAbstract implements DBDContentS
     }
 
     @Override
-    public DBDContentStorage getContents(DBRProgressMonitor monitor)
+    public DBDContentStorage getContents(@NotNull DBRProgressMonitor monitor)
         throws DBCException
     {
         return this;
@@ -104,8 +104,8 @@ public class JDBCContentChars extends JDBCContentAbstract implements DBDContentS
 
     @Override
     public boolean updateContents(
-        DBRProgressMonitor monitor,
-        DBDContentStorage storage)
+        @NotNull DBRProgressMonitor monitor,
+        @NotNull DBDContentStorage storage)
         throws DBException
     {
         if (storage == null) {
@@ -197,7 +197,7 @@ public class JDBCContentChars extends JDBCContentAbstract implements DBDContentS
     }
 
     @Override
-    public String getDisplayString(DBDDisplayFormat format) {
+    public String getDisplayString(@NotNull DBDDisplayFormat format) {
         return data;
     }
 

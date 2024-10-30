@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,19 +16,13 @@
  */
 package org.jkiss.dbeaver.model.ai;
 
-import com.google.gson.Gson;
 import org.jkiss.code.NotNull;
 import org.jkiss.dbeaver.Log;
-import org.jkiss.dbeaver.model.auth.SMSession;
-import org.jkiss.dbeaver.model.auth.SMSessionPersistent;
+import org.jkiss.dbeaver.model.meta.Property;
+import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
-import org.jkiss.utils.CommonUtils;
 
-import java.io.StringReader;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /**
  * AI integration
@@ -37,16 +31,14 @@ public class AISettings {
 
     private static final Log log = Log.getLog(AISettings.class);
 
-    private static final Gson gson = new Gson();
-    private static final String AI_CONFIGURATION_JSON = "ai-configuration.json";
 
     private boolean aiDisabled;
-    private final Set<String> disabledConnections = new LinkedHashSet<>();
-    private final Set<String> enabledConnections = new LinkedHashSet<>();
+    private String activeEngine;
 
     private final Map<String, AIEngineSettings> engineConfigurations = new LinkedHashMap<>();
 
-    private AISettings() {
+
+    public AISettings() {
     }
 
     public boolean isAiDisabled() {
@@ -57,14 +49,13 @@ public class AISettings {
         this.aiDisabled = aiDisabled;
     }
 
-    @NotNull
-    public Set<String> getDisabledConnections() {
-        return disabledConnections;
+    @Property
+    public String getActiveEngine() {
+        return activeEngine;
     }
 
-    @NotNull
-    public Set<String> getEnabledConnections() {
-        return enabledConnections;
+    public void setActiveEngine(String activeEngine) {
+        this.activeEngine = activeEngine;
     }
 
     @NotNull
@@ -80,47 +71,23 @@ public class AISettings {
             settings.setEngineEnabled(!aiDisabled);
             engineConfigurations.put(engine, settings);
         }
+        tryMigrateFromPrefStore(engine, settings);
         return settings;
     }
 
-    @NotNull
-    public static AISettings getSettings() {
-        try {
-            AISettings settings = null;
-            final SMSession session = DBWorkbench.getPlatform().getWorkspace().getWorkspaceSession();
-            if (session instanceof SMSessionPersistent) {
-                settings = ((SMSessionPersistent) session).getAttribute(AISettings.class.getName());
+    private void tryMigrateFromPrefStore(String engine, AIEngineSettings settings) {
+        // migrate from pref store
+        if (AIConstants.OPENAI_ENGINE.equals(engine) && settings.getProperties().get(AIConstants.GPT_MODEL) == null) {
+            DBPPreferenceStore preferenceStore = DBWorkbench.getPlatform().getPreferenceStore();
+            String model = preferenceStore.getString(AIConstants.GPT_MODEL);
+            if (model != null) {
+                settings.getProperties().put(AIConstants.GPT_MODEL, model);
             }
-            if (settings == null) {
-                String content = DBWorkbench.getPlatform().getProductConfigurationController().loadConfigurationFile(AI_CONFIGURATION_JSON);
-                if (CommonUtils.isEmpty(content)) {
-                    settings = new AISettings();
-                } else {
-                    settings = gson.fromJson(new StringReader(content), AISettings.class);
-                }
-                if (session instanceof SMSessionPersistent) {
-                    ((SMSessionPersistent) session).setAttribute(AISettings.class.getName(), settings);
-                }
-            }
-            if (DBWorkbench.getPlatform().getPreferenceStore().getString(AICompletionConstants.AI_DISABLED) != null) {
-                settings.setAiDisabled(DBWorkbench.getPlatform().getPreferenceStore().getBoolean(AICompletionConstants.AI_DISABLED));
-            }
-            return settings;
-        } catch (Exception e) {
-            log.error(e);
-            return new AISettings();
+            Double temperature = preferenceStore.getDouble(AIConstants.AI_TEMPERATURE);
+            settings.getProperties().put(AIConstants.AI_TEMPERATURE, temperature);
+            Boolean logQuery = preferenceStore.getBoolean(AIConstants.AI_LOG_QUERY);
+            settings.getProperties().put(AIConstants.AI_LOG_QUERY, logQuery);
         }
     }
-
-    public void saveSettings() {
-        try {
-            String content = gson.toJson(this, AISettings.class);
-            DBWorkbench.getPlatform().getProductConfigurationController().saveConfigurationFile(AI_CONFIGURATION_JSON, content);
-            DBWorkbench.getPlatform().getPreferenceStore().setValue(AICompletionConstants.AI_DISABLED, aiDisabled);
-        } catch (Exception e) {
-            log.error(e);
-        }
-    }
-
 }
 

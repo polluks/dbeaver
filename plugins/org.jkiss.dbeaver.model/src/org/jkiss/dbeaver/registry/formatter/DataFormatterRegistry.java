@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,7 +37,9 @@ import org.jkiss.utils.xml.XMLBuilder;
 import org.jkiss.utils.xml.XMLException;
 import org.xml.sax.Attributes;
 
-import java.io.*;
+import java.io.IOException;
+import java.io.StringReader;
+import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -97,6 +99,7 @@ public class DataFormatterRegistry implements DBPDataFormatterRegistry
         return dataFormatterMap.get(typeId);
     }
 
+    @NotNull
     @Override
     public synchronized DBDDataFormatterProfile getGlobalProfile()
     {
@@ -110,7 +113,7 @@ public class DataFormatterRegistry implements DBPDataFormatterRegistry
 
     @Override
     @Nullable
-    public synchronized DBDDataFormatterProfile getCustomProfile(String name)
+    public synchronized DBDDataFormatterProfile getCustomProfile(@NotNull String name)
     {
         for (DBDDataFormatterProfile profile : getCustomProfilesInternal()) {
             if (profile.getProfileName().equals(name)) {

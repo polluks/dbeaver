@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ import org.jkiss.dbeaver.model.DBPScriptObject;
 import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.data.DBDAttributeBinding;
 import org.jkiss.dbeaver.model.exec.DBCExecutionContext;
+import org.jkiss.dbeaver.model.navigator.DBNDatabaseFolder;
 import org.jkiss.dbeaver.model.sql.generator.SQLGenerator;
 import org.jkiss.dbeaver.model.sql.generator.SQLGeneratorProcedureCall;
 import org.jkiss.dbeaver.model.sql.generator.SQLGeneratorSelect;
@@ -84,7 +85,13 @@ public class SQLGeneratorContributor extends CompoundContributionItem {
         } else {
             List<DBPObject> objects = new ArrayList<>();
             for (Object obj : structuredSelection.toList()) {
-                DBSObject adaptedObject = GeneralUtils.adapt(obj, DBSObject.class);
+
+                DBSObject adaptedObject;
+                if (obj instanceof DBNDatabaseFolder folder) {
+                    adaptedObject = folder.getParentObject();
+                } else {
+                    adaptedObject = GeneralUtils.adapt(obj, DBSObject.class);
+                }
                 if (adaptedObject != null) {
                     objects.add(adaptedObject);
                 } else if (obj instanceof DBSWrapper) {

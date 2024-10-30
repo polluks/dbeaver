@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,8 @@ import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ext.postgresql.PostgreConstants;
+import org.jkiss.dbeaver.ext.postgresql.PostgreUtils;
+import org.jkiss.dbeaver.model.DBConstants;
 import org.jkiss.dbeaver.model.DBPDataSource;
 import org.jkiss.dbeaver.model.DBPDataSourceContainer;
 import org.jkiss.dbeaver.model.connection.DBPConnectionConfiguration;
@@ -33,7 +35,10 @@ import org.jkiss.dbeaver.utils.RuntimeUtils;
 import org.jkiss.utils.CommonUtils;
 import org.jkiss.utils.IOUtils;
 
-import java.io.*;
+import java.io.IOException;
+import java.io.Reader;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Properties;
 
 public class AuthModelPgPass extends AuthModelDatabaseNative<AuthModelPgPassCredentials> {
@@ -86,7 +91,7 @@ public class AuthModelPgPass extends AuthModelDatabaseNative<AuthModelPgPassCred
         DBPConnectionConfiguration originalConfiguration = dataSource.getConnectionConfiguration();
         String conHostName = originalConfiguration.getHostName();
         String sshHost = null;
-        if (CommonUtils.isEmpty(conHostName) || conHostName.equals("localhost") || conHostName.equals("127.0.0.1")) {
+        if (CommonUtils.isEmpty(conHostName) || conHostName.equals(DBConstants.HOST_LOCALHOST) || conHostName.equals(DBConstants.HOST_LOCALHOST_IP)) {
             sshHost = getSSHHost(dataSource);
         }
         final String providerProperty = dataSource.getConnectionConfiguration()
@@ -106,12 +111,12 @@ public class AuthModelPgPass extends AuthModelDatabaseNative<AuthModelPgPassCred
                 pgPassPath = System.getProperty("user.home") + "/.pgpass";
             }
         }
-        File pgPassFile = new File(pgPassPath);
-        if (!pgPassFile.exists()) {
-            throw new DBException("PgPass file '" + pgPassFile.getAbsolutePath() + "' not found");
+        Path pgPassFile = Path.of(pgPassPath);
+        if (!Files.exists(pgPassFile)) {
+            throw new DBException("PgPass file '" + pgPassFile + "' not found");
         }
 
-        try (Reader r = new InputStreamReader(new FileInputStream(pgPassFile), GeneralUtils.UTF8_CHARSET)) {
+        try (Reader r = Files.newBufferedReader(pgPassFile, GeneralUtils.UTF8_CHARSET)) {
             String passString = IOUtils.readToString(r);
             String[] lines = passString.split("\n");
             if (findHostCredentials(credentials, configuration, dataSource, sshHost, lines)) {
@@ -120,7 +125,7 @@ public class AuthModelPgPass extends AuthModelDatabaseNative<AuthModelPgPassCred
                 return;
             }
         } catch (IOException e) {
-            throw new DBException("Error reading pgpass", e);
+            throw new DBException("Error reading pgpass at '" + pgPassFile + "'", e);
         }
 
         throw new DBException("No matches in pgpass");
@@ -137,7 +142,7 @@ public class AuthModelPgPass extends AuthModelDatabaseNative<AuthModelPgPassCred
         }
         DBPConnectionConfiguration originalConfiguration = dataSourceContainer.getConnectionConfiguration();
         String conHostPort = originalConfiguration.getHostPort();
-        String conDatabaseName = originalConfiguration.getDatabaseName();
+        String conDatabaseName = PostgreUtils.getDatabaseNameFromConfiguration(originalConfiguration);
         String conUserName = originalConfiguration.getUserName();
         if (CommonUtils.isEmpty(conHostPort)) {
             conHostPort = dataSourceContainer.getDriver().getDefaultPort();

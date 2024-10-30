@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  * Copyright (C) 2011-2012 Eugene Fradkin (eugene.fradkin@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,8 +17,17 @@
  */
 package org.jkiss.dbeaver.tasks.nativetool;
 
+import org.jkiss.code.NotNull;
+import org.jkiss.dbeaver.model.app.DBPProject;
 import org.jkiss.dbeaver.model.struct.DBSObject;
 
-public abstract class AbstractImportSettings<BASE_OBJECT extends DBSObject> extends AbstractNativeToolSettings<BASE_OBJECT> {
+public abstract class AbstractImportSettings<BASE_OBJECT extends DBSObject>
+    extends AbstractNativeToolSettings<BASE_OBJECT> {
 
+    public AbstractImportSettings() {
+    }
+
+    public AbstractImportSettings(@NotNull DBPProject project) {
+        super(project);
+    }
 }

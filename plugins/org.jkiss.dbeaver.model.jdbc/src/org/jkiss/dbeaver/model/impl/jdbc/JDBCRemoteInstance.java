@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -182,7 +182,7 @@ public class JDBCRemoteInstance implements DBSInstance {
 
     @NotNull
     @Override
-    public JDBCExecutionContext getDefaultContext(DBRProgressMonitor monitor, boolean meta) {
+    public JDBCExecutionContext getDefaultContext(@NotNull DBRProgressMonitor monitor, boolean meta) {
         if (sharedInstance != null) {
             return sharedInstance.getDefaultContext(monitor, meta);
         }
@@ -243,7 +243,11 @@ public class JDBCRemoteInstance implements DBSInstance {
 
     void addContext(JDBCExecutionContext context) {
         synchronized (allContexts) {
-            allContexts.add(context);
+            if (allContexts.contains(context)) {
+                log.debug("Duplicate execution context add");
+            } else {
+                allContexts.add(context);
+            }
         }
     }
 

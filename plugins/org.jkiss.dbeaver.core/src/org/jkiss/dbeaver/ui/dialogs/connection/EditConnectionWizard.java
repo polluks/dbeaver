@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,6 +36,7 @@ import org.jkiss.dbeaver.model.app.DBPProject;
 import org.jkiss.dbeaver.model.connection.DBPDriver;
 import org.jkiss.dbeaver.model.connection.DBPDriverSubstitutionDescriptor;
 import org.jkiss.dbeaver.model.navigator.DBNBrowseSettings;
+import org.jkiss.dbeaver.model.secret.DBSSecretValue;
 import org.jkiss.dbeaver.registry.DataSourceDescriptor;
 import org.jkiss.dbeaver.registry.DataSourcePageDescriptor;
 import org.jkiss.dbeaver.registry.DataSourceViewDescriptor;
@@ -141,7 +142,7 @@ public class EditConnectionWizard extends ConnectionWizard {
      */
     @Override
     public void addPages() {
-        if (dataSource.getDriver().isDeprecated()) {
+        if (dataSource.getDriver().isNotAvailable()) {
             addPage(new ConnectionPageDeprecation(dataSource.getDriver()));
             return;
         }
@@ -249,47 +250,58 @@ public class EditConnectionWizard extends ConnectionWizard {
      */
     @Override
     public boolean performFinish() {
-        if (dataSource.getDriver().isDeprecated()) {
+        if (dataSource.getDriver().isNotAvailable()) {
             return true;
         }
 
         DBPDataSourceRegistry registry = originalDataSource.getRegistry();
         DataSourceDescriptor dsCopy = new DataSourceDescriptor(originalDataSource, registry);
         DataSourceDescriptor dsChanged = new DataSourceDescriptor(dataSource, dataSource.getRegistry());
-        saveSettings(dsChanged);
+        try {
+            saveSettings(dsChanged);
 
-        if (dsCopy.equalSettings(dsChanged)) {
-            // No changes
-            return true;
-        }
+            if (dsCopy.equalSettings(dsChanged)) {
+                // No changes
+                return true;
+            }
 
-        // Check locked datasources
-        if (!CommonUtils.isEmpty(dataSource.getLockPasswordHash())) {
-            if (!isOnlyUserCredentialChanged(dsCopy, dsChanged)) {
-                if (!checkLockPassword()) {
-                    return false;
+            // Check locked datasources
+            if (!CommonUtils.isEmpty(dataSource.getLockPasswordHash())) {
+                if (!isOnlyUserCredentialChanged(dsCopy, dsChanged)) {
+                    if (!checkLockPassword()) {
+                        return false;
+                    }
                 }
             }
+        } finally {
+            dsCopy.dispose();
+            dsChanged.dispose();
         }
 
 
-        boolean saveConnectionSettings = true;
+        boolean performReconnect = false;
         if (originalDataSource.isConnected()) {
             if (UIUtils.confirmAction(getShell(), CoreMessages.dialog_connection_edit_wizard_conn_change_title,
                 NLS.bind(CoreMessages.dialog_connection_edit_wizard_conn_change_question,
                 originalDataSource.getName()) )
             ) {
-                DataSourceHandler.reconnectDataSource(null, originalDataSource);
-            } else {
-                // Guess we shouldn't apply connection settings changes if reconnect was rejected,
-                // because in this case they are in inconsistent state
-                saveConnectionSettings = false;
+                performReconnect = true;
             }
         }
 
         // Save
         saveSettings(originalDataSource);
-        return originalDataSource.persistConfiguration();
+        // Set selected shared creds (creds may be resolved during auth model interactions)
+        DBSSecretValue selectedSharedCredentials = dataSource.getSelectedSharedCredentials();
+        if (selectedSharedCredentials != null) {
+            selectedSharedCredentials.setValue(originalDataSource.saveToSecret());
+            originalDataSource.setSelectedSharedCredentials(selectedSharedCredentials);
+        }
+        boolean changesSaved = originalDataSource.persistConfiguration();
+        if (changesSaved && performReconnect) {
+            DataSourceHandler.reconnectDataSource(null, originalDataSource);
+        }
+        return changesSaved;
     }
 
     private boolean isOnlyUserCredentialChanged(DataSourceDescriptor dsCopy, DataSourceDescriptor dsChanged) {
@@ -335,7 +347,7 @@ public class EditConnectionWizard extends ConnectionWizard {
 
     @Override
     protected void saveSettings(DataSourceDescriptor dataSource) {
-        if (dataSource.getDriver().isDeprecated()) {
+        if (dataSource.getDriver().isNotAvailable()) {
             return;
         }
 
@@ -399,4 +411,10 @@ public class EditConnectionWizard extends ConnectionWizard {
 */
     }
 
+    @Override
+    public void dispose() {
+        super.dispose();
+        // Dispose temp datasource
+        this.dataSource.dispose();
+    }
 }

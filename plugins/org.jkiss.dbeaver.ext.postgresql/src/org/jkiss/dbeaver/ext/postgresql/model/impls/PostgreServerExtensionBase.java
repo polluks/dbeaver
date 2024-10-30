@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -70,6 +70,11 @@ public abstract class PostgreServerExtensionBase implements PostgreServerExtensi
     }
 
     @Override
+    public boolean supportsForeignKeys() {
+        return true;
+    }
+
+    @Override
     public boolean supportsMaterializedViews() {
         return dataSource.isServerVersionAtLeast(9, 3);
     }
@@ -92,6 +97,11 @@ public abstract class PostgreServerExtensionBase implements PostgreServerExtensi
     @Override
     public boolean supportsEventTriggers() {
         return false;
+    }
+
+    @Override
+    public boolean supportsDependencies() {
+        return true;
     }
 
     @Override
@@ -122,6 +132,11 @@ public abstract class PostgreServerExtensionBase implements PostgreServerExtensi
     @Override
     public boolean supportsCollations() {
         return dataSource.isServerVersionAtLeast(9, 1);
+    }
+
+    @Override
+    public boolean supportsLanguages() {
+        return true;
     }
 
     @Override
@@ -176,6 +191,11 @@ public abstract class PostgreServerExtensionBase implements PostgreServerExtensi
 
     @Override
     public String readTableDDL(DBRProgressMonitor monitor, PostgreTableBase table) throws DBException {
+        return null;
+    }
+
+    @Override
+    public String readViewDDL(DBRProgressMonitor monitor, PostgreViewBase view) throws DBException {
         return null;
     }
 
@@ -279,6 +299,12 @@ public abstract class PostgreServerExtensionBase implements PostgreServerExtensi
         }
 
         if (tableBase instanceof PostgreTableRegular) {
+            if (!alter) {
+                createUsingClause((PostgreTableRegular) tableBase, ddl);
+            }
+        }
+
+        if (tableBase instanceof PostgreTableRegular) {
             PostgreTableRegular table = (PostgreTableRegular) tableBase;
             try {
                 if (!alter) {
@@ -327,11 +353,6 @@ public abstract class PostgreServerExtensionBase implements PostgreServerExtensi
     }
 
     @Override
-    public PostgreTableColumn createTableColumn(DBRProgressMonitor monitor, PostgreSchema schema, PostgreTableBase table, JDBCResultSet dbResult) throws DBException {
-        return new PostgreTableColumn(monitor, table, dbResult);
-    }
-
-    @Override
     public void initDefaultSSLConfig(DBPConnectionConfiguration connectionInfo, Map<String, String> props) {
         if (connectionInfo.getProperty(PostgreConstants.PROP_SSL) == null) {
             // We need to disable SSL explicitly (see #4928)
@@ -341,7 +362,7 @@ public abstract class PostgreServerExtensionBase implements PostgreServerExtensi
 
     @Override
     public List<PostgrePrivilege> readObjectPermissions(DBRProgressMonitor monitor, PostgreTableBase object, boolean includeNestedObjects) throws DBException {
-        List<PostgrePrivilege> tablePermissions = PostgreUtils.extractPermissionsFromACL(monitor, object, object.getAcl());
+        List<PostgrePrivilege> tablePermissions = PostgreUtils.extractPermissionsFromACL(monitor, object, object.getAcl(), false);
         if (!includeNestedObjects) {
             return tablePermissions;
         }
@@ -400,7 +421,7 @@ public abstract class PostgreServerExtensionBase implements PostgreServerExtensi
     }
 
     @Override
-    public boolean supportsTeblespaceLocation() {
+    public boolean supportsTablespaceLocation() {
         return dataSource.isServerVersionAtLeast(9, 2);
     }
 
@@ -449,6 +470,10 @@ public abstract class PostgreServerExtensionBase implements PostgreServerExtensi
         return withClauseBuilder.toString();
     }
 
+    public void createUsingClause(@NotNull PostgreTableRegular table, @NotNull StringBuilder ddl) {
+        // Do nothing
+    }
+
     @Override
     public boolean supportsPGConstraintExpressionColumn() {
         return true;
@@ -456,6 +481,11 @@ public abstract class PostgreServerExtensionBase implements PostgreServerExtensi
 
     @Override
     public boolean supportsHasOidsColumn() {
+        return true;
+    }
+
+    @Override
+    public boolean supportsColumnsRequiring() {
         return true;
     }
 
@@ -492,6 +522,11 @@ public abstract class PostgreServerExtensionBase implements PostgreServerExtensi
     @Override
     public boolean supportsCommentsOnRole() {
         return supportsRoles();
+    }
+
+    @Override
+    public boolean supportsDefaultPrivileges() {
+        return dataSource.isServerVersionAtLeast(9, 0);
     }
 
     @Override
@@ -555,6 +590,16 @@ public abstract class PostgreServerExtensionBase implements PostgreServerExtensi
     }
 
     @Override
+    public boolean supportsAcl() {
+        return true;
+    }
+
+    @Override
+    public boolean supportsCustomDataTypes() {
+        return true;
+    }
+
+    @Override
     public boolean supportsDistinctForStatementsWithAcl() {
         return true;
     }
@@ -572,5 +617,10 @@ public abstract class PostgreServerExtensionBase implements PostgreServerExtensi
     @Override
     public boolean supportsAlterTableForViewRename() {
         return false;
+    }
+
+    @Override
+    public boolean supportsNativeClient() {
+        return true;
     }
 }

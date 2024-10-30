@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,10 +18,7 @@ package org.jkiss.dbeaver.tools.transfer.stream.exporter;
 
 import org.jkiss.code.NotNull;
 import org.jkiss.dbeaver.DBException;
-import org.jkiss.dbeaver.model.DBConstants;
-import org.jkiss.dbeaver.model.DBPDataKind;
-import org.jkiss.dbeaver.model.DBPEvaluationContext;
-import org.jkiss.dbeaver.model.DBUtils;
+import org.jkiss.dbeaver.model.*;
 import org.jkiss.dbeaver.model.data.DBDAttributeBinding;
 import org.jkiss.dbeaver.model.data.DBDContent;
 import org.jkiss.dbeaver.model.data.DBDContentStorage;
@@ -39,10 +36,11 @@ import org.jkiss.dbeaver.utils.ContentUtils;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.utils.CommonUtils;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.Reader;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Date;
 import java.util.Map;
 
@@ -55,6 +53,7 @@ public class DataExporterCSV extends StreamExporterAbstract implements IAppendab
     private static final String PROP_ROW_DELIMITER = "rowDelimiter";
     private static final String PROP_HEADER = "header";
     private static final String PROP_HEADER_FORMAT = "headerFormat";
+    private static final String PROP_HEADER_CASE = "headerCase";
     private static final String PROP_QUOTE_CHAR = "quoteChar";
     private static final String PROP_QUOTE_ALWAYS = "quoteAlways";
     private static final String PROP_QUOTE_NEVER = "quoteNever";
@@ -87,6 +86,7 @@ public class DataExporterCSV extends StreamExporterAbstract implements IAppendab
     private String nullString;
     private HeaderPosition headerPosition;
     private HeaderFormat headerFormat;
+    private DBPIdentifierCase headerCase;
     private DBDAttributeBinding[] columns;
 
     private final StringBuilder buffer = new StringBuilder();
@@ -121,6 +121,11 @@ public class DataExporterCSV extends StreamExporterAbstract implements IAppendab
 
         headerFormat = CommonUtils.valueOf(HeaderFormat.class, String.valueOf(properties.get(PROP_HEADER_FORMAT)), HeaderFormat.label);
         formatNumbers = CommonUtils.toBoolean(getSite().getProperties().get(PROP_FORMAT_NUMBERS));
+        headerCase = switch (CommonUtils.toString(properties.get(PROP_HEADER_CASE))) {
+            case "as is" -> DBPIdentifierCase.MIXED;
+            case "lower" -> DBPIdentifierCase.LOWER;
+            default -> DBPIdentifierCase.UPPER;
+        };
     }
 
     @Override
@@ -175,7 +180,7 @@ public class DataExporterCSV extends StreamExporterAbstract implements IAppendab
                     }
                 }
             }
-            writeCellValue(colName, true);
+            writeCellValue(headerCase.transform(colName), true);
             if (i < columnsSize - 1) {
                 writeDelimiter();
             }
@@ -253,8 +258,8 @@ public class DataExporterCSV extends StreamExporterAbstract implements IAppendab
 
     @Override
     public void importData(@NotNull IStreamDataExporterSite site) {
-        final File file = site.getOutputFile();
-        if (file == null || !file.exists()) {
+        final Path file = site.getOutputFile();
+        if (file == null || !Files.exists(file)) {
             return;
         }
         // FIXME: Sources may be different and thus may have a different set of attributes

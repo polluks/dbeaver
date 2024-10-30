@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  * Copyright (C) 2011-2012 Eugene Fradkin (eugene.fradkin@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +23,10 @@ import org.eclipse.jface.preference.ColorSelector;
 import org.eclipse.jface.resource.StringConverter;
 import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.SWT;
-import org.eclipse.swt.events.*;
+import org.eclipse.swt.events.ControlAdapter;
+import org.eclipse.swt.events.ControlEvent;
+import org.eclipse.swt.events.SelectionAdapter;
+import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.widgets.*;
@@ -70,6 +73,8 @@ public class PrefPageConnectionTypes extends AbstractPrefPage implements IWorkbe
     private Button confirmDataChangeCheck;
     private Button autoCloseTransactionsCheck;
     private Text autoCloseTransactionsTtlText;
+    private Button autoCloseConnectionsCheck;
+    private Text autoCloseConnectionsTtlText;
     private Button smartCommitCheck;
     private Button smartCommitRecoverCheck;
     private ToolItem deleteButton;
@@ -124,18 +129,10 @@ public class PrefPageConnectionTypes extends AbstractPrefPage implements IWorkbe
                             break;
                         }
                     }
-                    DBPConnectionType newType = new DBPConnectionType(
-                        name.toLowerCase(),
-                        name,
-                        "255,255,255",
-                        "New type",
-                        true,
-                        false,
-                        true,
-                        false,
-                        true,
-                        true,
-                        1800);
+                    DBPConnectionType newType = new DBPConnectionType(DBPConnectionType.DEFAULT_TYPE);
+                    newType.setId(name.toLowerCase());
+                    newType.setName("New type");
+                    newType.setColor("255,255,255");
                     addTypeToTable(newType, newType);
                     typeTable.select(typeTable.getItemCount() - 1);
                     typeTable.showSelection();
@@ -291,6 +288,7 @@ public class PrefPageConnectionTypes extends AbstractPrefPage implements IWorkbe
                 @Override
                 public void widgetSelected(SelectionEvent e) {
                     getSelectedType().setSmartCommit(smartCommitCheck.getSelection());
+                    updateCommitRecoverCheckBox();
                 }
             });
             smartCommitRecoverCheck = UIUtils.createCheckbox(placeholder,
@@ -304,7 +302,7 @@ public class PrefPageConnectionTypes extends AbstractPrefPage implements IWorkbe
                     getSelectedType().setSmartCommitRecover(smartCommitRecoverCheck.getSelection());
                 }
             });
-
+            // transactions
             autoCloseTransactionsCheck = UIUtils.createCheckbox(
                 placeholder,
                 CoreMessages.action_menu_transaction_auto_close_enabled,
@@ -317,7 +315,6 @@ public class PrefPageConnectionTypes extends AbstractPrefPage implements IWorkbe
                     getSelectedType().setAutoCloseTransactions(autoCloseTransactionsCheck.getSelection());
                 }
             });
-
             autoCloseTransactionsTtlText = new Text(placeholder, SWT.BORDER);
             autoCloseTransactionsTtlText.setToolTipText(CoreMessages.pref_page_connection_types_label_auto_close_ttl_tip);
             autoCloseTransactionsTtlText.addVerifyListener(UIUtils.getIntegerVerifyListener(Locale.ENGLISH));
@@ -325,7 +322,30 @@ public class PrefPageConnectionTypes extends AbstractPrefPage implements IWorkbe
             grd.widthHint = UIUtils.getFontHeight(autoCloseTransactionsTtlText) * 6;
             autoCloseTransactionsTtlText.setLayoutData(grd);
             autoCloseTransactionsTtlText.addModifyListener(e ->
-                getSelectedType().setCloseIdleConnectionPeriod(CommonUtils.toLong(autoCloseTransactionsTtlText.getText(), 1800)));
+                getSelectedType().setCloseIdleTransactionPeriod(
+                    CommonUtils.toInt(autoCloseTransactionsTtlText.getText(), DBPConnectionType.DEFAULT_TYPE.getCloseIdleTransactionPeriod())));
+            // connections
+            autoCloseConnectionsCheck = UIUtils.createCheckbox(
+                placeholder,
+                CoreMessages.dialog_connection_wizard_final_label_close_idle_connections,
+                CoreMessages.dialog_connection_wizard_final_label_close_idle_connections_tooltip,
+                true,
+                1);
+            autoCloseConnectionsCheck.addSelectionListener(new SelectionAdapter() {
+                @Override
+                public void widgetSelected(SelectionEvent e) {
+                    getSelectedType().setAutoCloseConnections(autoCloseConnectionsCheck.getSelection());
+                }
+            });
+            autoCloseConnectionsTtlText = new Text(placeholder, SWT.BORDER);
+            autoCloseConnectionsTtlText.setToolTipText(CoreMessages.pref_page_connection_types_label_auto_close_ttl_tip);
+            autoCloseConnectionsTtlText.addVerifyListener(UIUtils.getIntegerVerifyListener(Locale.ENGLISH));
+            GridData grdConnections = new GridData();
+            grdConnections.widthHint = UIUtils.getFontHeight(autoCloseTransactionsTtlText) * 6;
+            autoCloseConnectionsTtlText.setLayoutData(grdConnections);
+            autoCloseConnectionsTtlText.addModifyListener(e ->
+                getSelectedType().setCloseIdleConnectionPeriod(
+                    CommonUtils.toInt(autoCloseConnectionsTtlText.getText(), DBPConnectionType.DEFAULT_TYPE.getCloseIdleConnectionPeriod())));
 
             Button epButton = UIUtils.createDialogButton(
                 placeholder,
@@ -360,8 +380,17 @@ public class PrefPageConnectionTypes extends AbstractPrefPage implements IWorkbe
         urlHelpLabel.setLayoutData(gridData);
 
         performDefaults(false);
+        updateCommitRecoverCheckBox();
 
         return composite;
+    }
+
+    private void updateCommitRecoverCheckBox() {
+        if (!smartCommitCheck.getSelection()) {
+            smartCommitRecoverCheck.setEnabled(false);
+        } else if (!smartCommitRecoverCheck.isEnabled()) {
+            smartCommitRecoverCheck.setEnabled(true);
+        }
     }
 
     private DBPConnectionType getSelectedType() {
@@ -386,8 +415,9 @@ public class PrefPageConnectionTypes extends AbstractPrefPage implements IWorkbe
         smartCommitCheck.setSelection(connectionType.isSmartCommit());
         smartCommitRecoverCheck.setSelection(connectionType.isSmartCommitRecover());
         autoCloseTransactionsCheck.setSelection(connectionType.isAutoCloseTransactions());
-        autoCloseTransactionsTtlText.setText(String.valueOf(connectionType.getCloseIdleConnectionPeriod()));
-
+        autoCloseTransactionsTtlText.setText(String.valueOf(connectionType.getCloseIdleTransactionPeriod()));
+        autoCloseConnectionsCheck.setSelection(connectionType.isAutoCloseConnections());
+        autoCloseConnectionsTtlText.setText(String.valueOf(connectionType.getCloseIdleConnectionPeriod()));
         deleteButton.setEnabled(!connectionType.isPredefined());
     }
 
@@ -519,7 +549,11 @@ public class PrefPageConnectionTypes extends AbstractPrefPage implements IWorkbe
                 source.setModifyPermissions(changed.getModifyPermission());
                 source.setSmartCommit(changed.isSmartCommit());
                 source.setSmartCommitRecover(changed.isSmartCommitRecover());
+                // transaction
                 source.setAutoCloseTransactions(changed.isAutoCloseTransactions());
+                source.setCloseIdleTransactionPeriod(changed.getCloseIdleTransactionPeriod());
+                // connections
+                source.setAutoCloseConnections(changed.isAutoCloseConnections());
                 source.setCloseIdleConnectionPeriod(changed.getCloseIdleConnectionPeriod());
                 hasChanges = true;
             }

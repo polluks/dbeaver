@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -168,6 +168,7 @@ public class SQLServerSchema implements DBSSchema, DBPSaveableObject, DBPQualifi
             name.equalsIgnoreCase(SQLServerConstants.INFORMATION_SCHEMA_SCHEMA);
     }
 
+    @NotNull
     @Override
     public String getFullyQualifiedName(DBPEvaluationContext context) {
         if (!SQLServerUtils.supportsCrossDatabaseQueries(getDataSource())) {
@@ -238,7 +239,7 @@ public class SQLServerSchema implements DBSSchema, DBPSaveableObject, DBPQualifi
     }
 
     @Association
-    public Collection<SQLServerTableType> getTablesType(DBRProgressMonitor monitor) throws DBException {
+    public Collection<SQLServerTableType> getTablesTypes(DBRProgressMonitor monitor) throws DBException {
         return tableCache.getTypedObjects(monitor, this, SQLServerTableType.class);
     }
 
@@ -247,10 +248,11 @@ public class SQLServerSchema implements DBSSchema, DBPSaveableObject, DBPQualifi
         return tableCache.getTypedObjects(monitor, this, SQLServerExternalTable.class);
     }
 
-    public SQLServerTableType getTableType(DBRProgressMonitor monitor, long tableId) throws DBException {
+    @Nullable
+    public SQLServerTableType getTableType(@NotNull DBRProgressMonitor monitor, long tableId) throws DBException {
         for (SQLServerTableBase table : tableCache.getAllObjects(monitor, this)) {
-            if (table.getObjectId() == tableId && table instanceof SQLServerTableType) {
-                return (SQLServerTableType) table;
+            if (table.getObjectId() == tableId && table instanceof SQLServerTableType tt) {
+                return tt;
             }
         }
         log.debug("Table type '" + tableId + "' not found in schema " + getName());
@@ -765,7 +767,7 @@ public class SQLServerSchema implements DBSSchema, DBPSaveableObject, DBPQualifi
         @SuppressWarnings("unchecked")
         protected void cacheChildren(DBRProgressMonitor monitor, SQLServerTableForeignKey foreignKey, List<SQLServerTableForeignKeyColumn> rows)
         {
-            foreignKey.setColumns(rows);
+            foreignKey.setAttributeReferences(rows);
         }
 
     }
@@ -870,7 +872,7 @@ public class SQLServerSchema implements DBSSchema, DBPSaveableObject, DBPQualifi
 
         @NotNull
         @Override
-        public JDBCStatement prepareLookupStatement(JDBCSession session, SQLServerSchema schema, SQLServerProcedure object, String objectName) throws SQLException {
+        public JDBCStatement prepareLookupStatement(@NotNull JDBCSession session, @NotNull SQLServerSchema schema, @Nullable SQLServerProcedure object, @Nullable String objectName) throws SQLException {
             String sql = "SELECT p.*,ep.value as description" +
                 "\nFROM " + SQLServerUtils.getSystemTableName(schema.getDatabase(), "all_objects") + " p" +
                 "\nLEFT OUTER JOIN " + SQLServerUtils.getExtendedPropsTableName(schema.getDatabase()) + " ep ON ep.class=" + SQLServerObjectClass.OBJECT_OR_COLUMN.getClassId() + " AND ep.major_id=p.object_id AND ep.minor_id=0 AND ep.name='" + SQLServerConstants.PROP_MS_DESCRIPTION + "'" +
@@ -931,7 +933,7 @@ public class SQLServerSchema implements DBSSchema, DBPSaveableObject, DBPQualifi
 
         @NotNull
         @Override
-        public JDBCStatement prepareLookupStatement(@NotNull JDBCSession session, @NotNull SQLServerSchema schema, SQLServerTableTrigger object, String objectName) throws SQLException {
+        public JDBCStatement prepareLookupStatement(@NotNull JDBCSession session, @NotNull SQLServerSchema schema, @Nullable SQLServerTableTrigger object, @Nullable String objectName) throws SQLException {
             final SQLServerDataSource dataSource = schema.getDataSource();
             StringBuilder sql = new StringBuilder(500);
             sql.append("SELECT ");

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -62,7 +62,7 @@ public class DBNProjectDatabases extends DBNNode implements DBNContainer, DBPEve
     protected void dispose(boolean reflect)
     {
         for (DBNDataSource dataSource : dataSources) {
-            dataSource.dispose(reflect);
+            DBNUtils.disposeNode(dataSource, reflect);
         }
         dataSources.clear();
         folderNodes.clear();
@@ -75,9 +75,14 @@ public class DBNProjectDatabases extends DBNNode implements DBNContainer, DBPEve
     }
 
     @Override
-    public String getNodeType()
-    {
-        return "connections";
+    public String getNodeType() {
+        return "datasources";
+    }
+
+    @NotNull
+    @Override
+    public String getNodeId() {
+        return "datasources";
     }
 
     public DBPDataSourceRegistry getDataSourceRegistry()
@@ -107,11 +112,11 @@ public class DBNProjectDatabases extends DBNNode implements DBNContainer, DBPEve
     @Property(viewable = true, order = 1)
     public String getName()
     {
-        return getNodeName();
+        return getNodeDisplayName();
     }
 
     @Override
-    public String getNodeName()
+    public String getNodeDisplayName()
     {
         return "Connections";
     }
@@ -139,9 +144,9 @@ public class DBNProjectDatabases extends DBNNode implements DBNContainer, DBPEve
     }
 
     @Override
-    public DBNNode[] getChildren(DBRProgressMonitor monitor)
+    public DBNNode[] getChildren(@NotNull DBRProgressMonitor monitor)
     {
-        if (children == null) {
+        if (children == null && !monitor.isForceCacheUsage()) {
             List<DBNNode> childNodes = new ArrayList<>();
             // Add root folders
             for (DBPDataSourceFolder folder : dataSourceRegistry.getAllFolders()) {
@@ -177,7 +182,7 @@ public class DBNProjectDatabases extends DBNNode implements DBNContainer, DBPEve
     }
 
     @Override
-    public void dropNodes(Collection<DBNNode> nodes) throws DBException {
+    public void dropNodes(DBRProgressMonitor monitor, Collection<DBNNode> nodes) throws DBException {
         moveNodesToFolder(nodes, null);
     }
 
@@ -230,9 +235,10 @@ public class DBNProjectDatabases extends DBNNode implements DBNContainer, DBPEve
         return true;
     }
 
+    @Deprecated
     @Override
     public String getNodeItemPath() {
-        return getParentNode().getNodeItemPath() + "/" + getNodeName();
+        return getParentNode().getNodeItemPath() + "/" + getNodeDisplayName();
     }
 
     public DBNLocalFolder getFolderNode(DBPDataSourceFolder folder)
@@ -313,7 +319,7 @@ public class DBNProjectDatabases extends DBNNode implements DBNContainer, DBPEve
         }
         if (removedNode != null) {
             children = null;
-            removedNode.dispose(true);
+            DBNUtils.disposeNode(removedNode, true);
             refreshChildren();
         }
     }
@@ -391,6 +397,18 @@ public class DBNProjectDatabases extends DBNNode implements DBNContainer, DBPEve
                     }
                 }
                 break;
+            case BEFORE_CONNECT:
+            case AFTER_CONNECT: {
+                DBNDatabaseNode dbmNode = model.getNodeByObject(event.getObject());
+                if (dbmNode != null) {
+                    model.fireNodeUpdate(
+                        event,
+                        dbmNode,
+                        event.getAction() == DBPEvent.Action.BEFORE_CONNECT ?
+                            DBNEvent.NodeChange.BEFORE_LOAD : DBNEvent.NodeChange.AFTER_LOAD);
+                }
+                break;
+                }
             case OBJECT_UPDATE:
             case OBJECT_SELECT:
             {

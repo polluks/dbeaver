@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,12 +27,11 @@ import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Composite;
+import org.eclipse.swt.widgets.Event;
 import org.eclipse.swt.widgets.Group;
-import org.eclipse.ui.IWorkbench;
-import org.eclipse.ui.IWorkbenchWizard;
-import org.eclipse.ui.PartInitException;
-import org.eclipse.ui.PlatformUI;
+import org.eclipse.ui.*;
 import org.eclipse.ui.views.IViewDescriptor;
+import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
@@ -41,6 +40,7 @@ import org.jkiss.dbeaver.model.exec.DBCExecutionContext;
 import org.jkiss.dbeaver.model.rm.RMConstants;
 import org.jkiss.dbeaver.model.runtime.DBRRunnableContext;
 import org.jkiss.dbeaver.model.task.*;
+import org.jkiss.dbeaver.registry.task.TaskConstants;
 import org.jkiss.dbeaver.registry.task.TaskRegistry;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.tasks.ui.internal.TaskUIMessages;
@@ -52,7 +52,6 @@ import org.jkiss.dbeaver.ui.dialogs.IWizardPageNavigable;
 import org.jkiss.dbeaver.ui.navigator.NavigatorUtils;
 import org.jkiss.utils.CommonUtils;
 
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -92,10 +91,15 @@ public abstract class TaskConfigurationWizard<SETTINGS extends DBTTaskSettings> 
 
     public abstract String getTaskTypeId();
 
-    public abstract void saveTaskState(DBRRunnableContext runnableContext, DBTTask task, Map<String, Object> state);
+    public abstract void saveTaskState(DBRRunnableContext runnableContext, DBTTask task, Map<String, Object> state) throws DBException;
 
     public boolean isRunTaskOnFinish() {
         return getCurrentTask() != null && !getCurrentTask().isTemporary() && !getContainer().isSelectorMode();
+    }
+    
+    protected boolean isToolTask() {
+        return getCurrentTask() != null &&
+            getCurrentTask().getProperties().getOrDefault(TaskConstants.TOOL_TASK_PROP, false).equals(true);
     }
 
     public IStructuredSelection getCurrentSelection() {
@@ -262,7 +266,7 @@ public abstract class TaskConfigurationWizard<SETTINGS extends DBTTaskSettings> 
                 // Execute directly in wizard
                 executor.executeTask();
             } else {
-                task.getProject().getTaskManager().runTask(task, executor, Collections.emptyMap());
+                task.getProject().getTaskManager().scheduleTask(task, executor);
             }
         } catch (DBException e) {
             DBWorkbench.getPlatformUI().showError("Task run error", e.getMessage(), e);
@@ -308,21 +312,22 @@ public abstract class TaskConfigurationWizard<SETTINGS extends DBTTaskSettings> 
     }
 
     protected void saveConfigurationToTask(DBTTask theTask) {
-        Map<String, Object> state = new LinkedHashMap<>();
-        saveTaskState(getRunnableContext(), theTask, state);
-
-        DBTTaskContext context = getTaskContext();
-        if (context != null) {
-            DBTaskUtils.saveTaskContext(state, context);
-        }
-        if (theTask.getType().supportsVariables()) {
-            DBTaskUtils.setVariables(state, getTaskVariables());
-            if (promptVariables) {
-                state.put(DBTaskUtils.TASK_PROMPT_VARIABLES, true);
-            }
-        }
-        theTask.setProperties(state);
         try {
+            Map<String, Object> state = new LinkedHashMap<>();
+            saveTaskState(getRunnableContext(), theTask, state);
+
+            DBTTaskContext context = getTaskContext();
+            if (context != null) {
+                DBTaskUtils.saveTaskContext(state, context);
+            }
+            if (theTask.getType().supportsVariables()) {
+                DBTaskUtils.setVariables(state, getTaskVariables());
+                if (promptVariables) {
+                    state.put(DBTaskUtils.TASK_PROMPT_VARIABLES, true);
+                }
+            }
+            theTask.setProperties(state);
+
             theTask.getProject().getTaskManager().updateTaskConfiguration(theTask);
         } catch (DBException e) {
             DBWorkbench.getPlatformUI().showError("Task save error", "Error saving task configuration", e);
@@ -413,13 +418,14 @@ public abstract class TaskConfigurationWizard<SETTINGS extends DBTTaskSettings> 
                 promptVariables = promptTaskVariablesCheckbox.getSelection();
             }
         });
+        promptTaskVariablesCheckbox.notifyListeners(SWT.Selection, new Event());
     }
 
     private void configureVariables() {
         Map<String, Object> variables = getTaskVariables();
-        EditTaskVariablesDialog dialog = new EditTaskVariablesDialog(getContainer().getShell(), variables);
+        EditTaskVariablesDialog dialog = new EditTaskVariablesDialog(getContainer().getShell(), Map.of(currentTask, variables));
         if (dialog.open() == IDialogConstants.OK_ID) {
-            this.variables = dialog.getVariables();
+            this.variables = dialog.getVariables(currentTask);
         }
     }
 
@@ -474,5 +480,10 @@ public abstract class TaskConfigurationWizard<SETTINGS extends DBTTaskSettings> 
 
     public void onWizardActivation() {
 
+    }
+
+    @NotNull
+    public TaskConfigurationWizardDialog createWizardDialog(@NotNull IWorkbenchWindow window, @Nullable IStructuredSelection selection) {
+        return new TaskConfigurationWizardDialog(window, this, selection);
     }
 }

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -145,16 +145,18 @@ public class DBVEntityAttribute implements DBSEntityAttribute, DBPNamedObject2, 
         this.name = name;
     }
 
+    @NotNull
     @Property(editable = true)
     @Override
     public String getTypeName() {
         return typeName;
     }
 
-    public void setTypeName(String typeName) {
+    public void setTypeName(@NotNull String typeName) {
         this.typeName = typeName;
     }
 
+    @NotNull
     @Override
     public String getFullTypeName() {
         return getTypeName();
@@ -176,13 +178,14 @@ public class DBVEntityAttribute implements DBSEntityAttribute, DBPNamedObject2, 
         this.dataKind = dataKind;
     }
 
+    @Nullable
     @Override
     public Integer getScale() {
         return this.scale;
     }
 
     @Override
-    public void setScale(Integer scale) {
+    public void setScale(@Nullable Integer scale) {
         this.scale = scale;
     }
 
@@ -192,7 +195,7 @@ public class DBVEntityAttribute implements DBSEntityAttribute, DBPNamedObject2, 
     }
 
     @Override
-    public void setPrecision(Integer precision) {
+    public void setPrecision(@Nullable Integer precision) {
         this.precision = precision;
     }
 
@@ -291,7 +294,7 @@ public class DBVEntityAttribute implements DBSEntityAttribute, DBPNamedObject2, 
         return transformSettings;
     }
 
-    void setTransformSettings(DBVTransformSettings transformSettings) {
+    public void setTransformSettings(DBVTransformSettings transformSettings) {
         this.transformSettings = transformSettings;
     }
 

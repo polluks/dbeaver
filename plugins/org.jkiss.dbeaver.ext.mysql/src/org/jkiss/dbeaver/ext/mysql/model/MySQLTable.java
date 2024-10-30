@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package org.jkiss.dbeaver.ext.mysql.model;
 
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
+import org.jkiss.dbeaver.DBDatabaseException;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ext.mysql.MySQLConstants;
@@ -34,6 +35,7 @@ import org.jkiss.dbeaver.model.struct.*;
 import org.jkiss.dbeaver.model.struct.cache.DBSObjectCache;
 import org.jkiss.dbeaver.model.struct.cache.SimpleObjectCache;
 import org.jkiss.dbeaver.model.struct.rdb.DBSForeignKeyModifyRule;
+import org.jkiss.dbeaver.model.struct.rdb.DBSPartitionContainer;
 import org.jkiss.dbeaver.model.struct.rdb.DBSTable;
 import org.jkiss.dbeaver.model.struct.rdb.DBSTableIndex;
 import org.jkiss.dbeaver.runtime.properties.PropertyCollector;
@@ -47,7 +49,9 @@ import java.util.*;
 /**
  * MySQLTable
  */
-public class MySQLTable extends MySQLTableBase implements DBPObjectStatistics, DBPReferentialIntegrityController {
+public class MySQLTable extends MySQLTableBase
+    implements DBPObjectStatistics, DBPReferentialIntegrityController, DBSPartitionContainer, DBSEntityConstrainable
+{
     private static final Log log = Log.getLog(MySQLTable.class);
 
     private static final String INNODB_COMMENT = "InnoDB free";
@@ -295,11 +299,23 @@ public class MySQLTable extends MySQLTableBase implements DBPObjectStatistics, D
 
     @Override
     @Association
-    public Collection<MySQLTableIndex> getIndexes(DBRProgressMonitor monitor)
+    public Collection<MySQLTableIndex> getIndexes(@NotNull DBRProgressMonitor monitor)
         throws DBException
     {
         // Read indexes using cache
         return this.getContainer().indexCache.getObjects(monitor, getContainer(), this);
+    }
+
+    @NotNull
+    @Override
+    public List<DBSEntityConstraintInfo> getSupportedConstraints() {
+        List<DBSEntityConstraintInfo> result = new ArrayList<>();
+        result.add(DBSEntityConstraintInfo.of(DBSEntityConstraintType.PRIMARY_KEY, MySQLTableConstraint.class));
+        result.add(DBSEntityConstraintInfo.of(DBSEntityConstraintType.UNIQUE_KEY, MySQLTableConstraint.class));
+        if (getDataSource().supportsCheckConstraints()) {
+            result.add(DBSEntityConstraintInfo.of(DBSEntityConstraintType.CHECK, MySQLTableConstraint.class));
+        }
+        return result;
     }
 
     @Nullable
@@ -355,7 +371,7 @@ public class MySQLTable extends MySQLTableBase implements DBPObjectStatistics, D
     public synchronized Collection<MySQLTableForeignKey> getAssociations(@NotNull DBRProgressMonitor monitor)
         throws DBException
     {
-        if (!foreignKeys.isFullyCached() && getDataSource().getInfo().supportsReferentialIntegrity()) {
+        if (!foreignKeys.isFullyCached() && getDataSource().getInfo().supportsReferentialIntegrity() && monitor != null) {
             List<MySQLTableForeignKey> fkList = loadForeignKeys(monitor, false);
             foreignKeys.setCache(fkList);
         }
@@ -446,8 +462,10 @@ public class MySQLTable extends MySQLTableBase implements DBPObjectStatistics, D
         additionalInfo.dataFree = JDBCUtils.safeGetLong(dbResult, "Data_free");
         additionalInfo.indexLength = JDBCUtils.safeGetLong(dbResult, "Index_length");
         additionalInfo.rowFormat = JDBCUtils.safeGetString(dbResult, "Row_format");
-        additionalInfo.partitioned = PARTITIONED_STATUS.equalsIgnoreCase(JDBCUtils.safeGetString(dbResult, "Create_options"));
-
+        String createOptions = JDBCUtils.safeGetString(dbResult, "Create_options");
+        if (CommonUtils.isNotEmpty(createOptions)) {
+            additionalInfo.partitioned = createOptions.contains(PARTITIONED_STATUS);
+        }
         additionalInfo.loaded = true;
     }
 
@@ -455,7 +473,7 @@ public class MySQLTable extends MySQLTableBase implements DBPObjectStatistics, D
         throws DBException
     {
         List<MySQLTableForeignKey> fkList = new ArrayList<>();
-        if (!isPersisted()) {
+        if (!isPersisted() || monitor == null) {
             return fkList;
         }
         try (JDBCSession session = DBUtils.openMetaSession(monitor, this, "Load table relations")) {
@@ -594,7 +612,7 @@ public class MySQLTable extends MySQLTableBase implements DBPObjectStatistics, D
             }
             return fkList;
         } catch (SQLException ex) {
-            throw new DBException(ex, getDataSource());
+            throw new DBDatabaseException(ex, getDataSource());
         }
     }
 
@@ -745,8 +763,8 @@ public class MySQLTable extends MySQLTableBase implements DBPObjectStatistics, D
                     engines.add(engine);
                 }
             }
-            Collections.sort(engines, DBUtils.<MySQLEngine>nameComparator());
-            return engines.toArray(new MySQLEngine[engines.size()]);
+            engines.sort(DBUtils.<MySQLEngine>nameComparator());
+            return engines.toArray(new MySQLEngine[0]);
         }
     }
 

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package org.jkiss.dbeaver.ext.oracle.model;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.ext.oracle.edit.OracleTableManager;
 import org.jkiss.dbeaver.model.DBPDataSourceContainer;
+import org.jkiss.dbeaver.model.connection.DBPConnectionConfiguration;
 import org.jkiss.dbeaver.model.edit.DBEObjectMaker;
 import org.jkiss.dbeaver.model.edit.DBEPersistAction;
 import org.jkiss.dbeaver.model.exec.DBExecUtils;
@@ -58,13 +59,15 @@ public class OracleBaseTableTest {
     private DBPDataSourceContainer mockDataSourceContainer;
     @Mock
     private JDBCRemoteInstance mockRemoteInstance;
+    @Mock
+    private DBPConnectionConfiguration mockConnectionConfiguration;
 
     private final String lineBreak = System.getProperty(StandardConstants.ENV_LINE_SEPARATOR);
 
     @Before
     public void setUp() throws DBException {
         Mockito.when(mockDataSourceContainer.getDriver()).thenReturn(DBWorkbench.getPlatform().getDataSourceProviderRegistry().findDriver("oracle"));
-
+        Mockito.when(mockDataSourceContainer.getConnectionConfiguration()).thenReturn(mockConnectionConfiguration);
         testDataSource = new OracleDataSource(mockDataSourceContainer);
 
         Mockito.when(mockRemoteInstance.getDataSource()).thenReturn(testDataSource);
@@ -77,6 +80,7 @@ public class OracleBaseTableTest {
         objectMaker = OracleTestUtils.getManagerForClass(OracleTable.class);
 
         oracleTable = new OracleTable(testSchema, "TEST_TABLE");
+        oracleTable.setPersisted(true);
         OracleTableColumn tableColumn = OracleTestUtils.addColumn(oracleTable, "COLUMN1", "VARCHAR", 1);
         tableColumn.setMaxLength(100);
         OracleTableColumn tableColumn1 = OracleTestUtils.addColumn(oracleTable, "COLUMN2", "NUMBER", 2);
@@ -154,7 +158,7 @@ public class OracleBaseTableTest {
         constraint.setName("NEWTABLE_PK");
         constraint.setConstraintType(DBSEntityConstraintType.PRIMARY_KEY);
         OracleTableConstraintColumn constraintColumn = new OracleTableConstraintColumn(constraint, column1, 1);
-        constraint.setColumns(Collections.singletonList(constraintColumn));
+        constraint.setAttributeReferences(Collections.singletonList(constraintColumn));
 
         List<DBEPersistAction> actions = DBExecUtils.getActionsListFromCommandContext(monitor, commandContext, executionContext, Collections.emptyMap(), null);
         String script = SQLUtils.generateScript(testDataSource, actions.toArray(new DBEPersistAction[0]), false);

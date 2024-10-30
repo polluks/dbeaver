@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.DBPContextProvider;
 import org.jkiss.dbeaver.model.DBUtils;
+import org.jkiss.dbeaver.model.exec.DBCExecutionContext;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.DBRRunnableContext;
 import org.jkiss.dbeaver.model.runtime.DBRRunnableWithResult;
@@ -105,8 +106,11 @@ public class DataTransferWizard extends TaskConfigurationWizard<DataTransferSett
                         }
                     }
 
-                    if (databaseObject instanceof DBPContextProvider) {
-                        saveTaskContext(((DBPContextProvider) databaseObject).getExecutionContext());
+                    if (databaseObject instanceof DBPContextProvider contextProvider) {
+                        DBCExecutionContext executionContext = contextProvider.getExecutionContext();
+                        if (executionContext != null) {
+                            saveTaskContext(executionContext);
+                        }
                     }
                 }
             }
@@ -140,6 +144,17 @@ public class DataTransferWizard extends TaskConfigurationWizard<DataTransferSett
                     status.getMessage(), status);
             }
         }
+    }
+
+    @Override
+    public boolean canFinish() {
+        if (settings.getProcessor() != null && CommonUtils.isEmpty(settings.getProcessorProperties())) {
+            // Assumes all processors have at least one property - which is true.
+            // When changing processors, the new one doesn't have any properties
+            // and must be configured by the user by going through the wizard once again.
+            return false;
+        }
+        return super.canFinish();
     }
 
     void loadSettings() {
@@ -210,14 +225,25 @@ public class DataTransferWizard extends TaskConfigurationWizard<DataTransferSett
     public void addPages() {
         super.addPages();
         if (includePipesConfigurationPage()) {
-            addPage(new DataTransferPagePipes());
+            addPage(new DataTransferPagePipes(settings));
         }
         addWizardPages(this);
         addPage(new DataTransferPageFinal());
     }
 
     protected boolean includePipesConfigurationPage() {
-        return (!isTaskEditor() || isNewTaskEditor()) && (settings.isConsumerOptional() || settings.isProducerOptional());
+        if (!settings.isConsumerOptional() && !settings.isProducerOptional()) {
+            return false;
+        }
+
+        // If it's an editor for existing task, show the page only if the user have multiple choices for consumer/producer
+        if (isTaskEditor() && !isNewTaskEditor()) {
+            return settings.isConsumerOptional()
+                ? settings.getConsumer().getProcessors().length > 1
+                : settings.getProducer().getProcessors().length > 1;
+        }
+
+        return true;
     }
 
     @Override
@@ -473,7 +499,7 @@ public class DataTransferWizard extends TaskConfigurationWizard<DataTransferSett
         return null;
     }
 
-    public void saveTaskState(DBRRunnableContext runnableContext, DBTTask task, Map<String, Object> state) {
+    public void saveTaskState(DBRRunnableContext runnableContext, DBTTask task, Map<String, Object> state)  throws DBException {
         List<IDataTransferNode<?>> producers = new ArrayList<>();
         List<IDataTransferNode<?>> consumers = new ArrayList<>();
         for (DataTransferPipe pipe : settings.getDataPipes()) {
@@ -604,7 +630,14 @@ public class DataTransferWizard extends TaskConfigurationWizard<DataTransferSett
         @Override
         protected void runTask() throws DBException {
             DTTaskHandlerTransfer handlerTransfer = new DTTaskHandlerTransfer();
-            handlerTransfer.executeWithSettings(this, getCurrentTask(), Locale.getDefault(), log, this, settings);
+            handlerTransfer.executeWithSettings(
+                this,
+                getCurrentTask(),
+                Locale.getDefault(),
+                log,
+                null,
+                this,
+                settings);
         }
 
     }

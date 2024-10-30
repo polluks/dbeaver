@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@ import org.eclipse.ui.IWorkbench;
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
-import org.jkiss.dbeaver.core.CoreFeatures;
 import org.jkiss.dbeaver.core.CoreMessages;
 import org.jkiss.dbeaver.model.app.DBPDataSourceRegistry;
 import org.jkiss.dbeaver.model.app.DBPProject;
@@ -39,6 +38,7 @@ import org.jkiss.dbeaver.registry.DataSourceViewDescriptor;
 import org.jkiss.dbeaver.registry.DataSourceViewRegistry;
 import org.jkiss.dbeaver.registry.driver.DriverDescriptor;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
+import org.jkiss.dbeaver.ui.ConnectionFeatures;
 import org.jkiss.dbeaver.ui.IActionConstants;
 import org.jkiss.dbeaver.ui.UIUtils;
 
@@ -193,7 +193,7 @@ public class NewConnectionWizard extends ConnectionWizard
     {
         if (page == pageDrivers) {
             final DBPDriver driver = getSelectedDriver();
-            if (driver.isDeprecated()) {
+            if (driver.isNotAvailable()) {
                 final ConnectionPageDeprecation nextPage = new ConnectionPageDeprecation(driver);
                 nextPage.setWizard(this);
                 return nextPage;
@@ -219,7 +219,7 @@ public class NewConnectionWizard extends ConnectionWizard
     @Override
     public boolean performFinish() {
         DriverDescriptor driver = (DriverDescriptor) getSelectedDriver();
-        if (driver.isDeprecated()) {
+        if (driver.isNotAvailable()) {
             return true;
         }
         ConnectionPageSettings pageSettings = getPageSettings();
@@ -236,7 +236,7 @@ public class NewConnectionWizard extends ConnectionWizard
             DBWorkbench.getPlatformUI().showError("Create failed", "Error adding new connections", e);
             return false;
         }
-        CoreFeatures.CONNECTION_CREATE.use(Map.of("driver", dataSourceNew.getDriver().getPreconfiguredId()));
+        ConnectionFeatures.CONNECTION_CREATE.use(Map.of("driver", dataSourceNew.getDriver().getPreconfiguredId()));
         return true;
     }
 
@@ -249,7 +249,7 @@ public class NewConnectionWizard extends ConnectionWizard
     @Override
     protected void saveSettings(DataSourceDescriptor dataSource) {
         final DBPDriver driver = dataSource.getDriver();
-        if (driver.isDeprecated()) {
+        if (driver.isNotAvailable()) {
             return;
         }
         ConnectionPageSettings pageSettings = getPageSettings(driver);

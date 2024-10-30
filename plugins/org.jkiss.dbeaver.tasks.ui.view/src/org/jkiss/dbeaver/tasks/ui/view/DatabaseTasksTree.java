@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -169,7 +169,7 @@ public class DatabaseTasksTree {
             protected String getCellText(Object element) {
                 if (element instanceof DBTTask) {
                     DBTTaskRun lastRun = ((DBTTask) element).getLastRun();
-                    if (lastRun == null) {
+                    if (lastRun == null || !lastRun.isFinished()) {
                         return "N/A";
                     } else {
                         return RuntimeUtils.formatExecutionTime(lastRun.getRunDuration());
@@ -240,7 +240,7 @@ public class DatabaseTasksTree {
                 return null;
             }
         });
-        taskColumnController.addColumn(TaskUIViewMessages.db_tasks_tree_column_controller_add_name_project, TaskUIViewMessages.db_tasks_tree_column_controller_add_descr_project, SWT.LEFT, true, false, new TaskLabelProvider() {
+        taskColumnController.addColumn(TaskUIViewMessages.db_tasks_tree_column_controller_add_name_project, TaskUIViewMessages.db_tasks_tree_column_controller_add_descr_project, SWT.LEFT, false, false, new TaskLabelProvider() {
             @Override
             protected String getCellText(Object element) {
                 if (element instanceof DBTTask) {
@@ -320,7 +320,6 @@ public class DatabaseTasksTree {
     void refresh() {
         refreshTasks();
         regroupTasks(ExpansionOptions.RETAIN);
-        //taskViewer.refresh(true);
         refreshScheduledTasks();
     }
 
@@ -331,6 +330,9 @@ public class DatabaseTasksTree {
     }
 
     void regroupTasks(ExpansionOptions options) {
+        if (taskViewer.isBusy()) {
+            return;
+        }
         taskViewer.getTree().setRedraw(false);
         try {
             List<Object> rootObjects = new ArrayList<>();
@@ -477,7 +479,9 @@ public class DatabaseTasksTree {
                     }
 
                     UIUtils.asyncExec(() -> {
-                        taskViewer.refresh(true);
+                        if (!taskViewer.isBusy()) {
+                            taskViewer.refresh(true);
+                        }
                     });
                     return Status.OK_STATUS;
                 }

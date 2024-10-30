@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,6 +35,7 @@ import org.mockito.junit.MockitoJUnitRunner;
 import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -622,7 +623,7 @@ public class GreenplumExternalTableTest {
     public void generateChangeOwnerQuery_whenProvidedAValidOwner_thenShouldGenerateQuerySuccessfully() {
         GreenplumExternalTable table = new GreenplumExternalTable(mockSchema, mockResults);
         Assert.assertEquals("ALTER EXTERNAL TABLE \"sampleSchema\".\"sampleTable\" OWNER TO someOwner",
-                table.generateChangeOwnerQuery("someOwner"));
+                table.generateChangeOwnerQuery("someOwner", new HashMap<>()));
     }
 
     private PostgreTableColumn mockDbColumn(String columnName, String columnType, int ordinalPosition) {

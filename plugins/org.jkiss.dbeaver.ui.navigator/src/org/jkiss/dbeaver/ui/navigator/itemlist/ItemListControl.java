@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -70,9 +70,8 @@ public class ItemListControl extends NodeListControl
 {
     private static final Log log = Log.getLog(ItemListControl.class);
 
-    // FIXME: copied from editors.data constants. Need to move it in general colors configuration
-    private static final String COLOR_NEW = "org.jkiss.dbeaver.sql.resultset.color.cell.new.background";
-    private static final String COLOR_MODIFIED = "org.jkiss.dbeaver.sql.resultset.color.cell.modified.background";
+    private static final String COLOR_NEW = "org.jkiss.dbeaver.ui.navigator.node.new.background";
+    private static final String COLOR_MODIFIED = "org.jkiss.dbeaver.ui.navigator.node.modified.background";
 
     private final IPropertyChangeListener themeChangeListener;
     private final ISearchExecutor searcher;
@@ -132,24 +131,18 @@ public class ItemListControl extends NodeListControl
     }
 
     @Override
-    public void fillCustomActions(IContributionManager contributionManager)
-    {
+    public void fillCustomActions(IContributionManager contributionManager) {
+        IWorkbenchSite workbenchSite = getWorkbenchSite();
+        // Save/revert
+        if (workbenchSite instanceof MultiPageEditorSite) {
+            final MultiPageEditorPart editor = ((MultiPageEditorSite) workbenchSite).getMultiPageEditor();
+            if (editor instanceof EntityEditor) {
+                DatabaseEditorUtils.contributeStandardEditorActions(workbenchSite, contributionManager);
+                contributionManager.add(new Separator());
+            }
+        }
         super.fillCustomActions(contributionManager);
         final DBNNode rootNode = getRootNode();
-        if (rootNode instanceof DBNDatabaseFolder && ((DBNDatabaseFolder) rootNode).getItemsMeta() != null) {
-            contributionManager.add(new Action(
-                UINavigatorMessages.obj_editor_properties_control_action_filter_setting,
-                DBeaverIcons.getImageDescriptor(UIIcon.FILTER))
-            {
-                @Override
-                public void run()
-                {
-                    NavigatorHandlerFilterConfig.configureFilters(getShell(), rootNode);
-                }
-            });
-        }
-        addColumnConfigAction(contributionManager);
-        IWorkbenchSite workbenchSite = getWorkbenchSite();
 //        if (workbenchSite != null) {
 //            contributionManager.add(ActionUtils.makeCommandContribution(workbenchSite, IWorkbenchCommandConstants.FILE_REFRESH));
 //        }
@@ -227,15 +220,20 @@ public class ItemListControl extends NodeListControl
                     ActionUtils.makeCommandContribution(workbenchSite, IWorkbenchCommandConstants.NAVIGATE_EXPAND_ALL, null, UIIcon.TREE_EXPAND_ALL));
             }
         }
-
-        // Save/revert
-        if (workbenchSite instanceof MultiPageEditorSite) {
-            final MultiPageEditorPart editor = ((MultiPageEditorSite) workbenchSite).getMultiPageEditor();
-            if (editor instanceof EntityEditor) {
-                contributionManager.add(new Separator());
-                DatabaseEditorUtils.contributeStandardEditorActions(workbenchSite, contributionManager);
-            }
+        contributionManager.add(new Separator());
+        if (rootNode instanceof DBNDatabaseNode dbNode && dbNode.getItemsMeta() != null) {
+            contributionManager.add(new Action(
+                UINavigatorMessages.obj_editor_properties_control_action_filter_setting,
+                DBeaverIcons.getImageDescriptor(UIIcon.FILTER))
+            {
+                @Override
+                public void run()
+                {
+                    NavigatorHandlerFilterConfig.configureFilters(getShell(), dbNode);
+                }
+            });
         }
+        addColumnConfigAction(contributionManager);
     }
 
     @Override
@@ -337,7 +335,7 @@ public class ItemListControl extends NodeListControl
                                 ((DBPObjectStatisticsCollector) parentObject).collectObjectStatistics(monitor, false, false);
                             }
                         } catch (Exception e) {
-                            log.error("Error reading statistics of '" + parentObject.getName() + "'", e);
+                            log.debug("Error reading statistics of '" + parentObject.getName() + "'", e);
                         }
                     }
                 }

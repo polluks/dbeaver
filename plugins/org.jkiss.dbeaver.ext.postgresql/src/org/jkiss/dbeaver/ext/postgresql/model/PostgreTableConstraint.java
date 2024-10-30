@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import org.jkiss.dbeaver.model.impl.jdbc.JDBCUtils;
 import org.jkiss.dbeaver.model.meta.Property;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.struct.DBSEntityConstraintType;
+import org.jkiss.dbeaver.model.struct.rdb.DBSTableColumn;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -30,17 +31,21 @@ import java.util.List;
 /**
  * PostgreTableConstraint
  */
-public class PostgreTableConstraint extends PostgreTableConstraintBase {
+public class PostgreTableConstraint extends PostgreTableConstraintBase<PostgreTableConstraintColumn> {
     private static final Log log = Log.getLog(PostgreTableConstraint.class);
 
     private String source;
-    private List<PostgreTableConstraintColumn> columns = new ArrayList<>();
+    private final List<PostgreTableConstraintColumn> columns = new ArrayList<>();
 
     public PostgreTableConstraint(PostgreTableBase table, String name, DBSEntityConstraintType constraintType, JDBCResultSet resultSet) throws DBException {
         super(table, name, constraintType, resultSet);
         String sourceCopy = JDBCUtils.safeGetString(resultSet, "consrc_copy");
         if (sourceCopy == null && getDataSource().getServerType().supportsPGConstraintExpressionColumn()) {
-            this.source = JDBCUtils.safeGetString(resultSet, "consrc");
+            if (!getDataSource().isServerVersionAtLeast(12, 0)) {
+                this.source = JDBCUtils.safeGetString(resultSet, "consrc");
+            } else {
+                this.source = null;
+            }
         } else {
             this.source = sourceCopy;
         }
@@ -76,12 +81,23 @@ public class PostgreTableConstraint extends PostgreTableConstraintBase {
         return columns;
     }
 
-    public List<PostgreTableConstraintColumn> getColumns() {
-        return columns;
+    @Override
+    public void addAttributeReference(DBSTableColumn column) throws DBException {
+        columns.add(new PostgreTableConstraintColumn(this, (PostgreAttribute<?>) column, columns.size()));
     }
 
     public void addColumn(PostgreTableConstraintColumn column) {
         this.columns.add(column);
+    }
+
+    public List<PostgreTableConstraintColumn> getColumns() {
+        return columns;
+    }
+
+    @Override
+    public void setAttributeReferences(List<PostgreTableConstraintColumn> columns) throws DBException {
+        this.columns.clear();
+        this.columns.addAll(columns);
     }
 
     @Property(viewable = true, editable = true, order = 10)

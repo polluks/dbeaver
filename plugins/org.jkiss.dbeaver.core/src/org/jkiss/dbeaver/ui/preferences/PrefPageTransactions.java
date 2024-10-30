@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  * Copyright (C) 2011-2012 Eugene Fradkin (eugene.fradkin@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,15 +18,18 @@
 package org.jkiss.dbeaver.ui.preferences;
 
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.events.SelectionAdapter;
+import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.widgets.*;
-import org.eclipse.ui.dialogs.PreferenceLinkArea;
 import org.eclipse.ui.preferences.IWorkbenchPreferenceContainer;
 import org.jkiss.code.NotNull;
 import org.jkiss.dbeaver.ModelPreferences;
 import org.jkiss.dbeaver.core.CoreMessages;
 import org.jkiss.dbeaver.model.DBPDataSourceContainer;
+import org.jkiss.dbeaver.model.connection.DBPConnectionType;
 import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
+import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.utils.PrefUtils;
 
@@ -82,8 +85,24 @@ public class PrefPageTransactions extends TargetPrefPage
             0);
         String settingsTipString;
         if (dataSourcePreferencePage) {
-            smartCommitCheck = UIUtils.createCheckbox(txnNameGroup, CoreMessages.action_menu_transaction_smart_auto_commit, CoreMessages.action_menu_transaction_smart_auto_commit_tip, false, 2);
-            smartCommitRecoverCheck = UIUtils.createCheckbox(txnNameGroup, CoreMessages.action_menu_transaction_smart_auto_commit_recover, CoreMessages.action_menu_transaction_smart_auto_commit_recover_tip, false, 2);
+            smartCommitCheck = UIUtils.createCheckbox(
+                txnNameGroup,
+                CoreMessages.action_menu_transaction_smart_auto_commit,
+                CoreMessages.action_menu_transaction_smart_auto_commit_tip,
+                false,
+                2);
+            smartCommitCheck.addSelectionListener(new SelectionAdapter() {
+                @Override
+                public void widgetSelected(SelectionEvent e) {
+                    updateCommitRecoverCheckBox();
+                }
+            });
+            smartCommitRecoverCheck = UIUtils.createCheckbox(
+                txnNameGroup,
+                CoreMessages.action_menu_transaction_smart_auto_commit_recover,
+                CoreMessages.action_menu_transaction_smart_auto_commit_recover_tip,
+                false,
+                2);
 
             autoCloseTransactionsCheck = UIUtils.createCheckbox(
                 txnNameGroup,
@@ -113,10 +132,13 @@ public class PrefPageTransactions extends TargetPrefPage
             settingsTipString = CoreMessages.action_menu_transaction_pref_page_link;
         }
 
-        new PreferenceLinkArea(txnNameGroup, SWT.NONE,
-            PrefPageConnectionTypes.PAGE_ID,
+        UIUtils.createPreferenceLink(
+            txnNameGroup,
             settingsTipString,
-            (IWorkbenchPreferenceContainer) getContainer(), null);
+            PrefPageConnectionTypes.PAGE_ID,
+            (IWorkbenchPreferenceContainer) getContainer(),
+            null
+        );
 
         {
             Group notifyNameGroup = UIUtils.createControlGroup(
@@ -133,19 +155,46 @@ public class PrefPageTransactions extends TargetPrefPage
         return composite;
     }
 
+    private void updateCommitRecoverCheckBox() {
+        if (!smartCommitCheck.getSelection()) {
+            // Works only with the smart commit mode
+            smartCommitRecoverCheck.setEnabled(false);
+            smartCommitRecoverCheck.setSelection(false);
+        } else if (!smartCommitRecoverCheck.isEnabled()) {
+            smartCommitRecoverCheck.setEnabled(true);
+        }
+    }
+
     @Override
     protected void loadPreferences(DBPPreferenceStore store)
     {
         try {
+            // First check data source settings, second - connection type, third - global settings.
+            DBPDataSourceContainer dataSourceContainer = getDataSourceContainer();
+            DBPConnectionType connectionType = null;
+            if (dataSourceContainer != null) {
+                connectionType = dataSourceContainer.getConnectionConfiguration().getConnectionType();
+            }
             if (smartCommitCheck != null) {
-                smartCommitCheck.setSelection(store.getBoolean(ModelPreferences.TRANSACTIONS_SMART_COMMIT));
+                smartCommitCheck.setSelection(store.contains(ModelPreferences.TRANSACTIONS_SMART_COMMIT) || connectionType == null ?
+                    store.getBoolean(ModelPreferences.TRANSACTIONS_SMART_COMMIT) : connectionType.isSmartCommit());
             }
             if (smartCommitRecoverCheck != null) {
-                smartCommitRecoverCheck.setSelection(store.getBoolean(ModelPreferences.TRANSACTIONS_SMART_COMMIT_RECOVER));
+                smartCommitRecoverCheck.setSelection(
+                    store.contains(ModelPreferences.TRANSACTIONS_SMART_COMMIT_RECOVER) || connectionType == null ?
+                        store.getBoolean(ModelPreferences.TRANSACTIONS_SMART_COMMIT_RECOVER) : connectionType.isSmartCommitRecover());
+                if (smartCommitCheck != null) {
+                    updateCommitRecoverCheckBox();
+                }
             }
             if (autoCloseTransactionsCheck != null) {
-                autoCloseTransactionsCheck.setSelection(store.getBoolean(ModelPreferences.TRANSACTIONS_AUTO_CLOSE_ENABLED));
-                autoCloseTransactionsTtlText.setText(store.getString(ModelPreferences.TRANSACTIONS_AUTO_CLOSE_TTL));
+                autoCloseTransactionsCheck.setSelection(
+                    store.contains(ModelPreferences.TRANSACTIONS_AUTO_CLOSE_ENABLED) || connectionType == null ?
+                        store.getBoolean(ModelPreferences.TRANSACTIONS_AUTO_CLOSE_ENABLED) : connectionType.isAutoCloseTransactions());
+                autoCloseTransactionsTtlText.setText(
+                    store.contains(ModelPreferences.TRANSACTIONS_AUTO_CLOSE_TTL) || connectionType == null ?
+                        store.getString(ModelPreferences.TRANSACTIONS_AUTO_CLOSE_TTL) :
+                        String.valueOf(connectionType.getCloseIdleConnectionPeriod()));
             }
             //autoCloseTransactionsTtlText.setEnabled(autoCloseTransactionsCheck.getSelection());
 
@@ -186,6 +235,13 @@ public class PrefPageTransactions extends TargetPrefPage
         store.setToDefault(ModelPreferences.TRANSACTIONS_AUTO_CLOSE_TTL);
 
         store.setToDefault(ModelPreferences.TRANSACTIONS_SHOW_NOTIFICATIONS);
+    }
+
+    @Override
+    protected void performDefaults() {
+        showTransactionNotificationsCheck.setSelection(
+            DBWorkbench.getPlatform().getPreferenceStore().getDefaultBoolean(ModelPreferences.TRANSACTIONS_SHOW_NOTIFICATIONS));
+        super.performDefaults();
     }
 
     @Override

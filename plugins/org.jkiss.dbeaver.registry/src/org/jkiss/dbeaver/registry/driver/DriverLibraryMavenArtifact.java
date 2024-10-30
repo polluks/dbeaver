@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -141,7 +141,7 @@ public class DriverLibraryMavenArtifact extends DriverLibraryAbstract
 
     @NotNull
     @Override
-    public Collection<String> getAvailableVersions(DBRProgressMonitor monitor) throws IOException {
+    public Collection<String> getAvailableVersions(@NotNull DBRProgressMonitor monitor) throws IOException {
         MavenArtifactVersion artifactVersion = getArtifactVersion(monitor);
         if (artifactVersion != null) {
             Collection<String> availableVersions = artifactVersion.getArtifact().getAvailableVersions(monitor, reference.getVersion());
@@ -158,9 +158,14 @@ public class DriverLibraryMavenArtifact extends DriverLibraryAbstract
     }
 
     @Override
-    public void setPreferredVersion(String version) {
+    public void setPreferredVersion(@NotNull String version) {
         this.preferredVersion = version;
         this.localVersion = null;
+    }
+
+    @Override
+    public boolean isInvalidLibrary() {
+        return localVersion == null || localVersion.isInvalidVersion();
     }
 
     @Override
@@ -171,7 +176,7 @@ public class DriverLibraryMavenArtifact extends DriverLibraryAbstract
     }
 
     @Override
-    public boolean isSecureDownload(DBRProgressMonitor monitor) {
+    public boolean isSecureDownload(@NotNull DBRProgressMonitor monitor) {
         try {
             MavenArtifactVersion localVersion = resolveLocalVersion(monitor, false);
             if (localVersion == null) {
@@ -280,6 +285,7 @@ public class DriverLibraryMavenArtifact extends DriverLibraryAbstract
         return reference.toString();
     }
 
+    @NotNull
     @Override
     public String getId() {
         return reference.getId();
@@ -304,6 +310,9 @@ public class DriverLibraryMavenArtifact extends DriverLibraryAbstract
     }
 
     public void downloadLibraryFile(@NotNull DBRProgressMonitor monitor, boolean forceUpdate, String taskName) throws IOException, InterruptedException {
+        if (isInvalidLibrary()) {
+            throw new IOException("Maven artifact '" + getDisplayName() + "' cannot be resolved in external repositores");
+        }
         //monitor.beginTask(taskName + " - update localVersion information", 1);
         try {
             MavenArtifactVersion localVersion = resolveLocalVersion(monitor, forceUpdate);
@@ -338,7 +347,8 @@ public class DriverLibraryMavenArtifact extends DriverLibraryAbstract
         }
         MavenArtifactVersion version = getArtifactVersion(monitor);
         if (version == null) {
-            throw new IOException("Maven artifact '" + path + "' not found");
+            String versionMessageError = preferredVersion != null ? String.format(":%s", preferredVersion) : "";
+            throw new IOException(String.format("Maven artifact %s %s is not found", path, versionMessageError));
         }
         return version;
     }

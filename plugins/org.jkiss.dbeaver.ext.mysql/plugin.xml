@@ -2,7 +2,7 @@
 <?eclipse version="3.2"?>
 <!--
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -71,7 +71,7 @@
                                         </items>
                                     </items>
                                 </folder>
-                                <folder type="org.jkiss.dbeaver.ext.mysql.model.MySQLPartition" label="%tree.partitions.node.name" icon="#partitions" description="Table partitions" visibleIf="object.dataSource.supportsPartitions() &amp;&amp; object.hasPartitions()">
+                                <folder type="org.jkiss.dbeaver.ext.mysql.model.MySQLPartition" label="%tree.partitions.node.name" icon="#partitions" description="Table partitions" visibleIf="object.dataSource.supportsPartitions()">
                                     <items label="%tree.partition.node.name" path="partition" property="partitions" icon="#partition">
                                         <items label="%tree.subpartitions.node.name" itemLabel="%tree.subpartition.node.name" path="subpartition" property="subPartitions" navigable="false" inline="true">
                                         </items>
@@ -126,11 +126,13 @@
                         </folder>
                     </items>
                 </folder>
-                <folder type="" label="%tree.administer.node.name" icon="#folder_admin" description="%tree.administer.node.tip">
+                <folder type="" label="%tree.administer.node.name" icon="#folder_admin" id="folderAdmin"
+                        description="%tree.administer.node.tip">
                     <treeContribution category="connectionEditor"/>
                 </folder>
 
-                <folder type="org.jkiss.dbeaver.ext.mysql.model.MySQLInformation" label="%tree.system_info.node.name" icon="#folder_info" description="%tree.system_info.node.tip">
+                <folder type="org.jkiss.dbeaver.ext.mysql.model.MySQLInformation" label="%tree.system_info.node.name" icon="#folder_info"
+                        id="folderInfo" description="%tree.system_info.node.tip">
                     <folder label="%tree.session_status.node.name" icon="#info" description="Session status">
                         <items label="%tree.variable.node.name" path="sessionStatus" property="sessionStatus" icon="#info" navigable="false" virtual="true"/>
                     </folder>
@@ -154,24 +156,23 @@
                     <folder type="org.jkiss.dbeaver.model.access.DBAPrivilege" label="%tree.user_privileges.node.name" icon="#info" description="User privileges">
                         <items label="%tree.privilege.node.name" path="privileges" property="privileges" icon="#info" navigable="false" virtual="true"/>
                     </folder>
-                    <folder type="org.jkiss.dbeaver.ext.mysql.model.MySQLPlugin" label="%tree.plugin.node.name" icon="#info" description="Database plugins">
+                    <folder type="org.jkiss.dbeaver.ext.mysql.model.MySQLPlugin" label="%tree.plugin.node.name" icon="#info" description="Database plugins" visibleIf="connected &amp;&amp; object.dataSource.supportsPlugins()">
                         <items label="%tree.plugin.node.name" path="plugins" property="plugins" icon="#info" navigable="false" virtual="true"/>
                     </folder>
                 </folder>
 
             </tree>
+
+            <driver-properties>
+                <propertyGroup label="Parameters" description="Custom driver parameters">
+                    <property id="cache-meta-data" label="%parameters.all.caches" description="%parameters.all.caches.tip" type="boolean" required="false" defaultValue="true"/>
+                </propertyGroup>
+            </driver-properties>
             <drivers managable="true">
-                <driver
-                    id="mysql3"
-                    label="MySQL 3.x"
-                    class="com.mysql.jdbc.Driver"
-                    sampleURL="jdbc:mysql://{host}[:{port}]/[{database}]"
-                    defaultPort="3306"
-                    categories="sql">
-                </driver>
+                <driver id="mysql3"/>
                 <driver
                         id="mysql5"
-                        label="MySQL 5"
+                        label="MySQL 5 (Legacy)"
                         icon="icons/mysql_icon.png"
                         iconBig="icons/mysql_icon_big.png"
                         class="com.mysql.jdbc.Driver"
@@ -181,22 +182,28 @@
                         defaultUser="root"
                         webURL="http://www.mysql.com/products/connector/"
                         propertiesURL="https://dev.mysql.com/doc/connector-j/5.1/en/connector-j-reference-configuration-properties.html"
+                        databaseDocumentationSuffixURL="Database-driver-MySQL"
                         description="Driver for MySQL 5.x+"
                         categories="sql">
-                    <replace provider="mysql" driver="mysql3"/>
 
-                    <file type="jar" path="maven:/mysql:mysql-connector-java:RELEASE[5.1.44]" bundle="!drivers.mysql"/>
+                    <file type="jar" path="maven:/mysql:mysql-connector-java:RELEASE[5.1.49]" bundle="!drivers.mysql"/>
                     <file type="license" path="https://www.gnu.org/licenses/old-licenses/lgpl-2.0.txt" bundle="!drivers.mysql"/>
-                    <file type="license" path="drivers/mysql/LICENSE.txt" bundle="drivers.mysql"/>
                     <file type="jar" path="drivers/mysql/mysql5" bundle="drivers.mysql"/>
+                    <file type="license" path="drivers/mysql/LICENSE.txt" bundle="drivers.mysql"/>
+
                     <property name="connectTimeout" value="20000"/>
                     <property name="rewriteBatchedStatements" value="true"/>
-                    <!-- https://dev.mysql.com/doc/connector-j/8.0/en/connector-j-reference-using-ssl.html -->
-                    <property name="enabledTLSProtocols" value="TLSv1,TLSv1.1,TLSv1.2"/>
+                    <property name="enabledTLSProtocols" value="TLSv1,TLSv1.1,TLSv1.2,TLSv1.3"/>
                     <property name="@dbeaver-default-resultset.maxrows.sql" value="true"/>
                     <property name="@dbeaver-default-resultset.format.datetime.native" value="true"/>
                     <property name="@dbeaver-default-dataformat.type.timestamp.pattern" value="yyyy-MM-dd HH:mm:ss"/>
+                    <provider-properties>
+                        <propertyGroup label="Advanced">
+                            <property id="@dbeaver-serverTimezone@" label="Server Time Zone" type="string"/>
+                        </propertyGroup>
+                    </provider-properties>
                 </driver>
+
                 <driver
                         id="mysql8"
                         label="MySQL"
@@ -208,18 +215,21 @@
                         defaultPort="3306"
                         defaultUser="root"
                         webURL="https://www.mysql.com/products/connector/"
-                        propertiesURL="https://dev.mysql.com/doc/connector-j/8.0/en/connector-j-reference-configuration-properties.html"
+                        propertiesURL="https://dev.mysql.com/doc/connector-j/en/connector-j-reference-configuration-properties.html"
+                        databaseDocumentationSuffixURL="Database-driver-MySQL"
                         description="Driver for MySQL 8 and later"
                         promoted="1"
                         categories="sql">
-                    <file type="jar" path="maven:/mysql:mysql-connector-java:RELEASE[8.0.29]" bundle="!drivers.mysql"/>
+                    <replace provider="mysql" driver="mysql3"/>
+
+                    <file type="jar" path="maven:/com.mysql:mysql-connector-j:RELEASE[8.2.0]" bundle="!drivers.mysql"/>
                     <file type="license" path="https://www.gnu.org/licenses/old-licenses/lgpl-2.0.txt" bundle="!drivers.mysql"/>
                     <file type="license" path="drivers/mysql/LICENSE.txt" bundle="drivers.mysql"/>
                     <file type="jar" path="drivers/mysql/mysql8" bundle="drivers.mysql"/>
                     <property name="connectTimeout" value="20000"/>
                     <property name="rewriteBatchedStatements" value="true"/>
                     <!-- https://dev.mysql.com/doc/connector-j/8.0/en/connector-j-reference-using-ssl.html -->
-                    <property name="enabledTLSProtocols" value="TLSv1,TLSv1.1,TLSv1.2"/>
+                    <property name="enabledTLSProtocols" value="TLSv1,TLSv1.1,TLSv1.2,TLSv1.3"/>
                     <property name="@dbeaver-default-resultset.maxrows.sql" value="true"/>
                     <property name="@dbeaver-default-resultset.format.datetime.native" value="true"/>
                     <property name="@dbeaver-default-dataformat.type.timestamp.pattern" value="yyyy-MM-dd HH:mm:ss"/>
@@ -235,10 +245,11 @@
                     defaultPort="3306"
                     defaultUser="root"
                     webURL="https://dev.mysql.com/doc/ndbapi/en/mccj-using-connectorj.html"
-                    propertiesURL="https://dev.mysql.com/doc/connector-j/8.0/en/connector-j-reference-configuration-properties.html"
+                    propertiesURL="https://dev.mysql.com/doc/connector-j/en/connector-j-reference-configuration-properties.html"
+                    databaseDocumentationSuffixURL="Database-driver-MySQL"
                     description="Driver for MySQL NDB cluster"
                     categories="sql">
-                    <file type="jar" path="maven:/com.mysql:mysql-connector-j:RELEASE" bundle="!drivers.mysql"/>
+                    <file type="jar" path="maven:/com.mysql:mysql-connector-j:RELEASE[8.2.0]" bundle="!drivers.mysql"/>
                     <file type="license" path="https://www.gnu.org/licenses/old-licenses/lgpl-2.0.txt" bundle="!drivers.mysql"/>
                     <file type="license" path="drivers/mysql/LICENSE.txt" bundle="drivers.mysql"/>
                     <file type="jar" path="drivers/mysql/mysql8" bundle="drivers.mysql"/>
@@ -262,7 +273,7 @@
                     description="MariaDB JDBC driver"
                     promoted="1"
                     categories="sql">
-                    <file type="jar" path="maven:/org.mariadb.jdbc:mariadb-java-client:RELEASE[3.0.7]" bundle="!drivers.mariadb"/>
+                    <file type="jar" path="maven:/org.mariadb.jdbc:mariadb-java-client:RELEASE[3.3.2]" bundle="!drivers.mariadb"/>
                     <file type="license" path="https://www.gnu.org/licenses/old-licenses/lgpl-2.1.txt" bundle="!drivers.mariadb"/>
 
                     <file type="license" path="drivers/mariadb/LICENSE.txt" bundle="drivers.mariadb"/>
@@ -272,6 +283,40 @@
                     <!--<property name="@dbeaver-default-resultset.format.datetime.native" value="true"/>-->
                     <parameter name="krb5.enabled" value="true"/>
                 </driver>
+                <driver
+                        id="starRocks"
+                        label="StarRocks"
+                        icon="icons/starRocks_icon.png"
+                        iconBig="icons/starRocks_icon_big.png"
+                        logoImage="icons/starRocks_logo.png"
+                        class="com.mysql.cj.jdbc.Driver"
+                        sampleURL="jdbc:mysql://{host}[:{port}]/[{database}]"
+                        useURL="false"
+                        defaultPort="9030"
+                        defaultUser="root"
+                        webURL="https://docs.starrocks.io/docs/quick_start/shared-nothing/"
+                        description="Driver for MySQL 8 and StarRocks"
+                        categories="sql">
+
+                    <file type="jar" path="maven:/com.mysql:mysql-connector-j:RELEASE[8.3.0]" bundle="!drivers.mysql"/>
+                    <file type="license" path="https://www.gnu.org/licenses/old-licenses/lgpl-2.0.txt" bundle="!drivers.mysql"/>
+                    <file type="license" path="drivers/mysql/LICENSE.txt" bundle="drivers.mysql"/>
+                    <file type="jar" path="drivers/mysql/mysql8" bundle="drivers.mysql"/>
+                    <property name="connectTimeout" value="20000"/>
+                    <parameter name="supports-partitions" value="false"/>
+                    <parameter name="supports-references" value="false"/>
+                    <parameter name="supports-triggers" value="false"/>
+                    <parameter name="supports-events" value="false"/>
+                    <parameter name="supports-users" value="false"/>
+                    <parameter name="supports-charsets" value="false"/>
+                    <parameter name="supports-collations" value="false"/>
+                    <parameter name="supportsClients" value="false"/>
+                </driver>
+                <provider-properties drivers="*">
+                    <propertyGroup label="Advanced">
+                        <property id="@dbeaver-serverTimezone@" label="Server Time Zone" type="string"/>
+                    </propertyGroup>
+                </provider-properties>
             </drivers>
 
             <nativeClients>
@@ -316,7 +361,9 @@
             label="MySQL data types provider">
 
             <datasource id="mysql"/>
-
+            <type name="FLOAT"/>
+            <type name="DOUBLE"/>
+            <type name="DOUBLE PRECISION"/>
             <type name="ENUM"/>
             <type name="SET"/>
             <type standard="DATE"/>
@@ -347,9 +394,22 @@
                 codeName="SSL"
                 label="SSL"
                 description="Secure socket layer"
+                desktop="false"
                 secured="false"
+                pinned="true"
                 order="100"
                 handlerClass="org.jkiss.dbeaver.ext.mysql.model.net.MySQLSSLHandlerImpl">
+            <propertyGroup label="SSL Settings">
+                <property id="ssl.ca.cert.value" label="CA Certificate" type="file" description="Choose CA certificate file" features="secured" length="MULTILINE"/>
+                <property id="ssl.client.cert.value" label="Client Certificate" type="file" description="Choose client certificate file" features="secured" length="MULTILINE"/>
+                <property id="ssl.client.key.value" label="Client Private Key" type="file" description="Choose client private key file" features="secured,password" length="MULTILINE"/>
+                <property id="ssl.cipher.suites" label="Cipher suites (optional)" type="string" features="secured,password"/>
+            </propertyGroup>
+            <propertyGroup label="Additional SSL Settings">
+                <property id="ssl.require" label="Require SSL" type="boolean" description="Require server support of SSL connection."/>
+                <property id="ssl.verify.server" label="Verify server certificate" type="boolean" description="Should the driver verify the server's certificate? When using this feature, the explicit certificate parameters should be specified, rather than system properties." defaultValue="true"/>
+                <property id="ssl.public.key.retrieve" label="Allow public key retrieval" type="boolean" description="Allows special handshake roundtrip to get server RSA public key directly from server."/>
+            </propertyGroup>
             <objectType name="org.jkiss.dbeaver.ext.mysql.MySQLDataSourceProvider"/>
         </handler>
     </extension>
@@ -430,18 +490,23 @@
         <category id="mysql" name="MySQL" description="%org.jkiss.dbeaver.task.category.mysql.description" icon="icons/mysql_icon.png"/>
         <category id="mysqlTool" parent="mysql" name="%org.jkiss.dbeaver.task.category.mysqlTool.name" description="%org.jkiss.dbeaver.task.category.mysqlTool.description" icon="icons/mysql_icon.png"/>
 
-        <task id="mysqlDatabaseBackup" name="%task.mysqlDatabaseBackup.name" description="%task.mysqlDatabaseBackup.description" icon="platform:/plugin/org.jkiss.dbeaver.ui/icons/file/export.png" type="mysql" handler="org.jkiss.dbeaver.ext.mysql.tasks.MySQLDatabaseExportHandler">
+        <task id="mysqlDatabaseBackup" name="%task.mysqlDatabaseBackup.name" description="%task.mysqlDatabaseBackup.description"
+              icon="platform:/plugin/org.jkiss.dbeaver.ui/icons/file/export.png" type="mysql"
+              handler="org.jkiss.dbeaver.ext.mysql.tasks.MySQLDatabaseExportHandler">
             <datasource id="mysql"/>
-            <objectType name="org.jkiss.dbeaver.ext.mysql.model.MySQLCatalog"/>
-            <objectType name="org.jkiss.dbeaver.ext.mysql.model.MySQLTableBase"/>
+            <objectType name="org.jkiss.dbeaver.ext.mysql.model.MySQLCatalog" if="object.dataSource.supportsNativeClients()"/>
+            <objectType name="org.jkiss.dbeaver.ext.mysql.model.MySQLTableBase" if="object.dataSource.supportsNativeClients()"/>
         </task>
-        <task id="mysqlDatabaseRestore" name="%task.mysqlDatabaseRestore.name" description="%task.mysqlDatabaseRestore.description" icon="platform:/plugin/org.jkiss.dbeaver.ui/icons/file/import.png" type="mysql" handler="org.jkiss.dbeaver.ext.mysql.tasks.MySQLScriptExecuteHandler" confirmationMessage="%mysqlDatabaseRestore.confirmationMessage">
+        <task id="mysqlDatabaseRestore" name="%task.mysqlDatabaseRestore.name" description="%task.mysqlDatabaseRestore.description"
+              icon="platform:/plugin/org.jkiss.dbeaver.ui/icons/file/import.png" type="mysql"
+              handler="org.jkiss.dbeaver.ext.mysql.tasks.MySQLScriptExecuteHandler" requiresMutability="true"
+              confirmationMessage="%mysqlDatabaseRestore.confirmationMessage">
             <datasource id="mysql"/>
-            <objectType name="org.jkiss.dbeaver.ext.mysql.model.MySQLCatalog"/>
+            <objectType name="org.jkiss.dbeaver.ext.mysql.model.MySQLCatalog" if="object.dataSource.supportsNativeClients()"/>
         </task>
         <task id="mysqlScriptExecute" name="%task.mysqlScriptExecute.name" description="%task.mysqlScriptExecute.description" icon="platform:/plugin/org.jkiss.dbeaver.model/icons/tree/script.png" type="mysql" handler="org.jkiss.dbeaver.ext.mysql.tasks.MySQLScriptExecuteHandler">
             <datasource id="mysql"/>
-            <objectType name="org.jkiss.dbeaver.model.struct.DBSDataManipulator"/>
+            <objectType name="org.jkiss.dbeaver.ext.mysql.model.MySQLCatalog" if="object.dataSource.supportsNativeClients()"/>
         </task>
 
         <!-- SQL tools -->

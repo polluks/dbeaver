@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -94,7 +94,7 @@ public class ResultSetPropertyTester extends PropertyTester
                     return false;
                 }
                 DBDAttributeBinding attr = rsv.getActivePresentation().getCurrentAttribute();
-                return attr != null && rsv.getAttributeReadOnlyStatus(attr) == null;
+                return attr != null && rsv.getAttributeReadOnlyStatus(attr, true, true) == null;
             }
             case PROP_CAN_MOVE: {
                 if (actionsDisabled || !rsv.supportsNavigation()) return false;
@@ -116,7 +116,7 @@ public class ResultSetPropertyTester extends PropertyTester
                         return false;
                     }
                     if ("inline".equals(expectedValue)) {
-                        return rsv.getAttributeReadOnlyStatus(attr) == null;
+                        return rsv.getAttributeReadOnlyStatus(attr, true, false) == null;
                     } else {
                         return rsv.getCurrentRow() != null;
                     }

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,15 +22,19 @@ import org.antlr.v4.runtime.dfa.DFA;
 import org.antlr.v4.runtime.tree.Tree;
 import org.antlr.v4.runtime.tree.Trees;
 import org.jkiss.dbeaver.Log;
+import org.jkiss.dbeaver.model.lsm.LSMAnalyzerParameters;
 import org.jkiss.dbeaver.model.lsm.sql.impl.syntax.SQLStandardParser.SqlQueriesContext;
+import org.jkiss.dbeaver.model.stm.LSMInspections;
 import org.jkiss.dbeaver.model.stm.STMErrorListener;
 
-import java.io.IOException;
-import java.util.BitSet;
 import javax.xml.stream.FactoryConfigurationError;
 import javax.xml.stream.XMLStreamException;
 import javax.xml.transform.TransformerException;
-
+import java.io.IOException;
+import java.util.BitSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 public class SyntaxParserTest {
 
@@ -44,7 +48,7 @@ public class SyntaxParserTest {
             + "    Product.ProductNumber,\r\n"
             + "    ProductCategory.Name AS ProductCategory,\r\n"
             + "    ProductSubCategory.Name AS ProductSubCategory,\r\n"
-            + "    Product.ProductModelID,\r\n"
+            + "    Product.ProductModelID\r\n"
             + "FROM Production.Product AS Prod(ProductID, Name, ProductNumber), T as A, \r\n"
             + "s -- ololo\r\n"
             + ".c -- ololo\r\n"
@@ -57,13 +61,56 @@ public class SyntaxParserTest {
             + "USING(ProductCategoryID)\r\n"
             + "GROUP BY ProductName\r\n"
             + "ORDER BY Product.ModifiedDate DESC";
-        inputText += "\n\rSELECT schedule[1:2][1:1] FROM sal_emp se where s;";
+//        inputText = "\n\rSELECT schedule[1:2][1:1] FROM sal_emp se where s;";
+        
+        inputText = "\n"
+                + "SELECT BusinessEntityID, TerritoryID,   \n"
+                + "    CONVERT(VARCHAR(20),SUM(SalesYTD) OVER ("
+                + "          PARTITION BY TerritoryID   \n"
+                + "          ORDER BY DATEPART(yy,ModifiedDate)   \n"
+                + "          ROWS BETWEEN current_row AND 1 FOLLOWING \n"
+                + "    ),1) AS CumulativeTotal  \n"
+                + "FROM Sales.SalesPerson  \n"
+                + "WHERE TerritoryID IS NULL OR TerritoryID < 5";
+
+        inputText = "select "
+                + " c.id"
+                + " c.name,"
+                + " c.title,"
+                + " c.updated,"
+                + " c.name "
+                + ",(select json_aggr(distinct aafe order by 2 limit 50 separator 'f')\n"
+                + "   from order_products_rewards\n"
+                + "   where order_id = c.order_id\n"
+                + "   group by order_id) fdi\n"
+                + " from contracts c"
+                + "where date(c.updated) = date(sysdate())\n"
+                + "";
+        
+        inputText = "SELECT City, STRING_AGG(CONVERT(NVARCHAR(max), EmailAddress)s ';') FILTER (where a < b) AS Emails \n"
+                + " FROM Person.BusinessEntityAddress AS BEA  \n"
+                + " INNER JOIN Person.Address AS A ON BEA.AddressID = A.AddressID\n"
+                + " INNER JOIN Person.EmailAddress AS EA ON BEA.BusinessEntityID = EA.BusinessEntityID \n"
+                + " GROUP BY City";
+
+        inputText = "SELECT * FROM EMPLOYEES e WHERE e.EMPLOYEE_ID > :xl ";
+
+        inputText = "select * from test. ";
+
         var input = CharStreams.fromString(inputText);
-        var ll = new SQLStandardLexer(input);
+        var params = new LSMAnalyzerParameters(
+            Map.of("\"", "\""),
+            true,
+            false,
+            '?',
+            List.of(Map.entry(1, Set.of(":"))),
+            true
+        );
+        var ll = new SQLStandardLexer(input, params);
         var tokens = new CommonTokenStream(ll);
         tokens.fill();
         
-        var pp = new SQLStandardParser(tokens);
+        var pp = new SQLStandardParser(tokens, params);
         pp.addErrorListener(new STMErrorListener() {
             @Override
             public void syntaxError(Recognizer<?, ?> recognizer, 
@@ -105,14 +152,16 @@ public class SyntaxParserTest {
         String str = tree.getTextContent();
 
         System.out.println(str);
-        
+
         { // print simple parse tree view
             var sb = new StringBuilder();
             sb.append("\n");
             collect(tree, pp, sb, "");
             System.out.println(sb.toString());
         }
-        
+
+        System.out.println(LSMInspections.prepareTerms(tree));
+        System.out.println(LSMInspections.prepareAbstractSyntaxInspection(tree, inputText.length() - 1).getReachabilityByName());
     }
     
     private static void collect(Tree ctx, Parser pp, StringBuilder sb, String indent) {        

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -65,10 +65,11 @@ import java.util.Map;
  */
 public class TabbedFolderPageForm extends TabbedFolderPage implements IRefreshablePart, ICustomActionsProvider {
 
-    private IWorkbenchPart part;
-    private IDatabaseEditorInput input;
+    private final IWorkbenchPart part;
+    private final IDatabaseEditorInput input;
 
-    private ObjectEditorPageControl ownerControl;
+    private final ObjectEditorPageControl ownerControl;
+    private final CustomFormEditor formEditor;
     private Font boldFont;
     private Composite propertiesGroup;
     private DBPPropertySource curPropertySource;
@@ -77,8 +78,8 @@ public class TabbedFolderPageForm extends TabbedFolderPage implements IRefreshab
     private Button saveButton;
     private Button scriptButton;
     private Button revertButton;
+    private transient boolean lastPersistedState;
 
-    private CustomFormEditor formEditor;
 
     TabbedFolderPageForm(IWorkbenchPart part, ObjectEditorPageControl ownerControl, IDatabaseEditorInput input) {
         this.part = part;
@@ -177,8 +178,21 @@ public class TabbedFolderPageForm extends TabbedFolderPage implements IRefreshab
         curPropertySource = input.getPropertySource();
         List<DBPPropertyDescriptor> allProps = formEditor.filterProperties(curPropertySource.getProperties());
 
+        DBSObject databaseObject = input.getDatabaseObject();
+        if (databaseObject == null) {
+            return;
+        }
+        boolean objectPersisted = databaseObject.isPersisted();
+        boolean objectStateChanged = objectPersisted != lastPersistedState;
+        lastPersistedState = objectPersisted;
+
         boolean firstInit = !formEditor.hasEditors();
-        if (firstInit) {
+        if (firstInit || objectStateChanged) {
+            if (!firstInit) {
+                // Dispose old editor
+                UIUtils.disposeChildControls(propertiesGroup);
+                formEditor.clearEditors();
+            }
             // Prepare property lists
             List<DBPPropertyDescriptor> primaryProps = new ArrayList<>();
             List<DBPPropertyDescriptor> secondaryProps = new ArrayList<>();
@@ -315,6 +329,9 @@ public class TabbedFolderPageForm extends TabbedFolderPage implements IRefreshab
                 for (DBPPropertyDescriptor specProps : specificProps) {
                     formEditor.createPropertyEditor(specificGroup, specProps);
                 }
+            }
+            if (!firstInit) {
+                propertiesGroup.layout(true, true);
             }
         }
 

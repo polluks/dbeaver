@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,9 +25,9 @@ import org.eclipse.swt.widgets.*;
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.Log;
+import org.jkiss.dbeaver.model.DBPImage;
 import org.jkiss.dbeaver.ui.DBeaverIcons;
 import org.jkiss.dbeaver.ui.UIElementFontStyle;
-import org.jkiss.dbeaver.ui.UIIcon;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.controls.CustomToolTipHandler;
 import org.jkiss.dbeaver.ui.dnd.LocalObjectTransfer;
@@ -149,7 +149,7 @@ public abstract class LightGrid extends Canvas {
             if (row.getParent() == null) {
                 this.location = new int[] { row.getRelativeIndex() };
             } else {
-                this.location = new int[row.getRowDepth() + 1];
+                this.location = new int[row.getLevel() + 1];
                 int index = this.location.length - 1;
                 for (IGridRow r = row; r != null; r = r.getParent()) {
                     this.location[index--] = r.getRelativeIndex();
@@ -263,6 +263,7 @@ public abstract class LightGrid extends Canvas {
     private boolean hoveringOnColumnFilter = false;
     private boolean hoveringOnLink = false;
     private boolean hoveringOnRowHeader = false;
+    private boolean hoveringOnRowExpander = false;
     private boolean isColumnContextMenuShouldBeShown = false;
 
     private GridColumn columnBeingSorted;
@@ -315,11 +316,11 @@ public abstract class LightGrid extends Canvas {
      */
     private Listener disposeListener;
 
-    final GC sizingGC;
     FontMetrics fontMetrics;
     Font normalFont;
     Font boldFont;
     Font italicFont;
+    Font commentFont;
 
     @NotNull
     private Color lineColor;
@@ -410,7 +411,7 @@ public abstract class LightGrid extends Canvas {
             | SWT.SINGLE | SWT.MULTI | SWT.NO_FOCUS | SWT.CHECK | SWT.VIRTUAL;
         int newStyle = style & mask;
         newStyle |= SWT.DOUBLE_BUFFERED;
-        // ? do we need it? It may improve performance a bit (as drawBackgraound is relatively slow.
+        // ? do we need it? It may improve performance a bit (as drawBackground is relatively slow.
         // https://www.eclipse.org/forums/index.php/t/146489/
         // | SWT.NO_BACKGROUND;
         return newStyle;
@@ -431,11 +432,14 @@ public abstract class LightGrid extends Canvas {
     {
         super(parent, checkStyle(style));
 
-        sizingGC = new GC(this);
+        GC sizingGC = new GC(this);
         fontMetrics = sizingGC.getFontMetrics();
+        sizingGC.dispose();
+
         normalFont = getFont();
         boldFont = UIUtils.makeBoldFont(normalFont);
         italicFont = UIUtils.modifyFont(normalFont, SWT.ITALIC);
+        commentFont = UIUtils.modifyFontSize(italicFont, -1);
 
         columnHeaderRenderer = new GridColumnRenderer(this);
         rowHeaderRenderer = new GridRowRenderer(this);
@@ -504,32 +508,37 @@ public abstract class LightGrid extends Canvas {
             result.add(row);
             index++;
 
-            int maxColLength = getNestedRowsCount(row);
-            if (maxColLength > 0) {
-                index = collectNestedRows(result, row, index, maxColLength);
-            }
+            index = collectNestedRows(result, row, index, 1);
         }
     }
 
-    private int getNestedRowsCount(IGridRow row) {
+    private int collectNestedRows(List<IGridRow> result, IGridRow parentRow, int position, int level) {
         if (expandedRows.isEmpty()) {
-            return 0;
+            return position;
         }
-        final RowExpandState rowState = expandedRows.get(new RowLocation(row));
-        return rowState != null && rowState.isAnyColumnExpanded() ? rowState.getMaxLength() : 0;
-    }
+        final RowExpandState rowState = expandedRows.get(new RowLocation(parentRow));
+        if (rowState == null || !rowState.isAnyColumnExpanded()) {
+            return position;
+        }
 
-    private int collectNestedRows(List<IGridRow> result, IGridRow parentRow, int index, int colLength) {
-        for (int i = 0; i < colLength; i++) {
-            IGridRow nestedRow = new GridRowNested(parentRow, index++);
+        int childrenCount = rowState.getMaxLength();
+        Object[] children = getContentProvider().getChildren(parentRow);
+        if (children != null && children.length != childrenCount) {
+            log.warn("Child elements doesn't match calculated count: " + children.length + "<>" + childrenCount + ". Skip the tail.");
+            childrenCount = children.length;
+        }
+
+        for (int i = 0; i < childrenCount; i++) {
+            // In multi-column grid children elements are null (e.g. array elements)
+            // In this case use parent row element
+            Object element = children == null ? parentRow.getElement() : children[i];
+
+            IGridRow nestedRow = new GridRowNested(parentRow, position++, i, level, element);
             result.add(nestedRow);
 
-            int maxNestedColLength = getNestedRowsCount(nestedRow);
-            if (maxNestedColLength > 0) {
-                index = collectNestedRows(result, nestedRow, index, maxNestedColLength);
-            }
+            position = collectNestedRows(result, nestedRow, position, level + 1);
         }
-        return index;
+        return position;
     }
 
     /**
@@ -580,6 +589,7 @@ public abstract class LightGrid extends Canvas {
         this.displayedToolTipText = null;
 
         if (refreshColumns) {
+            GC sizingGC = new GC(this);
             // Invalidate columns structure
             boolean hasChildColumns = false, hasPinnedColumns = false;
             for (Iterator<GridColumn> iter = columns.iterator(); iter.hasNext(); ) {
@@ -620,8 +630,9 @@ public abstract class LightGrid extends Canvas {
                 // Here we going to maximize single column to entire grid's width
                 // Sometimes (when new grid created and filled with data very fast our client area size is zero
                 // So let's add a workaround for it and use column's width in this case
+                recalculateSizes(true);
                 GridColumn column = getColumn(0);
-                int columnWidth = column.computeHeaderWidth();
+                int columnWidth = column.computeHeaderWidth(sizingGC);
                 int gridWidth = getCurrentOrLastClientArea().width - getRowHeaderWidth() - getHScrollSelectionInPixels() - getVerticalBar().getSize().x;
                 if (gridWidth > columnWidth) {
                     columnWidth = gridWidth;
@@ -630,7 +641,7 @@ public abstract class LightGrid extends Canvas {
             } else {
                 int totalWidth = 0;
                 for (GridColumn curColumn : topColumns) {
-                    curColumn.pack(false);
+                    curColumn.pack(sizingGC, false);
                     totalWidth += curColumn.getWidth();
                 }
                 if (!fitValue) {
@@ -672,6 +683,7 @@ public abstract class LightGrid extends Canvas {
                     }
                 }
             }
+            sizingGC.dispose();
         }
         // Recalculate indexes, sizes and update scrollbars
         topIndex = -1;
@@ -794,16 +806,19 @@ public abstract class LightGrid extends Canvas {
         return null;
     }
 
+    @Nullable
     public IGridRow getRow(int row) {
-        return gridRows[row];
-    }
-
-    public Object getRowElement(int row) {
         if (row < 0 || row >= gridRows.length) {
             log.debug("Row index out of range (" + row + ")" );
             return null;
         }
-        return gridRows[row].getElement();
+        return gridRows[row];
+    }
+
+    @Nullable
+    public Object getRowElement(int row) {
+        final IGridRow object = getRow(row);
+        return object != null ? object.getElement() : null;
     }
 
     @Override
@@ -1500,7 +1515,11 @@ public abstract class LightGrid extends Canvas {
     public boolean isHoveringOnRowHeader() {
         return hoveringOnRowHeader;
     }
-    
+
+    public boolean isHoveringOnLink() {
+        return hoveringOnLink;
+    }
+
     public boolean isColumnContextMenuShouldBeShown() {
         return isColumnContextMenuShouldBeShown;
     }
@@ -1977,8 +1996,9 @@ public abstract class LightGrid extends Canvas {
      * the preferred size of all the column headers and use the max.
      * @param decreaseSize
      */
-    private void computeHeaderSizes(boolean decreaseSize)
+    private void computeHeaderSizes(GC gc, boolean decreaseSize)
     {
+        bottomIndex = -1;
         int oldRowHeaderWidth = rowHeaderWidth;
         // Item height
         itemHeight = fontMetrics.getHeight() + 3;
@@ -1997,7 +2017,7 @@ public abstract class LightGrid extends Canvas {
         int newRowHeaderWidth = DEFAULT_ROW_HEADER_WIDTH;
         for (int i = 0; i < gridRows.length; i++) {
             IGridRow row = gridRows[i];
-            int width = rowHeaderRenderer.computeHeaderWidth(row, row.getRowDepth());
+            int width = rowHeaderRenderer.computeHeaderWidth(gc, row, row.getLevel());
             newRowHeaderWidth = Math.max(newRowHeaderWidth, width);
         }
         if (newRowHeaderWidth < MIN_ROW_HEADER_WIDTH) {
@@ -2246,15 +2266,23 @@ public abstract class LightGrid extends Canvas {
         hoveringRow = null;
         draggingRow = null;
 
+        boolean overExpander = false;
         if ((!rowHeaderVisible || y > headerHeight) && x <= rowHeaderWidth) {
             hoveringOnRowHeader = true;
             int row = getRow(new Point(x, y));
             if (row != -1) {
                 hoveringRow = row;
+                overExpander = GridRowRenderer.isOverExpander(x, getRow(row).getLevel());
             }
         } else {
             hoveringOnRowHeader = false;
         }
+        if (overExpander && !hoveringOnRowExpander) {
+            setCursor(sortCursor);
+        } else if (!overExpander && hoveringOnRowExpander) {
+            setCursor(null);
+        }
+        hoveringOnRowExpander = overExpander;
     }
 
     /**
@@ -2425,7 +2453,7 @@ public abstract class LightGrid extends Canvas {
                                 gc,
                                 cellBounds,
                                 cellInRowSelected,
-                                gridRow.getRowDepth(),
+                                gridRow.getLevel(),
                                 getRowState(gridRow),
                                 gridRow);
                         } finally {
@@ -2705,8 +2733,8 @@ public abstract class LightGrid extends Canvas {
             int max = getItemCount() + 1;
             int thumb = (getVisibleGridHeight(clientArea) + 1) / (getItemHeight() + 1);
 
-            // if possible, remember selection, if selection is too large, just
-            // make it the max you can
+            // if possible, remember selection,
+            // if selection is too large, just make it the max you can
             int selection = Math.min(vScroll.getSelection(), max);
 
             vScroll.setValues(selection, 0, max, thumb, 1, thumb);
@@ -2720,10 +2748,8 @@ public abstract class LightGrid extends Canvas {
 
                 int hiddenArea = preferredSize.x - clientArea.width + 1 + (vScroll.getVisible() ? vScroll.getWidth() : 0);
 
-                // if possi
-                // ble, remember selection, if selection is too large,
-                // just
-                // make it the max you can
+                // if possible, remember selection,
+                // if selection is too large, just make it the max you can
                 int selection = Math.min(hScroll.getSelection(), hiddenArea - 1);
 
                 hScroll.setValues(
@@ -2756,9 +2782,8 @@ public abstract class LightGrid extends Canvas {
                 int visCols = columns.size();
                 max = Math.min(visCols, max);
 
-                // if possible, remember selection, if selection is too large,
-                // just
-                // make it the max you can
+                // if possible, remember selection,
+                // if selection is too large, just make it the max you can
                 int selection = Math.min(hScroll.getSelection(), max);
 
                 hScroll.setValues(selection, 0, max, 1, 1, 1);
@@ -3112,7 +3137,7 @@ public abstract class LightGrid extends Canvas {
 
         UIUtils.dispose(boldFont);
         UIUtils.dispose(italicFont);
-        UIUtils.dispose(sizingGC);
+        UIUtils.dispose(commentFont);
     }
 
     /**
@@ -3223,12 +3248,8 @@ public abstract class LightGrid extends Canvas {
         GridColumn col = null;
         if (row >= 0) {
             col = getColumn(point);
-            if (getContentProvider().isVoidCell(col, gridRows[row])) {
-                return;
-            }
-
             boolean isSelectedCell = false;
-            if (col != null) {
+            if (col != null && !getContentProvider().isVoidCell(col, gridRows[row])) {
                 isSelectedCell = selectedCells.contains(new GridPos(col.getIndex(), row));
             }
 
@@ -3243,7 +3264,7 @@ public abstract class LightGrid extends Canvas {
                 if (e.button == 1 && !shift && !ctrl) {
                     IGridRow gridRow = gridRows[row];
                     if (getRowState(gridRow) != IGridContentProvider.ElementState.NONE) {
-                        if (GridRowRenderer.isOverExpander(e.x, gridRow.getRowDepth()))
+                        if (GridRowRenderer.isOverExpander(e.x, gridRow.getLevel()))
                         {
                             toggleRowExpand(getRow(row), null);
                             return;
@@ -3356,9 +3377,13 @@ public abstract class LightGrid extends Canvas {
     }
 
     public boolean isCellExpanded(@NotNull IGridCell cell) {
-        final RowLocation gridPos = new RowLocation(cell.getRow());
+        return isCellExpanded(cell.getRow(), cell.getColumn());
+    }
+
+    public boolean isCellExpanded(@NotNull IGridRow row, @NotNull IGridColumn column) {
+        final RowLocation gridPos = new RowLocation(row);
         final RowExpandState rowState = expandedRows.get(gridPos);
-        return rowState != null && rowState.isColumnExpanded(cell.getColumn());
+        return rowState != null && rowState.isColumnExpanded(column);
     }
 
     private boolean isRowExpanded(IGridRow gridRow) {
@@ -3369,11 +3394,6 @@ public abstract class LightGrid extends Canvas {
 
     @NotNull
     private IGridContentProvider.ElementState getRowState(@NotNull IGridRow row) {
-        if (row.getParent() != null) {
-            // FIXME: implemented deep nested collections support
-            return IGridContentProvider.ElementState.NONE;
-        }
-
         if (isRowExpanded(row)) {
             return IGridContentProvider.ElementState.EXPANDED;
         }
@@ -3414,6 +3434,7 @@ public abstract class LightGrid extends Canvas {
                 gridColumn,
                 col -> new CellExpandState(provider.getCollectionSize(col, gridRow))
             );
+            // TODO: We also need to collapse this column in all nested rows
             state.expanded = !state.expanded;
         }
 
@@ -3470,7 +3491,9 @@ public abstract class LightGrid extends Canvas {
         if (e.button == 1) {
 
             if (hoveringOnColumnResizer) {
-                columnBeingResized.pack(true);
+                GC gc = new GC(this);
+                columnBeingResized.pack(gc, true);
+                gc.dispose();
                 resizingColumn = false;
                 scrollValuesObsolete = true;
                 handleHoverOnColumnHeader(e.x, e.y);
@@ -3492,7 +3515,7 @@ public abstract class LightGrid extends Canvas {
                 } else {
                     IGridRow gridRow = gridRows[row];
                     if (getRowState(gridRow) != IGridContentProvider.ElementState.NONE) {
-                        if (!GridRowRenderer.isOverExpander(e.x, gridRow.getRowDepth()))
+                        if (!GridRowRenderer.isOverExpander(e.x, gridRow.getLevel()))
                         {
                             toggleRowExpand(gridRow, null);
                         }
@@ -4211,9 +4234,20 @@ public abstract class LightGrid extends Canvas {
                 }
             } else if (rowHeaderVisible && hoveringItem >= 0 && x <= rowHeaderWidth) {
                 newTip = getLabelProvider().getToolTipText(getRow(hoveringItem));
-            } else {
-                // Top-left cell?
-                newTip = getLabelProvider().getToolTipText(null);
+            } else if (rowHeaderVisible && x <= rowHeaderWidth && columnHeadersVisible && y <= headerHeight) {
+                // Top-left cell
+                StringBuilder status = new StringBuilder();
+                for (IGridStatusColumn gsc : getContentProvider().getStatusColumns()) {
+                    String statusText = gsc.getStatusText();
+                    if (!CommonUtils.isEmpty(statusText)) {
+                        if (!status.isEmpty()) {
+                            status.append("\n");
+                        }
+                        status.append(gsc.getDisplayName())
+                            .append(": ").append(statusText);
+                    }
+                }
+                newTip = status.toString();
             }
 
             //Avoid unnecessarily resetting tooltip - this will cause the tooltip to jump around
@@ -4254,7 +4288,9 @@ public abstract class LightGrid extends Canvas {
 
     public void recalculateSizes(boolean decreaseSize) {
         int oldHeaderHeight = headerHeight;
-        computeHeaderSizes(decreaseSize);
+        GC gc = new GC(this);
+        computeHeaderSizes(gc, decreaseSize);
+        gc.dispose();
         if (oldHeaderHeight != headerHeight) {
             scrollValuesObsolete = true;
         }
@@ -4297,6 +4333,11 @@ public abstract class LightGrid extends Canvas {
             return null;
         }
         return gridRows[focusItem];
+    }
+
+    @Nullable
+    public IGridColumn getFocusColumn() {
+        return focusColumn;
     }
 
     @Nullable
@@ -4681,26 +4722,31 @@ public abstract class LightGrid extends Canvas {
     public void setFont(Font font)
     {
         super.setFont(font);
+
+        GC sizingGC = new GC(this);
         sizingGC.setFont(font);
         fontMetrics = sizingGC.getFontMetrics();
+        sizingGC.dispose();
+
         normalFont = font;
         UIUtils.dispose(boldFont);
         UIUtils.dispose(italicFont);
+        UIUtils.dispose(commentFont);
+
         boldFont = UIUtils.makeBoldFont(normalFont);
         italicFont = UIUtils.modifyFont(normalFont, SWT.ITALIC);
+        commentFont = UIUtils.modifyFontSize(italicFont, -1);
+
         redraw();
     }
 
     @NotNull
     public Font getFont(@NotNull UIElementFontStyle style) {
-        switch (style) {
-            case ITALIC:
-                return italicFont;
-            case BOLD:
-                return boldFont;
-            default:
-                return normalFont;
-        }
+        return switch (style) {
+            case ITALIC -> italicFont;
+            case BOLD -> boldFont;
+            case NORMAL -> normalFont;
+        };
     }
 
     public String getCellText(IGridColumn colElement, IGridRow rowElement) {
@@ -4731,7 +4777,10 @@ public abstract class LightGrid extends Canvas {
             return null;
         }
         // Show tooltip only if it's larger than column width
+        GC sizingGC = new GC(this);
         Point ttSize = sizingGC.textExtent(toolTip);
+        sizingGC.dispose();
+
         if (ttSize.x > col.getWidth() || ttSize.y > getItemHeight()) {
             int gridHeight = getBounds().height;
             if (ttSize.y > gridHeight) {
@@ -4841,14 +4890,23 @@ public abstract class LightGrid extends Canvas {
 
         paintTopLeftCellCustom(gc, y);
 
-        if (getContentProvider().isGridReadOnly()) {
-            Image roIcon = DBeaverIcons.getImage(UIIcon.BUTTON_READ_ONLY);
-            Rectangle iconBounds = roIcon.getBounds();
-            int xPos = x + width - GridColumnRenderer.ARROW_MARGIN - iconBounds.width;
+        {
+            int xPos = x + width - GridColumnRenderer.ARROW_MARGIN;
             if (sortOrder != SWT.NONE) {
                 xPos -= GridColumnRenderer.SORT_WIDTH + GridColumnRenderer.IMAGE_SPACING;
             }
-            gc.drawImage(roIcon, xPos, y + (height - iconBounds.height) / 2);
+            IGridStatusColumn[] statusColumns = getContentProvider().getStatusColumns();
+            ArrayUtils.reverse(statusColumns);
+            for (IGridStatusColumn gsc : statusColumns) {
+                DBPImage statusIcon = gsc.getStatusIcon();
+                if (statusIcon != null) {
+                    Image statusImage = DBeaverIcons.getImage(statusIcon);
+                    Rectangle iconBounds = statusImage.getBounds();
+                    xPos -= iconBounds.width;
+                    gc.drawImage(statusImage, xPos, y + (height - iconBounds.height) / 2);
+                    xPos -= 1;
+                }
+            }
         }
 
         if (sortOrder != SWT.NONE) {

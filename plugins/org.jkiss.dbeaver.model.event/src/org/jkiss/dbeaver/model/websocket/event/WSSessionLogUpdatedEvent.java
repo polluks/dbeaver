@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,8 +16,28 @@
  */
 package org.jkiss.dbeaver.model.websocket.event;
 
+import org.jkiss.code.NotNull;
+import org.jkiss.code.Nullable;
+
 public class WSSessionLogUpdatedEvent extends WSAbstractEvent {
-    public WSSessionLogUpdatedEvent() {
-        super(WSEventType.SESSION_LOG_UPDATED);
+    private final MessageType messageType;
+    private final String message;
+
+    public WSSessionLogUpdatedEvent(@NotNull WSEventType eventType,
+                      @Nullable String sessionId,
+                      @Nullable String userId,
+                      @NotNull MessageType messageType,
+                      @Nullable String message) {
+        super(eventType, sessionId, userId);
+        this.messageType = messageType;
+        this.message = message;
+    }
+
+    public String getMessage() {
+        return message;
+    }
+
+    public MessageType getMessageType() {
+        return messageType;
     }
 }

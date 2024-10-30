@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -217,7 +217,7 @@ public abstract class DBVUtils {
         boolean containsCount) throws DBCException
     {
         List<DBDLabelValuePair> values = new ArrayList<>();
-        List<DBCAttributeMetaData> metaColumns = dbResult.getMeta().getAttributes();
+        List<? extends DBCAttributeMetaData> metaColumns = dbResult.getMeta().getAttributes();
         List<DBDValueHandler> colHandlers = new ArrayList<>(metaColumns.size());
         for (DBCAttributeMetaData col : metaColumns) {
             colHandlers.add(DBUtils.findValueHandler(session, col));
@@ -323,15 +323,12 @@ public abstract class DBVUtils {
     }
 
     @NotNull
-    public static List<DBSEntityAssociation> getAllAssociations(@NotNull DBRProgressMonitor monitor, @NotNull DBSEntity entity) {
+    public static List<DBSEntityAssociation> getAllAssociations(@NotNull DBRProgressMonitor monitor, @NotNull DBSEntity entity)
+            throws DBException {
         List<DBSEntityAssociation> result = new ArrayList<>();
-        try {
-            final Collection<? extends DBSEntityAssociation> realConstraints = entity.getAssociations(monitor);
-            if (!CommonUtils.isEmpty(realConstraints)) {
-                result.addAll(realConstraints);
-            }
-        } catch (DBException e) {
-            log.debug("Error reading entity associations", e);
+        final Collection<? extends DBSEntityAssociation> realConstraints = entity.getAssociations(monitor);
+        if (!CommonUtils.isEmpty(realConstraints)) {
+            result.addAll(realConstraints);
         }
         if (!(entity instanceof DBVEntity)) {
             DBVEntity vEntity = getVirtualEntity(entity, false);
@@ -342,7 +339,6 @@ public abstract class DBVUtils {
                 }
             }
         }
-
         return result;
     }
 
@@ -393,7 +389,7 @@ public abstract class DBVUtils {
             try {
                 return ((DBVEntity) entity).getRealEntity(new VoidProgressMonitor());
             } catch (DBException e) {
-                log.error("Can't get real entity fro mvirtual entity", e);
+                log.error("Can't get real entity from virtual entity", e);
             }
         }
         return entity;
@@ -406,7 +402,8 @@ public abstract class DBVUtils {
         if (source instanceof DBVObject) {
             return (DBVObject) source;
         }
-        return source.getDataSource().getContainer().getVirtualModel().findObject(source, create);
+        DBPDataSource dataSource = source.getDataSource();
+        return dataSource == null ? null : dataSource.getContainer().getVirtualModel().findObject(source, create);
     }
 
     public static Object executeExpression(DBVEntityAttribute attribute, DBDAttributeBinding[] allAttributes, Object[] row) {

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,6 +42,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.Reader;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Map;
 
@@ -349,6 +350,9 @@ public class DataExporterSQL extends StreamExporterAbstract implements IAppendab
             } else if (value instanceof File) {
                 out.write("@");
                 out.write(((File) value).getAbsolutePath());
+            } else if (value instanceof Path) {
+                out.write("@");
+                out.write(value.toString());
             } else {
                 // If we have disabled "Native Date/Time format" option then we
                 // use UI format + enquote value
@@ -385,6 +389,9 @@ public class DataExporterSQL extends StreamExporterAbstract implements IAppendab
             out.write(" " + identifierCase.transform(KEYWORD_ON_CONFLICT) + " " + onConflictExpression);
         } else if (insertKeyword == InsertKeyword.ON_DUPLICATE) {
             out.write(" " + identifierCase.transform(KEYWORD_DUPLICATE_KEY) + " " + onConflictExpression);
+        } else if (insertKeyword == InsertKeyword.INSERT) {
+            // Option for people who want to write this expression entirely on their own
+            out.write(" " + onConflictExpression);
         }
     }
 
@@ -395,7 +402,9 @@ public class DataExporterSQL extends StreamExporterAbstract implements IAppendab
         	if (insertKeyword == InsertKeyword.INSERT_ALL) {
                 out.write(rowDelimiter + identifierCase.transform(KEYWORD_SELECT_FROM_DUAL) + ";");
             } else if (!oneLineEntry) {
-                addOnConflictExpression(out);
+                if (CommonUtils.isNotEmpty(onConflictExpression)) {
+                    addOnConflictExpression(out);
+                }
                 out.write(";");
                 out.write(rowDelimiter);
             } else {

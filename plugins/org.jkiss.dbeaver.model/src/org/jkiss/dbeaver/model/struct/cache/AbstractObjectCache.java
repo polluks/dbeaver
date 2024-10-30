@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,8 +36,7 @@ import java.util.*;
  * Various objects cache
  */
 public abstract class AbstractObjectCache<OWNER extends DBSObject, OBJECT extends DBSObject>
-    implements DBSObjectCache<OWNER, OBJECT>
-{
+    implements DBSObjectCache<OWNER, OBJECT> {
     private static final Log log = Log.getLog(AbstractObjectCache.class);
 
     private List<OBJECT> objectList;
@@ -56,33 +55,28 @@ public abstract class AbstractObjectCache<OWNER extends DBSObject, OBJECT extend
         return cacheSync;
     }
 
-    public void setCaseSensitive(boolean caseSensitive)
-    {
+    public void setCaseSensitive(boolean caseSensitive) {
         this.caseSensitive = caseSensitive;
     }
 
-    public Comparator<OBJECT> getListOrderComparator()
-    {
+    public Comparator<OBJECT> getListOrderComparator() {
         return listOrderComparator;
     }
 
-    public void setListOrderComparator(Comparator<OBJECT> listOrderComparator)
-    {
+    public void setListOrderComparator(Comparator<OBJECT> listOrderComparator) {
         this.listOrderComparator = listOrderComparator;
     }
 
     @NotNull
     @Override
-    public List<OBJECT> getCachedObjects()
-    {
+    public List<OBJECT> getCachedObjects() {
         synchronized (cacheSync) {
             return objectList == null ? Collections.emptyList() : objectList;
         }
     }
 
-    public <SUB_TYPE> List<SUB_TYPE> getTypedObjects(DBRProgressMonitor monitor, OWNER owner, Class<SUB_TYPE> type)
-        throws DBException
-    {
+    public <SUB_TYPE> List<SUB_TYPE> getTypedObjects(@NotNull DBRProgressMonitor monitor, OWNER owner, Class<SUB_TYPE> type)
+        throws DBException {
         List<SUB_TYPE> result = new ArrayList<>();
         for (OBJECT object : getAllObjects(monitor, owner)) {
             if (type.isInstance(object)) {
@@ -94,8 +88,7 @@ public abstract class AbstractObjectCache<OWNER extends DBSObject, OBJECT extend
 
     @Nullable
     @Override
-    public OBJECT getCachedObject(@NotNull String name)
-    {
+    public OBJECT getCachedObject(@Nullable String name) {
         synchronized (cacheSync) {
             return objectList == null || name == null ? null : getObjectMap().get(caseSensitive ? name : name.toUpperCase());
         }
@@ -108,8 +101,7 @@ public abstract class AbstractObjectCache<OWNER extends DBSObject, OBJECT extend
     }
 
     @Override
-    public void cacheObject(@NotNull OBJECT object)
-    {
+    public void cacheObject(@NotNull OBJECT object) {
         synchronized (cacheSync) {
             if (this.objectList == null) {
                 this.objectList = new ArrayList<>();
@@ -118,15 +110,15 @@ public abstract class AbstractObjectCache<OWNER extends DBSObject, OBJECT extend
             this.objectList.add(object);
             if (this.objectMap != null) {
                 String name = getObjectName(object);
-                checkDuplicateName(name, object);
-                this.objectMap.put(name, object);
+                if (checkDuplicateName(name, object)) {
+                    this.objectMap.put(name, object);
+                }
             }
         }
     }
 
     @Override
-    public void removeObject(@NotNull OBJECT object, boolean resetFullCache)
-    {
+    public void removeObject(@NotNull OBJECT object, boolean resetFullCache) {
         synchronized (cacheSync) {
             if (this.objectList != null) {
                 detectCaseSensitivity(object);
@@ -158,8 +150,7 @@ public abstract class AbstractObjectCache<OWNER extends DBSObject, OBJECT extend
 
     @Nullable
     public <SUB_TYPE> SUB_TYPE getObject(DBRProgressMonitor monitor, OWNER owner, String name, Class<SUB_TYPE> type)
-        throws DBException
-    {
+        throws DBException {
         final OBJECT object = getObject(monitor, owner, name);
         return type.isInstance(object) ? type.cast(object) : null;
     }
@@ -177,8 +168,7 @@ public abstract class AbstractObjectCache<OWNER extends DBSObject, OBJECT extend
     }
 
     @Override
-    public void clearCache()
-    {
+    public void clearCache() {
         synchronized (cacheSync) {
             this.objectList = null;
             this.objectMap = null;
@@ -186,8 +176,7 @@ public abstract class AbstractObjectCache<OWNER extends DBSObject, OBJECT extend
         }
     }
 
-    public void setCache(List<OBJECT> objects)
-    {
+    public void setCache(@NotNull List<OBJECT> objects) {
         synchronized (cacheSync) {
             this.objectList = objects;
             this.objectMap = null;
@@ -197,10 +186,16 @@ public abstract class AbstractObjectCache<OWNER extends DBSObject, OBJECT extend
 
     /**
      * Adds custom objects to cache after rea; cache data was read
+     *
+     * @param monitor
+     * @param owner
      * @param objectList object list which will be saved in the cache.
-     *  It can be modified by this functions
+     *                   It can be modified by this functions
      */
-    protected void addCustomObjects(List<OBJECT> objectList) {
+    protected void addCustomObjects(
+        @NotNull DBRProgressMonitor monitor,
+        @NotNull OWNER owner,
+        @NotNull List<OBJECT> objectList) throws DBException {
 
     }
 
@@ -209,8 +204,7 @@ public abstract class AbstractObjectCache<OWNER extends DBSObject, OBJECT extend
      * If objects with the same name were already cached - leave them in cache
      * (because they might be referenced somewhere).
      */
-    protected void mergeCache(List<OBJECT> objects)
-    {
+    protected void mergeCache(List<OBJECT> objects) {
         synchronized (cacheSync) {
             if (this.objectList != null) {
                 // Merge lists
@@ -232,8 +226,7 @@ public abstract class AbstractObjectCache<OWNER extends DBSObject, OBJECT extend
         setCache(objects);
     }
 
-    private Map<String, OBJECT> getObjectMap()
-    {
+    private Map<String, OBJECT> getObjectMap() {
         synchronized (cacheSync) {
             if (this.objectMap == null) {
                 this.objectMap = new HashMap<>();
@@ -243,26 +236,32 @@ public abstract class AbstractObjectCache<OWNER extends DBSObject, OBJECT extend
 
                 for (OBJECT object : objectList) {
                     String name = getObjectName(object);
-                    checkDuplicateName(name, object);
-                    this.objectMap.put(name, object);
+                    if (checkDuplicateName(name, object)) {
+                        this.objectMap.put(name, object);
+                    }
                 }
             }
             return this.objectMap;
         }
     }
 
-    private void checkDuplicateName(String name, OBJECT object) {
+    private boolean checkDuplicateName(String name, OBJECT object) {
         if (this.objectMap.containsKey(name)) {
             log.debug("Duplicate object name '" + name + "' in cache " + this.getClass().getSimpleName() + ". Last value: " + DBUtils.getObjectFullName(object, DBPEvaluationContext.DDL));
+            return isValidDuplicateObject(object);
         }
+        return true;
+    }
+
+    protected boolean isValidDuplicateObject(OBJECT object) {
+        return false;
     }
 
     protected void detectCaseSensitivity(DBSObject object) {
         if (this.caseSensitive) {
             DBPDataSource dataSource = object.getDataSource();
             if (dataSource != null &&
-                dataSource.getSQLDialect().storesUnquotedCase() == DBPIdentifierCase.MIXED)
-            {
+                dataSource.getSQLDialect().storesUnquotedCase() == DBPIdentifierCase.MIXED) {
                 this.caseSensitive = false;
             }
         }
@@ -335,7 +334,7 @@ public abstract class AbstractObjectCache<OWNER extends DBSObject, OBJECT extend
                     final Object dstValue = field.get(dstObject);
                     if (DBSObjectCache.class.isAssignableFrom(field.getType())) {
                         if (dstValue != null) {
-                            ((DBSObjectCache<?,?>) dstValue).clearCache();
+                            ((DBSObjectCache<?, ?>) dstValue).clearCache();
                         }
                     } else if (Collection.class.isAssignableFrom(field.getType())) {
                         if (Modifier.isTransient(modifiers) && dstValue != null) {
@@ -366,25 +365,22 @@ public abstract class AbstractObjectCache<OWNER extends DBSObject, OBJECT extend
     protected class CacheIterator implements Iterator<OBJECT> {
         private final Iterator<OBJECT> listIterator = objectList.iterator();
         private OBJECT curObject;
-        public CacheIterator()
-        {
+
+        public CacheIterator() {
         }
 
         @Override
-        public boolean hasNext()
-        {
+        public boolean hasNext() {
             return listIterator.hasNext();
         }
 
         @Override
-        public OBJECT next()
-        {
+        public OBJECT next() {
             return (curObject = listIterator.next());
         }
 
         @Override
-        public void remove()
-        {
+        public void remove() {
             listIterator.remove();
             if (objectMap != null) {
                 objectMap.remove(getObjectName(curObject));
@@ -397,8 +393,7 @@ public abstract class AbstractObjectCache<OWNER extends DBSObject, OBJECT extend
         for (Method getter : field.getDeclaringClass().getMethods()) {
             if (getter.getName().equals(getterName) &&
                 isPropertyGetter(getter) &&
-                getter.getAnnotation(PropertyGroup.class) != null)
-            {
+                getter.getAnnotation(PropertyGroup.class) != null) {
                 return true;
             }
         }
@@ -408,7 +403,7 @@ public abstract class AbstractObjectCache<OWNER extends DBSObject, OBJECT extend
     public static boolean isPropertyGetter(Method method) {
         if (BeanUtils.isGetterName(method.getName())) {
             return method.getParameterTypes().length == 0 ||
-                (method.getParameterTypes().length == 1 && method.getParameterTypes()[0] == DBRProgressMonitor.class);
+                   (method.getParameterTypes().length == 1 && method.getParameterTypes()[0] == DBRProgressMonitor.class);
         }
         return false;
     }

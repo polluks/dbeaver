@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,10 +16,12 @@
  */
 package org.jkiss.dbeaver.model.impl.jdbc.data;
 
+import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.DBConstants;
 import org.jkiss.dbeaver.model.data.DBDCursor;
+import org.jkiss.dbeaver.model.exec.DBCException;
 import org.jkiss.dbeaver.model.exec.DBCResultSet;
 import org.jkiss.dbeaver.model.exec.DBCSession;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCResultSet;
@@ -77,14 +79,15 @@ public class JDBCCursor implements DBDCursor {
         }
     }
 
+    @NotNull
     @Override
-    public DBCResultSet openResultSet(DBCSession session) {
+    public DBCResultSet openResultSet(@NotNull DBCSession session) throws DBCException {
         if (resultSet != null) {
             // Scroll to the beginning
             try {
-                resultSet.absolute(0);
+                resultSet.absolute(1);
             } catch (SQLException e) {
-                log.debug(e);
+                throw new DBCException(e, resultSet.getSession().getExecutionContext());
             }
         }
         return resultSet;

@@ -1,7 +1,7 @@
 /*
  * DBeaver - Universal Database Manager
  * Copyright (C) 2013-2016 Denis Forveille (titou10.titou10@gmail.com)
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ext.db2.DB2Constants;
+import org.jkiss.dbeaver.ext.db2.DB2Messages;
 import org.jkiss.dbeaver.ext.db2.DB2Utils;
 import org.jkiss.dbeaver.ext.db2.editors.DB2SourceObject;
 import org.jkiss.dbeaver.ext.db2.editors.DB2TableTablespaceListProvider;
@@ -32,20 +33,23 @@ import org.jkiss.dbeaver.model.DBPRefreshableObject;
 import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.data.DBDPseudoAttribute;
 import org.jkiss.dbeaver.model.data.DBDPseudoAttributeContainer;
+import org.jkiss.dbeaver.model.data.DBDPseudoAttributeType;
 import org.jkiss.dbeaver.model.exec.DBCException;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCPreparedStatement;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCResultSet;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCSession;
+import org.jkiss.dbeaver.model.exec.jdbc.JDBCStatement;
 import org.jkiss.dbeaver.model.impl.DBObjectNameCaseTransformer;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCUtils;
+import org.jkiss.dbeaver.model.impl.jdbc.cache.JDBCObjectLookupCache;
 import org.jkiss.dbeaver.model.impl.jdbc.cache.JDBCObjectSimpleCache;
 import org.jkiss.dbeaver.model.impl.jdbc.cache.JDBCStructCache;
 import org.jkiss.dbeaver.model.meta.Association;
 import org.jkiss.dbeaver.model.meta.Property;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
-import org.jkiss.dbeaver.model.struct.DBSObject;
-import org.jkiss.dbeaver.model.struct.DBSObjectState;
+import org.jkiss.dbeaver.model.struct.*;
 import org.jkiss.dbeaver.model.struct.cache.DBSObjectCache;
+import org.jkiss.dbeaver.model.struct.rdb.DBSPartitionContainer;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.utils.CommonUtils;
 
@@ -63,7 +67,7 @@ import java.util.Map;
  * @author Denis Forveille
  */
 public class DB2Table extends DB2TableBase
-    implements DBPRefreshableObject, DB2SourceObject, DBDPseudoAttributeContainer {
+    implements DBPRefreshableObject, DB2SourceObject, DBDPseudoAttributeContainer, DBSPartitionContainer, DBSEntityConstrainable {
 
     protected static final Log log = Log.getLog(DB2Table.class);
 
@@ -72,12 +76,25 @@ public class DB2Table extends DB2TableBase
     private static final String C_PT = "SELECT * FROM SYSCAT.DATAPARTITIONS WHERE TABSCHEMA = ? AND TABNAME = ? ORDER BY SEQNO WITH UR";
     private static final String C_PE = "SELECT * FROM SYSCAT.PERIODS WHERE TABSCHEMA = ? AND TABNAME = ? ORDER BY PERIODNAME WITH UR";
 
+    private static final DBDPseudoAttribute[] PRESENTED_PSEUDO_ATTRS = new DBDPseudoAttribute[] {
+        new DBDPseudoAttribute(
+            DBDPseudoAttributeType.OTHER,
+            "DATASLICEID",
+            null,
+            null,
+            DB2Messages.pseudo_column_datasliceid_description,
+            true,
+            DBDPseudoAttribute.PropagationPolicy.TABLE_NORMAL
+        )
+    };
+
     private DB2TableTriggerCache tableTriggerCache = new DB2TableTriggerCache();
 
     // Dependent of DB2 Version. OK because the folder is hidden in plugin.xml
     private DBSObjectCache<DB2Table, DB2TablePartition> partitionCache;
     private DBSObjectCache<DB2Table, DB2TablePeriod> periodCache;
     private volatile List<DB2TableForeignKey> referenceCache = null;
+    private ColumnMaskCache columnMaskCache = new ColumnMaskCache();
 
     private DB2TableStatus status;
     private DB2TableType type;
@@ -139,7 +156,7 @@ public class DB2Table extends DB2TableBase
         this.invalidateTime = JDBCUtils.safeGetTimestamp(dbResult, "INVALIDATE_TIME");
         this.lastRegenTime = JDBCUtils.safeGetTimestamp(dbResult, "LAST_REGEN_TIME");
         if (getDataSource().isAtLeastV9_5()) {
-            this.alterTime = JDBCUtils.safeGetTimestamp(dbResult, "ALTER_TIME");
+            this.alterTime = JDBCUtils.safeGetTimestamp(dbResult, DB2Constants.SYSCOLUMN_ALTER_TIME);
         }
         if (getDataSource().isAtLeastV10_1()) {
             this.temporalType = CommonUtils.valueOf(DB2TableTemporalType.class, JDBCUtils.safeGetString(dbResult, "TEMPORALTYPE"));
@@ -193,6 +210,16 @@ public class DB2Table extends DB2TableBase
         super.refreshObject(monitor);
 
         return getContainer().getTableCache().refreshObject(monitor, getContainer(), this);
+    }
+
+    @Override
+    public DB2TableColumn getAttribute(@NotNull DBRProgressMonitor monitor, @NotNull String attributeName) throws DBException {
+        return getContainer().getTableCache().getChild(monitor, getContainer(), this, attributeName);
+    }
+
+    @Override
+    public List<DB2TableColumn> getAttributes(@NotNull DBRProgressMonitor monitor) throws DBException {
+        return getContainer().getTableCache().getChildren(monitor, getContainer(), this);
     }
 
     @NotNull
@@ -277,30 +304,34 @@ public class DB2Table extends DB2TableBase
         if (referenceCache != null) {
             return new ArrayList<>(referenceCache);
         }
+        if (monitor == null) {
+            return null;
+        }
         try (JDBCSession session = DBUtils.openMetaSession(monitor, getDataSource(), "Find table references")) {
-            JDBCPreparedStatement dbStat = session.prepareStatement(
+            try (JDBCPreparedStatement dbStat = session.prepareStatement(
                 "SELECT R.* FROM SYSCAT.REFERENCES R\n" +
                     "WHERE R.REFTABSCHEMA = ? AND R.REFTABNAME = ?\n" +
                     "ORDER BY R.REFKEYNAME\n" +
-                    "WITH UR");
-            dbStat.setString(1, this.getSchema().getName());
-            dbStat.setString(2, this.getName());
-            try (JDBCResultSet dbResult = dbStat.executeQuery()) {
-                List<DB2TableForeignKey> result = new ArrayList<>();
-                while (dbResult.nextRow()) {
-                    String ownerSchemaName = JDBCUtils.safeGetStringTrimmed(dbResult, "TABSCHEMA");
-                    String ownerTableName = JDBCUtils.safeGetString(dbResult, "TABNAME");
-                    String fkName = JDBCUtils.safeGetStringTrimmed(dbResult, "CONSTNAME");
-                    DB2Table ownerTable = DB2Utils.findTableBySchemaNameAndName(
-                        session.getProgressMonitor(), this.getDataSource(), ownerSchemaName, ownerTableName);
-                    if (ownerTable == null) {
-                        log.error("Cannot find reference owner table " + ownerSchemaName + "." + ownerTableName);
-                        continue;
+                    "WITH UR")) {
+                dbStat.setString(1, this.getSchema().getName());
+                dbStat.setString(2, this.getName());
+                try (JDBCResultSet dbResult = dbStat.executeQuery()) {
+                    List<DB2TableForeignKey> result = new ArrayList<>();
+                    while (dbResult.nextRow()) {
+                        String ownerSchemaName = JDBCUtils.safeGetStringTrimmed(dbResult, "TABSCHEMA");
+                        String ownerTableName = JDBCUtils.safeGetString(dbResult, "TABNAME");
+                        String fkName = JDBCUtils.safeGetStringTrimmed(dbResult, "CONSTNAME");
+                        DB2Table ownerTable = DB2Utils.findTableBySchemaNameAndName(
+                            session.getProgressMonitor(), this.getDataSource(), ownerSchemaName, ownerTableName);
+                        if (ownerTable == null) {
+                            log.error("Cannot find reference owner table " + ownerSchemaName + "." + ownerTableName);
+                            continue;
+                        }
+                        DB2TableForeignKey fk = ownerTable.getAssociation(monitor, fkName);
+                        result.add(fk);
                     }
-                    DB2TableForeignKey fk = ownerTable.getAssociation(monitor, fkName);
-                    result.add(fk);
+                    referenceCache = result;
                 }
-                referenceCache = result;
             }
         } catch (SQLException e) {
             throw new DBCException("Error reading table references", e);
@@ -317,6 +348,16 @@ public class DB2Table extends DB2TableBase
     public DB2TableCheckConstraint getCheckConstraint(DBRProgressMonitor monitor, String ukName) throws DBException
     {
         return getContainer().getCheckCache().getObject(monitor, getContainer(), this, ukName);
+    }
+
+    @Association
+    public Collection<DB2ColumnMask> getColumnMasks(@NotNull DBRProgressMonitor monitor) throws DBException {
+        return columnMaskCache.getAllObjects(monitor, this);
+    }
+
+    @Association
+    public DB2ColumnMask getColumnMask(@NotNull DBRProgressMonitor monitor, @NotNull String maskName) throws DBException {
+        return columnMaskCache.getObject(monitor, this, maskName);
     }
 
     // -----------------
@@ -509,6 +550,68 @@ public class DB2Table extends DB2TableBase
             return new DBDPseudoAttribute[] { DB2Constants.PSEUDO_ATTR_RID_BIT };
         } else {
             return null;
+        }
+    }
+
+    @Override
+    public DBDPseudoAttribute[] getAllPseudoAttributes(@NotNull DBRProgressMonitor monitor) throws DBException {
+        return PRESENTED_PSEUDO_ATTRS;
+    }
+
+    @NotNull
+    @Override
+    public List<DBSEntityConstraintInfo> getSupportedConstraints() {
+        return List.of(
+            DBSEntityConstraintInfo.of(DBSEntityConstraintType.PRIMARY_KEY, DB2TableUniqueKey.class),
+            DBSEntityConstraintInfo.of(DBSEntityConstraintType.UNIQUE_KEY, DB2TableUniqueKey.class)
+        );
+    }
+
+    public class ColumnMaskCache extends JDBCObjectLookupCache<DB2Table, DB2ColumnMask> {
+
+        @NotNull
+        @Override
+        public JDBCStatement prepareLookupStatement(
+            @NotNull JDBCSession session,
+            @NotNull DB2Table db2Table,
+            @Nullable DB2ColumnMask object,
+            @Nullable String objectName
+        ) throws SQLException {
+            String sql = "SELECT * FROM SYSCAT.CONTROLS\n" +
+                "WHERE CONTROLTYPE = 'C' AND TABSCHEMA = ? AND TABNAME = ?" +
+                (object != null || objectName != null ? " AND CONTROLNAME = ?" : "");
+            JDBCPreparedStatement statement = session.prepareStatement(sql);
+            statement.setString(1, db2Table.getSchema().getName());
+            statement.setString(2, db2Table.getName());
+            if (object != null || objectName != null) {
+                statement.setString(3, object != null ? object.getName() : objectName);
+            }
+            return statement;
+        }
+
+        @Nullable
+        @Override
+        protected DB2ColumnMask fetchObject(
+            @NotNull JDBCSession session,
+            @NotNull DB2Table db2Table,
+            @NotNull JDBCResultSet resultSet
+        ) throws SQLException, DBException {
+            String maskName = JDBCUtils.safeGetString(resultSet, "CONTROLNAME");
+            if (CommonUtils.isEmpty(maskName)) {
+                log.debug("Skip column mask without name in table " + db2Table.getName());
+                return null;
+            }
+            String colName = JDBCUtils.safeGetString(resultSet, "COLNAME");
+            if (CommonUtils.isEmpty(colName)) {
+                log.debug("Skip column mask without column name in table " + db2Table.getName());
+                return null;
+            }
+            DB2TableColumn attribute = db2Table.getAttribute(session.getProgressMonitor(), colName);
+            if (attribute == null) {
+                log.debug("Can't find column " + colName + " in table " + db2Table.getName());
+                return null;
+            }
+            return new DB2ColumnMask(db2Table, attribute, maskName, resultSet);
         }
     }
 }

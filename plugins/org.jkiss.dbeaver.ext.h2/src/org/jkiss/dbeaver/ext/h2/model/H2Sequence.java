@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import org.jkiss.dbeaver.model.exec.jdbc.JDBCResultSet;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCUtils;
 import org.jkiss.dbeaver.model.meta.IPropertyValueValidator;
 import org.jkiss.dbeaver.model.meta.Property;
+import org.jkiss.dbeaver.model.meta.PropertyLength;
 import org.jkiss.utils.CommonUtils;
 
 public class H2Sequence extends GenericSequence {
@@ -67,7 +68,7 @@ public class H2Sequence extends GenericSequence {
 
     @Nullable
     @Override
-    @Property(viewable = true, editable = true, updatable = true, order = 5)
+    @Property(viewable = true, editable = true, updatable = true, order = 5, length = PropertyLength.MULTILINE)
     public String getDescription() {
         return description;
     }

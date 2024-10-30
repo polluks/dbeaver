@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -71,12 +71,14 @@ public class JDBCDataType<OWNER extends DBSObject> implements DBSDataType
         this(owner, typed.getTypeID(), typed.getTypeName(), null, false, false, typed.getPrecision(), typed.getScale(), typed.getScale());
     }
 
+    @NotNull
     @Override
     public String getTypeName()
     {
         return name;
     }
 
+    @NotNull
     @Override
     public String getFullTypeName() {
         return DBUtils.getFullTypeName(this);
@@ -125,12 +127,14 @@ public class JDBCDataType<OWNER extends DBSObject> implements DBSDataType
         return owner.getDataSource();
     }
 
+    @NotNull
     @Override
     public DBPDataKind getDataKind()
     {
         return JDBCUtils.resolveDataKind(getDataSource(), name, valueType);
     }
 
+    @Nullable
     @Override
     public Integer getScale()
     {
@@ -147,6 +151,7 @@ public class JDBCDataType<OWNER extends DBSObject> implements DBSDataType
         return isSearchable;
     }
 
+    @Nullable
     @Override
     public Integer getPrecision()
     {

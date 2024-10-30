@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,14 +16,12 @@
  */
 package org.jkiss.dbeaver.model.navigator;
 
-import org.eclipse.core.resources.IProject;
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.model.DBPImage;
-import org.jkiss.dbeaver.model.app.DBPPlatform;
-import org.jkiss.dbeaver.model.app.DBPPlatformDesktop;
 import org.jkiss.dbeaver.model.app.DBPProject;
 import org.jkiss.dbeaver.model.app.DBPProjectListener;
+import org.jkiss.dbeaver.model.app.DBPProjectManager;
 import org.jkiss.dbeaver.model.messages.ModelMessages;
 import org.jkiss.dbeaver.model.meta.Property;
 import org.jkiss.dbeaver.model.navigator.registry.DBNRegistry;
@@ -59,9 +57,8 @@ public class DBNRoot extends DBNNode implements DBNContainer, DBNNodeExtendable,
             }
         }
         if (model.isGlobal()) {
-            DBPPlatform platform = DBWorkbench.getPlatform();
-            if (platform instanceof DBPPlatformDesktop) {
-                ((DBPPlatformDesktop)platform).getWorkspace().addProjectListener(this);
+            if (DBWorkbench.getPlatform().getWorkspace() instanceof DBPProjectManager projectManager) {
+                projectManager.addProjectListener(this);
             }
         }
         DBNRegistry.getInstance().extendNode(this, false);
@@ -70,18 +67,17 @@ public class DBNRoot extends DBNNode implements DBNContainer, DBNNodeExtendable,
     @Override
     protected void dispose(boolean reflect) {
         for (DBNProject project : projects) {
-            project.dispose(reflect);
+            DBNUtils.disposeNode(project, reflect);
         }
         projects = new DBNProject[0];
         for (DBNNode node : extraNodes) {
-            node.dispose(reflect);
+            DBNUtils.disposeNode(node, reflect);
         }
         extraNodes.clear();
 
         if (model.isGlobal()) {
-            DBPPlatform platform = DBWorkbench.getPlatform();
-            if (platform instanceof DBPPlatformDesktop) {
-                ((DBPPlatformDesktop)platform).getWorkspace().removeProjectListener(this);
+            if (DBWorkbench.getPlatform().getWorkspace() instanceof DBPProjectManager projectManager) {
+                projectManager.removeProjectListener(this);
             }
         }
     }
@@ -107,8 +103,8 @@ public class DBNRoot extends DBNNode implements DBNContainer, DBNNodeExtendable,
     }
 
     @Override
-    public Class<IProject> getChildrenClass() {
-        return IProject.class;
+    public Class<?> getChildrenClass() {
+        return Object.class;
     }
 
     @NotNull
@@ -119,7 +115,7 @@ public class DBNRoot extends DBNNode implements DBNContainer, DBNNodeExtendable,
     }
 
     @Override
-    public String getNodeName() {
+    public String getNodeDisplayName() {
         return "#root"; //$NON-NLS-1$
     }
 
@@ -139,7 +135,7 @@ public class DBNRoot extends DBNNode implements DBNContainer, DBNNodeExtendable,
     }
 
     @Override
-    public DBNNode[] getChildren(DBRProgressMonitor monitor) {
+    public DBNNode[] getChildren(@NotNull DBRProgressMonitor monitor) {
         if (extraNodes.isEmpty()) {
             return projects;
         } else if (projects.length == 0) {
@@ -169,18 +165,10 @@ public class DBNRoot extends DBNNode implements DBNContainer, DBNNodeExtendable,
         return true;
     }
 
+    @Deprecated
     @Override
     public String getNodeItemPath() {
         return "";
-    }
-
-    public DBNProject getProjectNode(IProject project) {
-        for (DBNProject node : projects) {
-            if (node.getProject().getEclipseProject() == project) {
-                return node;
-            }
-        }
-        return null;
     }
 
     @Nullable
@@ -199,14 +187,9 @@ public class DBNRoot extends DBNNode implements DBNContainer, DBNNodeExtendable,
     }
 
     public DBNProject addProject(DBPProject project, boolean reflect) {
-        DBPPlatform platform = DBWorkbench.getPlatform();
-        DBNProject projectNode = new DBNProject(
-            this,
-            project,
-            platform instanceof DBPPlatformDesktop ?
-                ((DBPPlatformDesktop)platform).getWorkspace().getResourceHandler(project.getEclipseProject()) : null);
+        DBNProject projectNode = getModel().createProjectNode(this, project);
         projects = ArrayUtils.add(DBNProject.class, projects, projectNode);
-        Arrays.sort(projects, Comparator.comparing(DBNResource::getNodeName));
+        Arrays.sort(projects, Comparator.comparing(DBNNode::getNodeDisplayName));
         if (reflect) {
             model.fireNodeEvent(new DBNEvent(this, DBNEvent.Action.ADD, projectNode));
         }
@@ -220,7 +203,7 @@ public class DBNRoot extends DBNNode implements DBNContainer, DBNNodeExtendable,
             if (projectNode.getProject() == project) {
                 projects = ArrayUtils.remove(DBNProject.class, projects, i);
                 model.fireNodeEvent(new DBNEvent(this, DBNEvent.Action.REMOVE, projectNode));
-                projectNode.dispose(true);
+                DBNUtils.disposeNode(projectNode, true);
                 break;
             }
         }
@@ -229,7 +212,7 @@ public class DBNRoot extends DBNNode implements DBNContainer, DBNNodeExtendable,
     @Override
     public void addExtraNode(@NotNull DBNNode node, boolean reflect) {
         extraNodes.add(node);
-        extraNodes.sort(Comparator.comparing(DBNNode::getNodeName));
+        extraNodes.sort(Comparator.comparing(DBNNode::getNodeDisplayName));
         model.fireNodeEvent(new DBNEvent(this, DBNEvent.Action.ADD, node));
     }
 
@@ -241,17 +224,17 @@ public class DBNRoot extends DBNNode implements DBNContainer, DBNNodeExtendable,
     }
 
     @Override
-    public void handleProjectAdd(DBPProject project) {
+    public void handleProjectAdd(@NotNull DBPProject project) {
         addProject(project, true);
     }
 
     @Override
-    public void handleProjectRemove(DBPProject project) {
+    public void handleProjectRemove(@NotNull DBPProject project) {
         removeProject(project);
     }
 
     @Override
-    public void handleActiveProjectChange(DBPProject oldValue, DBPProject newValue) {
+    public void handleActiveProjectChange(@NotNull DBPProject oldValue, @NotNull DBPProject newValue) {
         DBNProject projectNode = getProjectNode(newValue);
         DBNProject oldProjectNode = getProjectNode(oldValue);
         if (projectNode != null) {

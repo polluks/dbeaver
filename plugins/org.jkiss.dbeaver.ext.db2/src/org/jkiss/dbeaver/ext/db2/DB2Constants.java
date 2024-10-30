@@ -1,7 +1,7 @@
 /*
  * DBeaver - Universal Database Manager
  * Copyright (C) 2013-2017 Denis Forveille (titou10.titou10@gmail.com)
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -97,8 +97,16 @@ public class DB2Constants {
     public static final String             PLAN_COST_FORMAT            = "###,###,###,##0.000";
 
     // Schema for system datatypes
-    public static final String             SYSTEM_DATATYPE_SCHEMA      = "SYSIBM";
-    public static final String             SYSTEM_CATALOG_SCHEMA       = "SYSCAT";
+    public static final String SYSTEM_DATATYPE_SCHEMA = "SYSIBM";
+    public static final String SYSTEM_CATALOG_SCHEMA = "SYSCAT";
+
+    // System columns
+    public static final String SYSCOLUMN_CREATE_TIME = "CREATE_TIME";
+    public static final String SYSCOLUMN_ALTER_TIME = "ALTER_TIME";
+    public static final String SYSCOLUMN_VALID = "VALID";
+    public static final String SYSCOLUMN_REMARKS = "REMARKS";
+    public static final String SYSCOLUMN_OWNER = "OWNER";
+    public static final String SYSCOLUMN_OWNER_TYPE = "OWNERTYPE";
 
     // Preferences
     public static final String             PREF_KEY_DDL_FORMAT         = "db2.ddl.format";
@@ -125,8 +133,15 @@ public class DB2Constants {
         "TRIGGER", "TYPE", "UNDO", "UNTIL", "VALIDPROC", "VARIABLE", "VARIANT", "VCAT", "VOLATILE", "VOLUMES", "WHILE", "WLM",
         "IMPLICITLY", "HIDDEN" };
 
-    public static final DBDPseudoAttribute PSEUDO_ATTR_RID_BIT         = new DBDPseudoAttribute(DBDPseudoAttributeType.ROWID,
-        "RID_BIT()", "RID_BIT($alias)", "RID_BIT", "Unique physical row identifier", false);
+    public static final DBDPseudoAttribute PSEUDO_ATTR_RID_BIT = new DBDPseudoAttribute(
+        DBDPseudoAttributeType.ROWID,
+        "RID_BIT()",
+        "RID_BIT($alias)",
+        "RID_BIT",
+        DB2Messages.pseudo_column_rid_bit_description,
+        false,
+        DBDPseudoAttribute.PropagationPolicy.TABLE_NORMAL
+    );
 
     static final String[] ROUTINES = {
         "ABS",

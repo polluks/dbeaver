@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  * Copyright (C) 2011-2012 Eugene Fradkin (eugene.fradkin@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,7 +30,7 @@ import org.jkiss.dbeaver.model.task.DBTTask;
 import org.jkiss.dbeaver.registry.task.TaskPreferenceStore;
 import org.jkiss.dbeaver.tasks.ui.nativetool.AbstractNativeScriptExecuteWizard;
 
-import java.io.File;
+import java.nio.file.Path;
 import java.util.Collections;
 import java.util.Map;
 
@@ -43,7 +43,7 @@ class MySQLScriptExecuteWizard extends AbstractNativeScriptExecuteWizard<MySQLSc
         this.getSettings().setImport(isImport);
     }
 
-    MySQLScriptExecuteWizard(@NotNull MySQLCatalog catalog, boolean isImport, @Nullable File file) {
+    MySQLScriptExecuteWizard(@NotNull MySQLCatalog catalog, boolean isImport, @Nullable Path file) {
         super(
             Collections.singleton(catalog),
             isImport

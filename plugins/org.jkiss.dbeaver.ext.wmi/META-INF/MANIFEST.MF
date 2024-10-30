@@ -1,9 +1,9 @@
 Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
-Bundle-Name: %Bundle-Name
+Bundle-Name: DBeaver WMI Model
 Bundle-SymbolicName: org.jkiss.dbeaver.ext.wmi;singleton:=true
-Bundle-Version: 2.0.211.qualifier
-Bundle-Release-Date: 20230710
+Bundle-Version: 2.0.245.qualifier
+Bundle-Release-Date: 20241118
 Bundle-Activator: org.jkiss.dbeaver.ext.wmi.Activator
 Require-Bundle: org.eclipse.ui,
  org.eclipse.core.runtime,
@@ -12,10 +12,9 @@ Require-Bundle: org.eclipse.ui,
  org.eclipse.jface.text,
  org.jkiss.dbeaver.core,
  org.jkiss.dbeaver.model,
- org.eclipse.ui.workbench.texteditor,
- org.jkiss.wmi;visibility:=reexport
+ org.eclipse.ui.workbench.texteditor
 Bundle-ActivationPolicy: lazy
-Bundle-RequiredExecutionEnvironment: JavaSE-11
-Bundle-Vendor: %Bundle-Vendor
+Bundle-RequiredExecutionEnvironment: JavaSE-17
+Bundle-Vendor: DBeaver Corp
 Bundle-ClassPath: .
 Automatic-Module-Name: org.jkiss.dbeaver.ext.wmi

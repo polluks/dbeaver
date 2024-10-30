@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,26 +17,31 @@
 
 package org.jkiss.dbeaver.core;
 
-import org.eclipse.core.internal.registry.IRegistryConstants;
 import org.eclipse.core.resources.ResourcesPlugin;
-import org.eclipse.core.runtime.Platform;
 import org.eclipse.core.runtime.Plugin;
 import org.eclipse.ui.PlatformUI;
 import org.jkiss.code.NotNull;
+import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.DBeaverPreferences;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ModelPreferences;
+import org.jkiss.dbeaver.model.DBConstants;
 import org.jkiss.dbeaver.model.DBPExternalFileManager;
 import org.jkiss.dbeaver.model.app.*;
+import org.jkiss.dbeaver.model.impl.app.BaseApplicationImpl;
 import org.jkiss.dbeaver.model.impl.app.DefaultCertificateStorage;
+import org.jkiss.dbeaver.model.navigator.DBNModel;
+import org.jkiss.dbeaver.model.navigator.DesktopNavigatorModel;
 import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
 import org.jkiss.dbeaver.model.qm.QMRegistry;
 import org.jkiss.dbeaver.model.qm.QMUtils;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.LoggingProgressMonitor;
-import org.jkiss.dbeaver.registry.*;
-import org.jkiss.dbeaver.registry.formatter.DataFormatterRegistry;
+import org.jkiss.dbeaver.model.runtime.features.DBRFeatureRegistry;
+import org.jkiss.dbeaver.registry.BasePlatformImpl;
+import org.jkiss.dbeaver.registry.DataSourceProviderRegistry;
+import org.jkiss.dbeaver.registry.GlobalEventManagerImpl;
 import org.jkiss.dbeaver.registry.language.PlatformLanguageRegistry;
 import org.jkiss.dbeaver.runtime.SecurityProviderUtils;
 import org.jkiss.dbeaver.runtime.qm.QMLogFileWriter;
@@ -47,12 +52,11 @@ import org.jkiss.dbeaver.utils.RuntimeUtils;
 import org.jkiss.dbeaver.utils.SystemVariablesResolver;
 import org.jkiss.utils.CommonUtils;
 import org.jkiss.utils.StandardConstants;
-import org.osgi.framework.Bundle;
 
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.Reader;
+import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -66,9 +70,12 @@ public class DesktopPlatform extends BasePlatformImpl implements DBPPlatformDesk
 
     // The plug-in ID
     public static final String PLUGIN_ID = "org.jkiss.dbeaver.core"; //$NON-NLS-1$
+    public static final String DBEAVER_DATA_DIR = "DBeaverData";
 
     private static final String TEMP_PROJECT_NAME = ".dbeaver-temp"; //$NON-NLS-1$
-    private static final String OSGI_CONFIG_FILE = "config.ini";
+    private static final String DBEAVER_CONFIG_FOLDER = "settings";
+    private static final String DBEAVER_CONFIG_FILE = "global-settings.ini";
+    private static final String DBEAVER_PROP_LANGUAGE = "nl";
 
     private static final Log log = Log.getLog(DesktopPlatform.class);
 
@@ -77,53 +84,11 @@ public class DesktopPlatform extends BasePlatformImpl implements DBPPlatformDesk
     private static volatile boolean isClosing = false;
 
     private Path tempFolder;
-    private DesktopWorkspaceImpl workspace;
+    private DBPWorkspaceDesktop workspace;
     private QMRegistryImpl queryManager;
     private QMLogFileWriter qmLogWriter;
     private DBACertificateStorage certificateStorage;
     private DBPPlatformLanguage language;
-
-    private static boolean disposed = false;
-
-    public static DesktopPlatform getInstance() {
-        if (instance == null) {
-            synchronized (DesktopPlatform.class) {
-                if (disposed) {
-                    throw new IllegalStateException("DBeaver core already disposed");
-                }
-                if (instance == null) {
-                    // Initialize DBeaver Core
-                    DesktopPlatform.createInstance();
-                }
-            }
-        }
-        return instance;
-    }
-
-    private static DesktopPlatform createInstance() {
-        log.debug("Initializing " + GeneralUtils.getProductTitle());
-        if (Platform.getProduct() != null) {
-            Bundle definingBundle = Platform.getProduct().getDefiningBundle();
-            if (definingBundle != null) {
-                log.debug("Host plugin: " + definingBundle.getSymbolicName() + " " + definingBundle.getVersion());
-            } else {
-                log.debug("No product bundle found");
-            }
-        }
-
-        try {
-            instance = new DesktopPlatform();
-            instance.initialize();
-            return instance;
-        } catch (Throwable e) {
-            log.error("Error initializing desktop platform", e);
-            throw new IllegalStateException("Error initializing desktop platform", e);
-        }
-    }
-
-    public static String getCorePluginID() {
-        return DBeaverActivator.getInstance().getBundle().getSymbolicName();
-    }
 
     public static boolean isStandalone() {
         return BaseApplicationImpl.getInstance().isStandalone();
@@ -143,17 +108,13 @@ public class DesktopPlatform extends BasePlatformImpl implements DBPPlatformDesk
         isClosing = closing;
     }
 
-    public static DBPPreferenceStore getGlobalPreferenceStore() {
-        return DBeaverActivator.getInstance().getPreferences();
-    }
-
-    private DesktopPlatform() {
+    public DesktopPlatform() {
+        instance = this;
     }
 
     protected void initialize() {
         long startTime = System.currentTimeMillis();
         log.debug("Initialize desktop platform...");
-
         {
             this.language = PlatformLanguageRegistry.getInstance().getLanguage(Locale.getDefault());
             if (this.language == null) {
@@ -168,11 +129,11 @@ public class DesktopPlatform extends BasePlatformImpl implements DBPPlatformDesk
         }
 
         this.certificateStorage = new DefaultCertificateStorage(
-            DBeaverActivator.getInstance().getStateLocation().toFile().toPath().resolve("security"));
+            DBeaverActivator.getInstance().getStateLocation().toFile().toPath().resolve(DBConstants.CERTIFICATE_STORAGE_FOLDER));
 
         // Create workspace
         getApplication().beforeWorkspaceInitialization();
-        this.workspace = (DesktopWorkspaceImpl) getApplication().createWorkspace(this, ResourcesPlugin.getWorkspace());
+        this.workspace = getApplication().createWorkspace(this, ResourcesPlugin.getWorkspace());
         // Init workspace in UI because it may need some UI interactions to initialize
         this.workspace.initializeProjects();
 
@@ -184,7 +145,14 @@ public class DesktopPlatform extends BasePlatformImpl implements DBPPlatformDesk
 
         super.initialize();
 
+        DBRFeatureRegistry.getInstance().startTracking();
+
         log.debug("Platform initialized (" + (System.currentTimeMillis() - startTime) + "ms)");
+    }
+
+    @Override
+    protected DBNModel createNavigatorModel() {
+        return new DesktopNavigatorModel(this, null);
     }
 
     public synchronized void dispose() {
@@ -197,6 +165,8 @@ public class DesktopPlatform extends BasePlatformImpl implements DBPPlatformDesk
             // Shutdown in headless mode
             ((DBPApplicationController) application).setHeadlessMode(true);
         }
+
+        DBRFeatureRegistry.getInstance().endTracking();
 
         super.dispose();
 
@@ -214,7 +184,7 @@ public class DesktopPlatform extends BasePlatformImpl implements DBPPlatformDesk
             this.queryManager.dispose();
             //queryManager = null;
         }
-        DataSourceProviderRegistry.getInstance().dispose();
+        DataSourceProviderRegistry.dispose();
 
         if (isStandalone() && workspace != null && !application.isExclusiveMode()) {
             try {
@@ -233,7 +203,6 @@ public class DesktopPlatform extends BasePlatformImpl implements DBPPlatformDesk
         }
 
         DesktopPlatform.instance = null;
-        DesktopPlatform.disposed = true;
         System.gc();
         log.debug("Platform shutdown completed (" + (System.currentTimeMillis() - startTime) + "ms)");
         // Just in case do System.eis after pause
@@ -257,8 +226,8 @@ public class DesktopPlatform extends BasePlatformImpl implements DBPPlatformDesk
 
     @NotNull
     @Override
-    public DBPApplication getApplication() {
-        return BaseApplicationImpl.getInstance();
+    public DBPApplicationDesktop getApplication() {
+        return (DBPApplicationDesktop) BaseApplicationImpl.getInstance();
     }
 
     @NotNull
@@ -274,27 +243,38 @@ public class DesktopPlatform extends BasePlatformImpl implements DBPPlatformDesk
         }
 
         try {
-            final File config = new File(RuntimeUtils.getLocalFileFromURL(Platform.getConfigurationLocation().getURL()), OSGI_CONFIG_FILE);
-            final Properties properties = new Properties();
-
-            if (config.exists()) {
-                try (FileInputStream is = new FileInputStream(config)) {
-                    properties.load(is);
-                }
-            }
-
-            properties.put(IRegistryConstants.PROP_NL, language.getCode());
-
-            try (FileOutputStream os = new FileOutputStream(config)) {
-                properties.store(os, null);
-            }
-
+            setConfigProperty(DBEAVER_PROP_LANGUAGE, language.getCode());
             this.language = language;
             // This property is fake. But we set it to trigger property change listener
             // which will ask to restart workbench.
             getPreferenceStore().setValue(ModelPreferences.PLATFORM_LANGUAGE, language.getCode());
         } catch (IOException e) {
-            throw new DBException("Unexpected error while saving startup configuration", e);
+            throw new DBException("Can't change platform language: " + e.getMessage(), e);
+        }
+    }
+
+    private void setConfigProperty(@NotNull String key, @Nullable String value) throws IOException {
+        final Path root = Path.of(RuntimeUtils.getWorkingDirectory(DBEAVER_DATA_DIR));
+        final Path file = root.resolve(DBEAVER_CONFIG_FOLDER).resolve(DBEAVER_CONFIG_FILE);
+        final Properties properties = new Properties();
+
+        if (Files.exists(file)) {
+            try (Reader reader = Files.newBufferedReader(file)) {
+                properties.load(reader);
+            }
+        }
+
+        if (value != null) {
+            properties.setProperty(key, value);
+        } else {
+            properties.remove(key);
+        }
+
+        // Ensure the config directory exists
+        Files.createDirectories(file.getParent());
+
+        try (Writer writer = Files.newBufferedWriter(file)) {
+            properties.store(writer, "DBeaver configuration");
         }
     }
 
@@ -320,6 +300,7 @@ public class DesktopPlatform extends BasePlatformImpl implements DBPPlatformDesk
         return queryManager;
     }
 
+    @NotNull
     @Override
     public DBPGlobalEventManager getGlobalEventManager() {
         return GlobalEventManagerImpl.getInstance();
@@ -327,14 +308,8 @@ public class DesktopPlatform extends BasePlatformImpl implements DBPPlatformDesk
 
     @NotNull
     @Override
-    public DBPDataFormatterRegistry getDataFormatterRegistry() {
-        return DataFormatterRegistry.getInstance();
-    }
-
-    @NotNull
-    @Override
     public DBPPreferenceStore getPreferenceStore() {
-        return DBeaverActivator.getInstance().getPreferences();
+        return getApplication().getPreferenceStore();
     }
 
     @NotNull
@@ -350,7 +325,7 @@ public class DesktopPlatform extends BasePlatformImpl implements DBPPlatformDesk
     }
 
     @NotNull
-    public Path getTempFolder(DBRProgressMonitor monitor, String name) {
+    public Path getTempFolder(@NotNull DBRProgressMonitor monitor, @NotNull String name) {
         if (tempFolder == null) {
             // Make temp folder
             monitor.subTask("Create temp folder");
@@ -366,9 +341,12 @@ public class DesktopPlatform extends BasePlatformImpl implements DBPPlatformDesk
                 } else {
                     tempFolderPath = System.getProperty(StandardConstants.ENV_TMP_DIR);
                 }
-                tempFolder = Files.createTempDirectory(
-                    Paths.get(tempFolderPath),
-                    TEMP_PROJECT_NAME);
+                Path tmpFolder = Paths.get(tempFolderPath);
+                if (!Files.exists(tmpFolder)) {
+                    log.debug("Create global temp folder '" + tmpFolder + "'");
+                    Files.createDirectories(tmpFolder);
+                }
+                tempFolder = Files.createTempDirectory(tmpFolder, TEMP_PROJECT_NAME);
             } catch (IOException e) {
                 final String sysTempFolder = System.getProperty(StandardConstants.ENV_TMP_DIR);
                 if (!CommonUtils.isEmpty(sysTempFolder)) {

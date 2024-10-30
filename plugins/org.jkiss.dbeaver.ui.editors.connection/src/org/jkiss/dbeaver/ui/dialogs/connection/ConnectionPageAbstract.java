@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -47,6 +47,7 @@ import org.jkiss.dbeaver.ui.controls.VariablesHintLabel;
 import org.jkiss.dbeaver.ui.dialogs.AcceptLicenseDialog;
 import org.jkiss.dbeaver.ui.dialogs.IConnectionWizard;
 import org.jkiss.dbeaver.ui.internal.UIConnectionMessages;
+import org.jkiss.dbeaver.utils.HelpUtils;
 import org.jkiss.utils.ArrayUtils;
 import org.jkiss.utils.CommonUtils;
 
@@ -80,6 +81,8 @@ public abstract class ConnectionPageAbstract extends DialogPage implements IData
 
     private ImageDescriptor curImageDescriptor;
     private Button licenseButton;
+    @Nullable
+    private Control databaseDocumentationInfoLabel;
 
     public IDataSourceConnectionEditorSite getSite() {
         return site;
@@ -127,6 +130,11 @@ public abstract class ConnectionPageAbstract extends DialogPage implements IData
             } else {
                 variablesHintLabel.setResolver(null);
             }
+        }
+
+        if (driver != null && databaseDocumentationInfoLabel != null) {
+            databaseDocumentationInfoLabel.setVisible(
+                CommonUtils.isNotEmpty(driver.getDatabaseDocumentationSuffixURL()));
         }
 
         if (driverSubstitutionCombo != null) {
@@ -189,19 +197,25 @@ public abstract class ConnectionPageAbstract extends DialogPage implements IData
                 UIConnectionMessages.dialog_connection_edit_connection_settings_variables_hint_label,
                 DBPConnectionConfiguration.INTERNAL_CONNECT_VARIABLES,
                 false);
-            ((GridData)variablesHintLabel.getInfoLabel().getLayoutData()).horizontalSpan = site.isNew() ? 4 : 5;
+            ((GridData) variablesHintLabel.getInfoLabel().getLayoutData()).horizontalSpan = 2;
         } else {
-            UIUtils.createEmptyLabel(panel, 5, 1);
+            UIUtils.createFormPlaceholder(panel, 2, 1);
         }
 
+        formDatabaseDocumentationInfoLabel(panel);
+
         if (site.isNew()) {
-            Button advSettingsButton = UIUtils.createDialogButton(panel, UIConnectionMessages.dialog_connection_edit_wizard_conn_conf_general_link, new SelectionAdapter() {
-                @Override
-                public void widgetSelected(SelectionEvent e) {
-                    site.openSettingsPage("ConnectionPageGeneral");
-                }
-            });
+            Button advSettingsButton = UIUtils.createDialogButton(panel,
+                UIConnectionMessages.dialog_connection_edit_wizard_conn_conf_general_link,
+                new SelectionAdapter() {
+                    @Override
+                    public void widgetSelected(SelectionEvent e) {
+                        site.openSettingsPage("ConnectionPageGeneral");
+                    }
+                });
             advSettingsButton.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_END));
+        } else {
+            UIUtils.createEmptyLabel(panel, 1, 1);
         }
 
         Label divLabel = new Label(panel, SWT.SEPARATOR | SWT.HORIZONTAL);
@@ -258,6 +272,21 @@ public abstract class ConnectionPageAbstract extends DialogPage implements IData
         }
     }
 
+    private void formDatabaseDocumentationInfoLabel(Composite panel) {
+        databaseDocumentationInfoLabel = UIUtils.createInfoLabel(
+            panel,
+            UIConnectionMessages.dialog_connection_database_documentation,
+            () -> {
+                String databaseDocumentationSuffixURL = site.getDriver().getDatabaseDocumentationSuffixURL();
+                ShellUtils.launchProgram(HelpUtils.getHelpExternalReference(databaseDocumentationSuffixURL));
+            });
+        databaseDocumentationInfoLabel.setToolTipText(
+            UIConnectionMessages.dialog_connection_database_documentation);
+        databaseDocumentationInfoLabel.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_END));
+        databaseDocumentationInfoLabel.setVisible(CommonUtils.isNotEmpty(
+            site.getDriver().getDatabaseDocumentationSuffixURL()));
+    }
+
     protected void updateDriverInfo(DBPDriver driver) {
 
     }
@@ -299,9 +328,9 @@ public abstract class ConnectionPageAbstract extends DialogPage implements IData
 
         DataSourceDescriptor dataSource = (DataSourceDescriptor)getSite().getActiveDataSource();
         savePasswordCheck = UIUtils.createCheckbox(panel,
-            UIConnectionMessages.dialog_connection_wizard_final_checkbox_save_password_locally,
+            UIConnectionMessages.dialog_connection_wizard_final_checkbox_save_password,
             dataSource == null || dataSource.isSavePassword());
-        savePasswordCheck.setToolTipText(UIConnectionMessages.dialog_connection_wizard_final_checkbox_save_password_locally);
+        savePasswordCheck.setToolTipText(UIConnectionMessages.dialog_connection_wizard_final_checkbox_save_password);
         //savePasswordCheck.setLayoutData(gd);
 
         if (supportsPasswordView) {
@@ -351,7 +380,9 @@ public abstract class ConnectionPageAbstract extends DialogPage implements IData
         typeManualRadio = UIUtils.createRadioButton(modeGroup, UIConnectionMessages.dialog_connection_host_label, false, typeSwitcher);
         typeURLRadio = UIUtils.createRadioButton(modeGroup, UIConnectionMessages.dialog_connection_url_label, true, typeSwitcher);
         modeGroup.setLayoutData(GridDataFactory.fillDefaults().span(3, 1).create());
-        createDriverSubstitutionControls(modeGroup);
+        if (supportsDriverSubstitution()) {
+            createDriverSubstitutionControls(modeGroup);
+        }
         addControlToGroup(GROUP_CONNECTION_MODE, cnnTypeLabel);
         addControlToGroup(GROUP_CONNECTION_MODE, modeGroup);
     }
@@ -376,7 +407,9 @@ public abstract class ConnectionPageAbstract extends DialogPage implements IData
                 final int index = driverSubstitutionCombo.getSelectionIndex();
                 final DBPDriverSubstitutionDescriptor driverSubstitution = index > 0 ? driverSubstitutions[index - 1] : null;
                 final IConnectionWizard wizard = (IConnectionWizard) site.getWizard();
-                wizard.firePropertyChangeEvent(PROP_DRIVER_SUBSTITUTION, wizard.getDriverSubstitution(), driverSubstitution);
+                if (wizard != null) {
+                    wizard.firePropertyChangeEvent(PROP_DRIVER_SUBSTITUTION, wizard.getDriverSubstitution(), driverSubstitution);
+                }
             }));
             driverSubstitutionCombo.add("JDBC");
 
@@ -410,6 +443,15 @@ public abstract class ConnectionPageAbstract extends DialogPage implements IData
         propGroupMap
             .computeIfAbsent(group, k -> new ArrayList<>())
             .add(control);
+    }
+
+    protected void updateUrlFromSettings(Text urlText) {
+        DBPDataSourceContainer dataSourceContainer = site.getActiveDataSource();
+        urlText.setText(dataSourceContainer.getDriver().getConnectionURL(site.getActiveDataSource().getConnectionConfiguration()));
+    }
+
+    protected boolean supportsDriverSubstitution() {
+        return true;
     }
 
 }

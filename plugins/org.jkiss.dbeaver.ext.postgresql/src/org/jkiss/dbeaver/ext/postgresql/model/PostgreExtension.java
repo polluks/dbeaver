@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -190,7 +190,7 @@ public class PostgreExtension implements PostgreObject, PostgreScriptObject, DBP
         {
             try {
                 Collection<PostgreSchema> schemas = object.getDatabase().getSchemas(new VoidProgressMonitor());
-                return schemas.toArray(new Object[schemas.size()]);
+                return schemas.toArray(new Object[0]);
             } catch (DBException e) {
                 log.error(e);
                 return new Object[0];

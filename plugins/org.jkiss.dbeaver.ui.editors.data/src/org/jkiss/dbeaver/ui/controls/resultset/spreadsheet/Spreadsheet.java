@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -79,6 +79,7 @@ public class Spreadsheet extends LightGrid implements Listener {
     @Nullable
     private final IGridController gridController;
 
+    private boolean accessibilityEnabled;
     private Clipboard clipboard;
 
     public Spreadsheet(
@@ -271,7 +272,9 @@ public class Spreadsheet extends LightGrid implements Listener {
                     }
                     final SpreadsheetPresentation presentation = getPresentation();
                     final DBDAttributeBinding attribute = presentation.getCurrentAttribute();
-                    if (editorControl != null && attribute != null && presentation.getController().getAttributeReadOnlyStatus(attribute) == null && event.keyCode != SWT.CR) {
+                    if (editorControl != null && attribute != null &&
+                        presentation.getController().getAttributeReadOnlyStatus(attribute, true, true) == null &&
+                        event.keyCode != SWT.CR) {
                         if (!editorControl.isDisposed()) {
                             // We used to forward key even to control but it worked poorly.
                             // So let's just insert first letter (it will remove old value which must be selected for inline controls)
@@ -296,7 +299,7 @@ public class Spreadsheet extends LightGrid implements Listener {
                 }
                 break;
             case SWT.MouseDoubleClick:
-                if (event.button != 1) {
+                if (event.button != 1 || isHoveringOnLink()) {
                     return;
                 }
                 GridPos pos = super.getCell(new Point(event.x, event.y));
@@ -374,7 +377,12 @@ public class Spreadsheet extends LightGrid implements Listener {
 
     @Override
     public void refreshData(boolean refreshColumns, boolean keepState, boolean fitValue) {
+        // Disable accessibility support.
+        // It will automatically turn on once we detect ACC events
+        accessibilityEnabled = false;
+        // Cancel all editors
         cancelInlineEditor();
+
         super.refreshData(refreshColumns, keepState, fitValue);
         super.redraw();
     }
@@ -534,4 +542,13 @@ public class Spreadsheet extends LightGrid implements Listener {
     private void hookAccessibility() {
         SpreadsheetAccessibleAdapter.install(this);
     }
+
+    boolean isAccessibilityEnabled() {
+        return accessibilityEnabled;
+    }
+
+    void setAccessibilityEnabled(boolean enabled) {
+        this.accessibilityEnabled = enabled;
+    }
+
 }

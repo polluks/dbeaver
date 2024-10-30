@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ import org.jkiss.dbeaver.model.exec.jdbc.JDBCSession;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCStatement;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.sql.SQLDialect;
+import org.jkiss.dbeaver.model.sql.SQLState;
 import org.jkiss.dbeaver.model.sql.SQLUtils;
 import org.jkiss.dbeaver.model.struct.DBSObject;
 import org.jkiss.dbeaver.model.struct.DBSObjectFilter;
@@ -824,8 +825,8 @@ public class JDBCUtils {
         return null;
     }
 
-    public static long executeInsertAutoIncrement(Connection session, String sql, Object... params) throws SQLException {
-        try (PreparedStatement dbStat = session.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+    public static long executeInsertAutoIncrement(Connection session, String sql, String columnName, Object... params) throws SQLException {
+        try (PreparedStatement dbStat = session.prepareStatement(sql, getColumnList(columnName))) {
             if (params != null) {
                 for (int i = 0; i < params.length; i++) {
                     dbStat.setObject(i + 1, params[i]);
@@ -851,4 +852,21 @@ public class JDBCUtils {
             }
         }
     }
+
+    /**
+     * Needed for {@link Connection#prepareStatement(String, String[])}
+     * Postgres can't find column if column id is in upper case.
+     * Oracle doesn't return id of inserted row for {@link Connection#prepareStatement(String, int)}.
+     * @param columnName name of column.
+     * @return array of column name.
+     */
+    public static String[] getColumnList(@NotNull String columnName) {
+        return new String[] {columnName.toLowerCase()};
+    }
+
+    public static boolean isRollbackWarning(SQLException sqlError) {
+        return
+            SQLState.SQL_25P01.getCode().equals(sqlError.getSQLState());
+    }
+
 }

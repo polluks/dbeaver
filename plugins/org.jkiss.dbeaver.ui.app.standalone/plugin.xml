@@ -4,7 +4,7 @@
 
 <!--
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@
     <extension point="org.eclipse.core.runtime.products" id="product">
         <product application="org.jkiss.dbeaver.ui.app.standalone.standalone" description="%productSubTitle" name="DBeaver">
             <property name="aboutText" value="%aboutText"/>
-            <property name="copyright" value="%productCopyright"/>
+            <property name="copyright" value="© 2024 DBeaver Corp"/>
             <property name="subTitle" value="%productSubTitle"/>
             <property name="website" value="%productWebsite"/>
             <property name="email" value="%productEmail"/>
@@ -47,12 +47,12 @@
             <property name="windowImages" value="/icons/dbeaver16.png,/icons/dbeaver32.png,/icons/dbeaver48.png,/icons/dbeaver64.png,/icons/dbeaver256.png"/>
             <property name="appName" value="DBeaver"/>
             <property name="appEdition" value="ce"/>
-            <property name="startupForegroundColor" value="000000"/>
-            <property name="versionInfoCoord" value="120,228"/>
-            <property name="versionInfoSize" value="12"/>
-            <property name="versionInfoColor" value="212,72,40"/>
-            <property name="startupMessageRect" value="22,6,157,25"/>
-            <property name="startupProgressRect" value="74,280,206,6"/>
+            <property name="versionInfoCoord" value="112,230"/>
+            <property name="versionInfoSize" value="8"/>
+            <property name="versionInfoColor" value="255,255,255"/>
+            <property name="startupMessageRect" value="60,273,240,21"/>
+            <property name="startupProgressRect" value="0,295,601,6"/>
+            <property name="startupForegroundColor" value="FFFFFF"/>
             <property name="cssTheme" value="org.eclipse.e4.ui.css.theme.e4_default"/>
             <property name="applicationCSSResources" value="platform:/plugin/org.eclipse.ui.themes/images/"/>
             <property name="applicationXMI" value="org.jkiss.dbeaver.ui.app.standalone/dbeaver.e4xmi"/>
@@ -65,18 +65,18 @@
     <extension point="org.eclipse.core.runtime.products" id="appstore">
         <product application="org.jkiss.dbeaver.ui.app.standalone.appstore" description="%productSubTitle" name="DBeaver CE">
             <property name="aboutText" value="%aboutText"/>
-            <property name="copyright" value="%productCopyright"/>
+            <property name="copyright" value="© 2024 DBeaver Corp"/>
             <property name="subTitle" value="%productSubTitle"/>
             <property name="website" value="%productWebsite"/>
             <property name="email" value="%productEmail"/>
             <property name="windowImages" value="/icons/dbeaver16.png,/icons/dbeaver32.png,/icons/dbeaver48.png,/icons/dbeaver64.png,/icons/dbeaver256.png"/>
             <property name="appName" value="DBeaver CE"/>
-            <property name="startupForegroundColor" value="000000"/>
-            <property name="versionInfoCoord" value="155,265"/>
-            <property name="versionInfoSize" value="12"/>
+            <property name="versionInfoCoord" value="112,230"/>
+            <property name="versionInfoSize" value="8"/>
             <property name="versionInfoColor" value="255,255,255"/>
-            <property name="startupMessageRect" value="323,270,242,25"/>
-            <property name="startupProgressRect" value="323,255,242,10"/>
+            <property name="startupMessageRect" value="60,273,240,21"/>
+            <property name="startupProgressRect" value="0,295,601,6"/>
+            <property name="startupForegroundColor" value="FFFFFF"/>
             <property name="cssTheme" value="org.eclipse.e4.ui.css.theme.e4_default"/>
             <property name="applicationCSSResources" value="platform:/plugin/org.eclipse.ui.themes/images/"/>
             <property name="applicationXMI" value="org.jkiss.dbeaver.ui.app.standalone/dbeaver.e4xmi"/>
@@ -95,6 +95,11 @@
 
     <extension point="org.eclipse.ui.commands">
         <command
+            id="org.jkiss.dbeaver.core.util.collectDiagnosticInfo"
+            categoryId="org.jkiss.dbeaver.core.util"
+            name="%command.org.jkiss.dbeaver.core.util.collectDiagnosticInfo.name"
+            description="%command.org.jkiss.dbeaver.core.util.collectDiagnosticInfo.description"/>
+        <command
             id="org.jkiss.dbeaver.core.util.resetSettings"
             categoryId="org.jkiss.dbeaver.core.util"
             name="Reset Settings..."
@@ -104,6 +109,11 @@
             categoryId="org.jkiss.dbeaver.core.util"
             name="Clear History..."
             description="Clear logs, query history and restart"/>
+        <command
+                id="org.jkiss.dbeaver.core.try.pro"
+                name="%command.org.jkiss.dbeaver.ui.try.pro.name"
+                description="%command.org.jkiss.dbeaver.ui.try.pro.description"
+                categoryId="org.jkiss.dbeaver.core.navigator"/>
     </extension>
 
     <extension point="org.eclipse.ui.commandImages">
@@ -123,8 +133,8 @@
         <image commandId="org.eclipse.ui.edit.redo" icon="icons/eclipse/redo.png" disabledIcon="icons/eclipse/redo_d.png"/>
 
         <image commandId="org.eclipse.ui.newWizard" icon="icons/eclipse/new_object.png" disabledIcon="icons/eclipse/new_object_d.png"/>
-        <image commandId="org.eclipse.ui.edit.text.zoomIn" icon="icons/eclipse/zoom_in.png" disabledIcon="icons/eclipse/zoom_in.png"/>
-        <image commandId="org.eclipse.ui.edit.text.zoomOut" icon="icons/eclipse/zoom_out.png" disabledIcon="icons/eclipse/zoom_out.png"/>
+        <image commandId="org.eclipse.ui.edit.text.zoomIn" icon="platform:/plugin/org.jkiss.dbeaver.ui/icons/misc/zoom_in.png" disabledIcon="platform:/plugin/org.jkiss.dbeaver.ui/icons/misc/zoom_in_d.png"/>
+        <image commandId="org.eclipse.ui.edit.text.zoomOut" icon="platform:/plugin/org.jkiss.dbeaver.ui/icons/misc/zoom_out.png" disabledIcon="platform:/plugin/org.jkiss.dbeaver.ui/icons/icons/misc/zoom_out_d.png"/>
         <image commandId="org.eclipse.ui.edit.text.gotoLastEditPosition" icon="icons/eclipse/last_edit_location.png" disabledIcon="icons/eclipse/last_edit_location_d.png"/>
         <image commandId="org.eclipse.search.ui.openSearchDialog" icon="icons/eclipse/search.png" disabledIcon="icons/eclipse/search_d.png"/>
 
@@ -186,25 +196,30 @@
             </activeWhen>
         </handler>
         <handler commandId="org.eclipse.ui.edit.text.openLocalFile" class="org.jkiss.dbeaver.ui.app.standalone.actions.OpenLocalFileActionExt"/>
+        <handler
+            commandId="org.jkiss.dbeaver.core.util.collectDiagnosticInfo"
+            class="org.jkiss.dbeaver.ui.app.standalone.actions.CollectDiagnosticInfoHandler"
+        />
         <handler commandId="org.jkiss.dbeaver.core.util.resetSettings" class="org.jkiss.dbeaver.ui.app.standalone.actions.ResetSettingsHandler"/>
         <handler commandId="org.jkiss.dbeaver.core.util.clearHistory" class="org.jkiss.dbeaver.ui.app.standalone.actions.ClearHistoryHandler"/>
+        <handler commandId="org.jkiss.dbeaver.core.try.pro" class="org.jkiss.dbeaver.ui.app.standalone.actions.TryPROHandler"/>
     </extension>
 
     <extension point="org.eclipse.ui.menus">
         <!-- Edit menu -->
         <menuContribution allPopups="false" locationURI="menu:edit">
             <separator name="undoredo" visible="true"/>
-            <command commandId="org.eclipse.ui.edit.undo" label="%command.org.jkiss.dbeaver.core.edit.undo.name"/>
-            <command commandId="org.eclipse.ui.edit.redo" label="%command.org.jkiss.dbeaver.core.edit.redo.name"/>
-            <command commandId="org.eclipse.ui.edit.cut" label="%command.org.jkiss.dbeaver.core.edit.cut.name"/>
-            <command commandId="org.eclipse.ui.edit.copy" label="%command.org.jkiss.dbeaver.core.edit.copy.name"/>
-            <command commandId="org.jkiss.dbeaver.core.edit.copy.special" label="%command.org.jkiss.dbeaver.core.edit.copy.special.name">
+            <command commandId="org.eclipse.ui.edit.undo"/>
+            <command commandId="org.eclipse.ui.edit.redo"/>
+            <command commandId="org.eclipse.ui.edit.cut"/>
+            <command commandId="org.eclipse.ui.edit.copy"/>
+            <command commandId="org.jkiss.dbeaver.core.edit.copy.special">
                 <visibleWhen checkEnabled="true"/>
             </command>
-            <command commandId="org.eclipse.ui.edit.paste" label="%command.org.jkiss.dbeaver.core.edit.paste.name"/>
-            <command commandId="org.eclipse.ui.edit.delete" label="%command.org.jkiss.dbeaver.core.edit.delete.name"/>
+            <command commandId="org.eclipse.ui.edit.paste"/>
+            <command commandId="org.eclipse.ui.edit.delete"/>
             <separator name="find.ext" visible="true"/>
-            <command commandId="org.eclipse.ui.edit.findReplace" label="%command.org.jkiss.dbeaver.core.edit.findreplace.name">
+            <command commandId="org.eclipse.ui.edit.findReplace">
                 <visibleWhen checkEnabled="true"/>
             </command>
             <command commandId="org.jkiss.dbeaver.core.navigator.bookmark.add">
@@ -242,43 +257,43 @@
         <!-- File menu-->
 
         <menuContribution allPopups="false" locationURI="menu:file?before=additions">
-            <command commandId="org.eclipse.ui.newWizard" label="%command.org.jkiss.dbeaver.core.file.new.name"/>
-            <command commandId="org.eclipse.ui.file.save" label="%command.org.jkiss.dbeaver.core.file.save.name"/>
-            <command commandId="org.eclipse.ui.file.saveAs" label="%command.org.jkiss.dbeaver.core.file.saveas.name"/>
+            <command commandId="org.eclipse.ui.newWizard"/>
+            <command commandId="org.eclipse.ui.file.save"/>
+            <command commandId="org.eclipse.ui.file.saveAs"/>
             <command commandId="org.eclipse.ui.file.saveAll"/>
-            <command commandId="org.eclipse.ui.file.close" label="%command.org.jkiss.dbeaver.core.file.close.name"/>
-            <command commandId="org.eclipse.ui.file.print" label="%command.org.jkiss.dbeaver.core.file.print.name"/>
-            <command commandId="org.eclipse.ui.edit.rename" label="%command.org.jkiss.dbeaver.core.file.rename.name"/>
-            <command commandId="org.eclipse.ui.file.refresh" label="%command.org.jkiss.dbeaver.core.file.refresh.name"/>
+            <command commandId="org.eclipse.ui.file.close"/>
+            <command commandId="org.eclipse.ui.file.print"/>
+            <command commandId="org.eclipse.ui.edit.rename"/>
+            <command commandId="org.eclipse.ui.file.refresh"/>
 
             <separator name="import-export" visible="true"/>
-            <command commandId="org.eclipse.ui.file.import" label="%command.org.jkiss.dbeaver.core.file.import.name">
+            <command commandId="org.eclipse.ui.file.import">
                 <visibleWhen>
                     <reference definitionId="LocalWorkspace"/>
                 </visibleWhen>
             </command>
-            <command commandId="org.eclipse.ui.file.export" label="%command.org.jkiss.dbeaver.core.file.export.name">
+            <command commandId="org.eclipse.ui.file.export">
                 <visibleWhen>
                     <reference definitionId="LocalWorkspace"/>
                 </visibleWhen>
             </command>
 
             <separator name="properties" visible="true"/>
-            <command commandId="org.eclipse.ui.file.properties" label="%command.org.jkiss.dbeaver.core.file.properties.name"/>
+            <command commandId="org.eclipse.ui.file.properties"/>
         </menuContribution>
         <menuContribution allPopups="false" locationURI="menu:file?after=additions">
             <separator name="exit" visible="true"/>
-            <command commandId="org.eclipse.ui.file.exit" label="%command.org.jkiss.dbeaver.core.file.exit.name"/>
+            <command commandId="org.eclipse.ui.file.exit"/>
         </menuContribution>
 
         <!-- Navigation menu -->
 
         <menuContribution allPopups="false" locationURI="menu:org.eclipse.ui.main.menu?after=additions">
           <menu id="navigate" label="%menu.navigate">
-            <command commandId="org.eclipse.ui.navigate.openResource" label="%command.org.jkiss.dbeaver.core.navigator.openResource.name"/>
+            <command commandId="org.eclipse.ui.navigate.openResource"/>
             <separator name="nav" visible="true"/>
-            <command commandId="org.eclipse.ui.navigate.backwardHistory" label="%command.org.jkiss.dbeaver.core.navigator.backwardHistory.name"/>
-            <command commandId="org.eclipse.ui.navigate.forwardHistory" label="%command.org.jkiss.dbeaver.core.navigator.forwardHistory.name"/>
+            <command commandId="org.eclipse.ui.navigate.backwardHistory"/>
+            <command commandId="org.eclipse.ui.navigate.forwardHistory"/>
           </menu>
         </menuContribution>
 
@@ -286,30 +301,40 @@
 
         <menuContribution allPopups="false" locationURI="menu:window?before=perspective">
             <separator name="perspective" visible="true"/>
-            <command commandId="org.eclipse.ui.window.customizePerspective" label="%command.org.jkiss.dbeaver.core.window.customizePerspective.name"/>
-            <command commandId="org.eclipse.ui.window.resetPerspective" label="%command.org.jkiss.dbeaver.core.window.resetPerspective.name"/>
+            <command commandId="org.eclipse.ui.window.customizePerspective"/>
+            <command commandId="org.eclipse.ui.window.resetPerspective"/>
             <separator name="tabs" visible="true"/>
             <menu label="%command.org.jkiss.dbeaver.core.window.navigation.name">
-            <command commandId="org.eclipse.ui.navigate.nextTab" label="%command.org.jkiss.dbeaver.core.window.navigation.nextTab.name"/>
-            <command commandId="org.eclipse.ui.navigate.previousTab" label="%command.org.jkiss.dbeaver.core.window.navigation.previousTab.name"/>
-            <command commandId="org.eclipse.ui.navigate.nextSubTab" label="%command.org.jkiss.dbeaver.core.window.navigation.nextSubTab.name"/>
-            <command commandId="org.eclipse.ui.navigate.previousSubTab" label="%command.org.jkiss.dbeaver.core.window.navigation.previousSubTab.name"/>
-            <separator name="editors" visible="true"/>
-            <command commandId="org.eclipse.ui.window.nextEditor" label="%command.org.jkiss.dbeaver.core.window.navigation.nextEditor.name"/>
-            <command commandId="org.eclipse.ui.window.previousEditor" label="%command.org.jkiss.dbeaver.core.window.navigation.previousEditor.name"/>
-            <command commandId="org.eclipse.ui.window.switchToEditor" label="%command.org.jkiss.dbeaver.core.window.navigation.switchToEditor.name"/>
+                <command commandId="org.eclipse.ui.navigate.nextTab"/>
+                <command commandId="org.eclipse.ui.navigate.previousTab"/>
+                <command commandId="org.eclipse.ui.navigate.nextSubTab"/>
+                <command commandId="org.eclipse.ui.navigate.previousSubTab"/>
+                <separator name="editors" visible="true"/>
+                <command commandId="org.eclipse.ui.window.nextEditor"/>
+                <command commandId="org.eclipse.ui.window.previousEditor"/>
+                <command commandId="org.eclipse.ui.window.switchToEditor"/>
             </menu>
             <separator name="settings" visible="true"/>
-            <command commandId="org.eclipse.ui.window.preferences" label="%command.org.jkiss.dbeaver.core.window.preferences.name"/>
+            <command commandId="org.eclipse.ui.window.preferences"/>
         </menuContribution>
 
         <!-- Help menu -->
 
         <menuContribution allPopups="false" locationURI="menu:help">
             <separator name="misc" visible="true"/>
+            <command commandId="org.jkiss.dbeaver.core.util.collectDiagnosticInfo" style="push"/>
             <command commandId="org.jkiss.dbeaver.core.util.resetSettings" style="push"/>
             <command commandId="org.jkiss.dbeaver.core.util.clearHistory" style="push"/>
             <separator name="misc_end" visible="true"/>
+        </menuContribution>
+
+        <menuContribution allPopups="false" locationURI="menu:help?after=org.jkiss.dbeaver.core.util.clearHistory">
+            <separator name="commercial" visible="true"/>
+            <command commandId="org.jkiss.dbeaver.core.try.pro">
+                <visibleWhen checkEnabled="true">
+                    <test property="org.jkiss.dbeaver.ui.app.standalone.menu.configuration.isCommunity" value="true"/>
+                </visibleWhen>
+            </command>
         </menuContribution>
 
         <!-- Main toolbar -->
@@ -333,7 +358,6 @@
         <key commandId="org.eclipse.jdt.ui.edit.text.java.correction.assist.proposals" contextId="org.jkiss.dbeaver.ui.editors.sql" schemeId="org.jkiss.dbeaver.defaultKeyScheme" sequence="CTRL+1"/>
 
         <!--<key commandId="org.eclipse.ui.edit.text.gotoLastEditPosition" contextId="org.eclipse.ui.contexts.window" schemeId="org.jkiss.dbeaver.defaultKeyScheme" sequence="CTRL+SHIFT+BS"/>-->
-        <key commandId="org.eclipse.ui.edit.text.goto.line" schemeId="org.jkiss.dbeaver.defaultKeyScheme" sequence="CTRL+G"/>
         <key commandId="org.eclipse.ui.edit.text.moveLineDown" contextId="org.jkiss.dbeaver.ui.editors.sql" schemeId="org.jkiss.dbeaver.defaultKeyScheme" sequence="CTRL+SHIFT+ARROW_DOWN"/>
         <key commandId="org.eclipse.ui.edit.text.moveLineUp" contextId="org.jkiss.dbeaver.ui.editors.sql" schemeId="org.jkiss.dbeaver.defaultKeyScheme" sequence="CTRL+SHIFT+ARROW_UP"/>
         <!--<key commandId="org.eclipse.ui.edit.text.delete.line" contextId="org.eclipse.ui.contexts.window" schemeId="org.jkiss.dbeaver.defaultKeyScheme" sequence="CTRL+Y"/>-->
@@ -356,7 +380,7 @@
         <page category="org.jkiss.dbeaver.preferences.main.connections" id="org.jkiss.dbeaver.preferences.main.errorHandle" class="org.jkiss.dbeaver.ui.preferences.PrefPageErrorHandle" name="%pref.page.name.errorHandle">
             <keywordReference id="org.jkiss.dbeaver.core.keyword.dbeaver"/>
         </page>
-        <page category="org.jkiss.dbeaver.preferences.main" id="org.jkiss.dbeaver.preferences.main.errorLogs" class="org.jkiss.dbeaver.ui.preferences.PrefPageErrorLogs" name="%pref.page.name.errorLogs">
+        <page category="org.eclipse.ui.preferencePages.Workbench" id="org.jkiss.dbeaver.preferences.main.errorLogs" class="org.jkiss.dbeaver.ui.preferences.PrefPageErrorLogs" name="%pref.page.name.errorLogs">
             <keywordReference id="org.jkiss.dbeaver.core.keyword.dbeaver"/>
         </page>
         <page id="org.jkiss.dbeaver.preferences.main.connections" class="org.jkiss.dbeaver.ui.preferences.PrefPageConnectionsGeneral" name="%pref.page.name.connections">
@@ -374,7 +398,7 @@
         <page category="org.jkiss.dbeaver.preferences.main.connections" id="org.jkiss.dbeaver.preferences.main.meta" class="org.jkiss.dbeaver.ui.preferences.PrefPageMetaData" name="%pref.page.name.meta">
             <keywordReference id="org.jkiss.dbeaver.core.keyword.dbeaver"/>
         </page>
-        <page category="org.jkiss.dbeaver.preferences.main" id="org.jkiss.dbeaver.preferences.misc.qm" class="org.jkiss.dbeaver.ui.preferences.PrefPageQueryManager" name="%pref.page.name.query.manager">
+        <page category="org.eclipse.ui.preferencePages.Workbench" id="org.jkiss.dbeaver.preferences.misc.qm" class="org.jkiss.dbeaver.ui.preferences.PrefPageQueryManager" name="%pref.page.name.query.manager">
             <keywordReference id="org.jkiss.dbeaver.core.keyword.pref.db.qm"/>
             <keywordReference id="org.jkiss.dbeaver.core.keyword.dbeaver"/>
         </page>
@@ -405,6 +429,22 @@
         <page category="org.jkiss.dbeaver.preferences.main" id="org.jkiss.dbeaver.preferences.main.confirmations" class="org.jkiss.dbeaver.ui.preferences.PrefPageConfirmations" name="%pref.page.name.confirmations">
             <keywordReference id="org.jkiss.dbeaver.core.keyword.dbeaver"/>
         </page>
+        <page category="org.jkiss.dbeaver.preferences.main" id="org.jkiss.dbeaver.preferences.main.notifications" class="org.jkiss.dbeaver.ui.preferences.PrefPageNotifications" name="%pref.page.name.notifications">
+            <keywordReference id="org.jkiss.dbeaver.core.keyword.dbeaver"/>
+            <keywordReference id="org.jkiss.dbeaver.core.keyword.pref.ui.notifications.label"/>
+        </page>
+        <page category="org.jkiss.dbeaver.preferences.main" id="org.jkiss.dbeaver.preferences.main.misc" class="org.jkiss.dbeaver.ui.preferences.PrefPageMiscellaneous" name="%pref.page.name.miscellaneous">
+            <keywordReference id="org.jkiss.dbeaver.core.keyword.dbeaver"/>
+            <keywordReference id="org.jkiss.dbeaver.keyword.pref.ui.misc"/>
+        </page>
+        <page category="org.eclipse.ui.net.NetPreferences" id="org.jkiss.dbeaver.preferences.network.expert" class="org.jkiss.dbeaver.ui.preferences.PrefPageNetworkExpert" name="%pref.page.name.network.expert">
+            <keywordReference id="org.jkiss.dbeaver.core.keyword.network.expert"/>
+        </page>
+    </extension>
+
+    <extension point="org.eclipse.ui.keywords">
+        <keyword id="org.jkiss.dbeaver.keyword.pref.ui.misc" label="holiday decoration christmas snow"/>
+        <keyword id="org.jkiss.dbeaver.core.keyword.network.expert" label="ip ipv4 ipv6 protocol"/>
     </extension>
 
     <extension point="org.eclipse.ui.splashHandlers">
@@ -444,6 +484,12 @@
             exitAfterExecute="true"
             hasArg="true"
             handler="org.jkiss.dbeaver.ui.app.standalone.cli.SQLTranslatorHandler"/>
+        <parameter name="databaseList"
+            longName="database-driver-list"
+            description="Show list of supported database drivers in json format."
+            exitAfterExecute="true"
+            hasArg="true"
+            handler="org.jkiss.dbeaver.ui.app.standalone.cli.DataBaseInfoHandler"/>
     </extension>
 
     <!-- Disable Eclipse debug and refactoring in standalone applications -->
@@ -460,6 +506,24 @@
         <activityPatternBinding activityId="dbeaver.app.StandaloneActivity" pattern="org.eclipse.ui.ide/org.eclipse.ui.propertypages.project.natures"/>
         <activityPatternBinding activityId="dbeaver.app.StandaloneActivity" pattern="org.eclipse.ui.ide/org.eclipse.ui.propertypages.project.linkedResourcesPage"/>
         <activityPatternBinding activityId="dbeaver.app.StandaloneActivity" pattern="org.eclipse.debug.ui/org.eclipse.debug.ui.properties.defaultLaunchConfigurations"/>
+    </extension>
+
+    <extension point="org.eclipse.ui.perspectiveExtensions">
+        <perspectiveExtension targetID="org.jkiss.dbeaver.core.perspective">
+            <editorOnboardingCommand id="org.jkiss.dbeaver.core.new.connection"/>
+            <editorOnboardingCommand id="org.jkiss.dbeaver.core.sql.editor.recent"/>
+            <editorOnboardingCommand id="org.eclipse.ui.window.showKeyAssist"/>
+            <editorOnboardingCommand id="org.eclipse.ui.window.quickAccess"/>
+        </perspectiveExtension>
+    </extension>
+
+    <extension point="org.eclipse.core.expressions.propertyTesters">
+        <propertyTester
+                class="org.jkiss.dbeaver.ui.app.standalone.actions.MenuConfigurationPropertyTester"
+                id="org.jkiss.dbeaver.ui.app.standalone.actions.MenuConfigurationPropertyTester"
+                namespace="org.jkiss.dbeaver.ui.app.standalone.menu.configuration"
+                properties="isCommunity"
+                type="java.lang.Object"/>
     </extension>
 
 </plugin>

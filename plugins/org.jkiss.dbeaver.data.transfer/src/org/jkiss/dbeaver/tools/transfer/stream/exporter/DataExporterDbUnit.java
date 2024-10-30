@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  * Copyright (C) 2012 Eugene Fradkin (eugene.fradkin@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,7 +46,7 @@ import java.util.Locale;
 /**
  * DbUnit Dataset Exporter
  * 
- * DbUnit is a framwork for populating a database with test data before 
+ * DbUnit is a framework for populating a database with test data before
  * running an integration test. This export uses the format used by FlatXmlDataSet/ReplacementDataSet
  * described at http://dbunit.sourceforge.net/components.html
  */

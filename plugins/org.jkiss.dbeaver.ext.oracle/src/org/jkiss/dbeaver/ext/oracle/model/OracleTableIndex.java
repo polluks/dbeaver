@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,8 +18,10 @@ package org.jkiss.dbeaver.ext.oracle.model;
 
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
+import org.jkiss.dbeaver.DBDatabaseException;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.model.DBPEvaluationContext;
+import org.jkiss.dbeaver.model.DBPNamedObject2;
 import org.jkiss.dbeaver.model.DBPScriptObject;
 import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCSession;
@@ -41,8 +43,8 @@ import java.util.Map;
 /**
  * OracleTableIndex
  */
-public class OracleTableIndex extends JDBCTableIndex<OracleSchema, OracleTablePhysical> implements DBSObjectLazy, DBPScriptObject
-{
+public class OracleTableIndex extends JDBCTableIndex<OracleSchema, OracleTableBase>
+    implements DBSObjectLazy, DBPScriptObject, DBPNamedObject2 {
 
     private Object tablespace;
     private boolean nonUnique;
@@ -51,7 +53,7 @@ public class OracleTableIndex extends JDBCTableIndex<OracleSchema, OracleTablePh
 
     public OracleTableIndex(
         OracleSchema schema,
-        OracleTablePhysical table,
+        OracleTableBase table,
         String indexName,
         ResultSet dbResult)
     {
@@ -74,8 +76,7 @@ public class OracleTableIndex extends JDBCTableIndex<OracleSchema, OracleTablePh
         this.tablespace = JDBCUtils.safeGetString(dbResult, "TABLESPACE_NAME");
     }
 
-    public OracleTableIndex(OracleSchema schema, OracleTablePhysical parent, String name, boolean unique, DBSIndexType indexType)
-    {
+    public OracleTableIndex(OracleSchema schema, OracleTableBase parent, String name, boolean unique, DBSIndexType indexType) {
         super(schema, parent, name, indexType, false);
         this.nonUnique = !unique;
 
@@ -99,6 +100,7 @@ public class OracleTableIndex extends JDBCTableIndex<OracleSchema, OracleTablePh
         this.nonUnique = !unique;
     }
 
+    @Nullable
     @Override
     public Object getLazyReference(Object propertyId)
     {
@@ -120,7 +122,7 @@ public class OracleTableIndex extends JDBCTableIndex<OracleSchema, OracleTablePh
     }
 
     @Override
-    public List<OracleTableIndexColumn> getAttributeReferences(DBRProgressMonitor monitor)
+    public List<OracleTableIndexColumn> getAttributeReferences(@NotNull DBRProgressMonitor monitor)
     {
         return columns;
     }
@@ -169,7 +171,7 @@ public class OracleTableIndex extends JDBCTableIndex<OracleSchema, OracleTablePh
                         getName(),
                         getTable().getSchema().getName());
             } catch (SQLException e) {
-                throw new DBException(e, getDataSource());
+                throw new DBDatabaseException(e, getDataSource());
             }
         }
         return indexDDL;

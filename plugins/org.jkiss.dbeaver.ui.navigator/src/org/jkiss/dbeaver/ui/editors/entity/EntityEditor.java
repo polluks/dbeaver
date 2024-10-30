@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,6 +40,7 @@ import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.*;
+import org.jkiss.dbeaver.model.app.DBPProject;
 import org.jkiss.dbeaver.model.edit.DBECommand;
 import org.jkiss.dbeaver.model.edit.DBECommandContext;
 import org.jkiss.dbeaver.model.edit.DBEObjectManager;
@@ -49,6 +50,7 @@ import org.jkiss.dbeaver.model.exec.DBCExecutionContext;
 import org.jkiss.dbeaver.model.exec.DBExecUtils;
 import org.jkiss.dbeaver.model.impl.edit.DBECommandAdapter;
 import org.jkiss.dbeaver.model.navigator.*;
+import org.jkiss.dbeaver.model.rm.RMConstants;
 import org.jkiss.dbeaver.model.runtime.AbstractJob;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.ProxyProgressMonitor;
@@ -60,6 +62,7 @@ import org.jkiss.dbeaver.model.struct.rdb.DBSTable;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.runtime.ui.UIServiceSQL;
 import org.jkiss.dbeaver.ui.*;
+import org.jkiss.dbeaver.ui.actions.DataSourcePropertyTester;
 import org.jkiss.dbeaver.ui.actions.datasource.DataSourceToolbarUtils;
 import org.jkiss.dbeaver.ui.controls.CustomFormEditor;
 import org.jkiss.dbeaver.ui.controls.ProgressPageControl;
@@ -239,12 +242,17 @@ public class EntityEditor extends MultiPageDatabaseEditor
             // Do not save entity editors in auto-save job (#2408)
             return;
         }
+        DBPProject ownerProject = getEditorInput().getNavigatorNode().getOwnerProject();
 
-        if (DBUtils.isReadOnly(getDatabaseObject())) {
+        if (
+            DBUtils.isReadOnly(getDatabaseObject())
+                || ownerProject == null
+                || !DBWorkbench.getPlatform().getWorkspace().hasRealmPermission(RMConstants.PERMISSION_METADATA_EDITOR)
+        ) {
             DBWorkbench.getPlatformUI().showNotification(
                 "Read-only",
                 "Object [" + DBUtils.getObjectFullName(getDatabaseObject(), DBPEvaluationContext.UI) + "] is read-only",
-                true);
+                true, null);
             return;
         }
 
@@ -267,6 +275,7 @@ public class EntityEditor extends MultiPageDatabaseEditor
         if (DBWorkbench.getPlatform().getPreferenceStore().getBoolean(NavigatorPreferences.NAVIGATOR_SHOW_SQL_PREVIEW)) {
             monitor.beginTask(UINavigatorMessages.editors_entity_monitor_preview_changes, 1);
             previewResult = showChanges(true);
+            monitor.done();
         }
 
         if (previewResult == IDialogConstants.IGNORE_ID) {
@@ -612,7 +621,7 @@ public class EntityEditor extends MultiPageDatabaseEditor
                 DBNNode node = editorInput.getNavigatorNode();
                 int propEditorIndex = getPageCount() - 1;
                 setPageText(propEditorIndex, UINavigatorMessages.editors_entity_properties_text);
-                setPageToolTip(propEditorIndex, node.getNodeType() + UINavigatorMessages.editors_entity_properties_tooltip_suffix);
+                setPageToolTip(propEditorIndex, node.getNodeTypeLabel() + UINavigatorMessages.editors_entity_properties_tooltip_suffix);
                 setPageImage(propEditorIndex, DBeaverIcons.getImage(node.getNodeIconDefault()));
             }
         }
@@ -724,6 +733,7 @@ public class EntityEditor extends MultiPageDatabaseEditor
         }
         // Fire dirty flag refresh to re-enable Save-As command (which is enabled only for certain pages)
         firePropertyChange(IEditorPart.PROP_DIRTY);
+        DataSourcePropertyTester.firePropertyChange(DataSourcePropertyTester.PROP_TRANSACTION_ACTIVE);
     }
 
     @Nullable
@@ -789,7 +799,7 @@ public class EntityEditor extends MultiPageDatabaseEditor
             getSite().getShell(),
             NavigatorPreferences.CONFIRM_ENTITY_EDIT_CLOSE,
             ConfirmationDialog.QUESTION_WITH_CANCEL,
-            getEditorInput().getNavigatorNode().getNodeName(),
+            getEditorInput().getNavigatorNode().getNodeDisplayName(),
             subEditorsString);
         if (result == IDialogConstants.YES_ID) {
 //            getWorkbenchPart().getSite().getPage().saveEditor(this, false);
@@ -987,7 +997,10 @@ public class EntityEditor extends MultiPageDatabaseEditor
 
         if (hasPropertiesEditor) {
             // Update main editor image
-            setPageImage(0, DBeaverIcons.getImage(getEditorInput().getNavigatorNode().getNodeIconDefault()));
+            DBNDatabaseNode navigatorNode = getEditorInput().getNavigatorNode();
+            if (navigatorNode != null) {
+                setPageImage(0, DBeaverIcons.getImage(navigatorNode.getNodeIconDefault()));
+            }
         }
 
         firePropertyChange(IWorkbenchPartConstants.PROP_DIRTY);
@@ -1039,7 +1052,8 @@ public class EntityEditor extends MultiPageDatabaseEditor
         DBNDatabaseNode[] selNode = new DBNDatabaseNode[1];
         ToolBar breadcrumbsPanel = new ToolBar(bcComposite, SWT.HORIZONTAL | SWT.RIGHT);
         //breadcrumbsPanel.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
-        breadcrumbsPanel.setForeground(UIStyles.getDefaultTextForeground());
+        breadcrumbsPanel.setForeground(
+            UIUtils.isDark(breadcrumbsPanel.getBackground().getRGB()) ? UIUtils.COLOR_WHITE : UIStyles.getDefaultTextForeground());
         breadcrumbsPanel.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseDown(MouseEvent e) {
@@ -1132,12 +1146,12 @@ public class EntityEditor extends MultiPageDatabaseEditor
 
         // FIXME: Drop-downs are too high - lead to minor UI glitches during editor opening. Also they don't make much sense.
         final ToolItem item = new ToolItem(infoGroup, databaseNode instanceof DBNDatabaseFolder ? SWT.DROP_DOWN : SWT.PUSH);
-        item.setText(databaseNode.getNodeName());
+        item.setText(databaseNode.getNodeDisplayName());
         item.setImage(DBeaverIcons.getImage(databaseNode.getNodeIconDefault()));
         item.setData(databaseNode);
 
         if (databaseNode == curNode) {
-            item.setToolTipText(databaseNode.getNodeType());
+            item.setToolTipText(databaseNode.getNodeTypeLabel());
             //item.setEnabled(false);
         } else {
             item.addSelectionListener(new SelectionAdapter() {
@@ -1185,7 +1199,7 @@ public class EntityEditor extends MultiPageDatabaseEditor
                     }
                 }
             });
-            item.setToolTipText(NLS.bind(UINavigatorMessages.actions_navigator_open, databaseNode.getNodeType()));
+            item.setToolTipText(NLS.bind(UINavigatorMessages.actions_navigator_open, databaseNode.getNodeTypeLabel()));
         }
     }
 

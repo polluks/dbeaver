@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 
 package org.jkiss.dbeaver.ext.oracle.model;
 
+import org.jkiss.dbeaver.ext.oracle.internal.OracleMessages;
 import org.jkiss.dbeaver.model.DBConstants;
 import org.jkiss.dbeaver.model.data.DBDPseudoAttribute;
 import org.jkiss.dbeaver.model.data.DBDPseudoAttributeType;
@@ -100,6 +101,7 @@ public class OracleConstants {
     public static final String YES = "YES";
 
     public static final String TYPE_NAME_XML = "XMLTYPE";
+    public static final String TYPE_NAME_JSON = "JSON";
     public static final String TYPE_FQ_XML = "SYS.XMLTYPE";
     public static final String TYPE_NAME_GEOMETRY = "PUBLIC.SDO_GEOMETRY";
     public static final String TYPE_FQ_GEOMETRY = "MDSYS.SDO_GEOMETRY";
@@ -121,8 +123,9 @@ public class OracleConstants {
     public static final String TYPE_INTERVAL_DAY_SECOND = "INTERVAL DAY TO SECOND";
     public static final String TYPE_NAME_BLOB = "BLOB";
     public static final String TYPE_NAME_NUMERIC = "NUMERIC";
-    public static final String TYPE_UUID = "STRING AS UUID";
-    public static final String TYPE_BOOLEAN = "BOOLEAN";
+    public static final String TYPE_UUID = "VARCHAR2(36)";
+    public static final String TYPE_BOOLEAN = "VARCHAR(1)";
+    public static final String OPERATION_MODIFY = "MODIFY";
 
 
     public static final int TIMESTAMP_TYPE_LENGTH = 13;
@@ -158,8 +161,10 @@ public class OracleConstants {
         "ROWID",
         "$alias.ROWID",
         null,
-        "Unique row identifier",
-        true);
+        OracleMessages.pseudo_column_rowid_description,
+        true,
+        DBDPseudoAttribute.PropagationPolicy.TABLE_LOCAL
+    );
 
     public static final String PREF_EXPLAIN_TABLE_NAME = "oracle.explain.table";
     public static final String PREF_SUPPORT_ROWID = "oracle.support.rowid";

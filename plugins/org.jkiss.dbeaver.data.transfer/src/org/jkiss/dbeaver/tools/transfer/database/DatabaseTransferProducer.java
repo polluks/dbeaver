@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -104,7 +104,7 @@ public class DatabaseTransferProducer implements IDataTransferProducer<DatabaseP
     @Nullable
     @Override
     public DBPProject getProject() {
-        return DBUtils.getObjectOwnerProject(dataContainer);
+        return dataContainer == null ? null : DBUtils.getObjectOwnerProject(dataContainer);
     }
 
     @Override
@@ -127,7 +127,7 @@ public class DatabaseTransferProducer implements IDataTransferProducer<DatabaseP
     @Override
     public String getObjectContainerName() {
         DBPDataSourceContainer container = getDataSourceContainer();
-        return container != null ? container.getName() : objectId;
+        return container != null ? container.getName() : CommonUtils.notNull(objectId, "?");
     }
 
     @Override
@@ -144,7 +144,8 @@ public class DatabaseTransferProducer implements IDataTransferProducer<DatabaseP
     @Override
     public DBPDataSourceContainer getDataSourceContainer() {
         if (dataContainer != null) {
-            return dataContainer.getDataSource().getContainer();
+            DBPDataSource dataSource = dataContainer.getDataSource();
+            return dataSource == null ? null : dataSource.getContainer();
         }
         return dataSourceContainer;
     }
@@ -376,7 +377,7 @@ public class DatabaseTransferProducer implements IDataTransferProducer<DatabaseP
             @NotNull SerializerContext serializeContext,
             @NotNull DBTTask objectContext,
             @NotNull Map<String, Object> state
-        ) throws DBCException {
+        ) throws DBException {
             DatabaseTransferProducer producer = new DatabaseTransferProducer();
             try {
                 runnableContext.run(true, true, monitor -> {

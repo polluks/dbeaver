@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package org.jkiss.dbeaver.ext.oracle.model;
 
 import org.jkiss.code.NotNull;
+import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ext.oracle.model.source.OracleSourceObject;
@@ -28,6 +29,7 @@ import org.jkiss.dbeaver.model.exec.jdbc.JDBCPreparedStatement;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCResultSet;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCSession;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCUtils;
+import org.jkiss.dbeaver.model.meta.Association;
 import org.jkiss.dbeaver.model.meta.LazyProperty;
 import org.jkiss.dbeaver.model.meta.Property;
 import org.jkiss.dbeaver.model.meta.PropertyGroup;
@@ -39,6 +41,7 @@ import org.jkiss.utils.CommonUtils;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Collection;
 import java.util.Date;
 import java.util.Map;
 
@@ -276,6 +279,7 @@ public class OracleMaterializedView extends OracleTableBase implements OracleSou
         this.valid = OracleUtils.getObjectStatus(monitor, this, OracleObjectType.MATERIALIZED_VIEW);
     }
 
+    @Nullable
     @Override
     public Object getLazyReference(Object propertyId)
     {
@@ -290,6 +294,17 @@ public class OracleMaterializedView extends OracleTableBase implements OracleSou
     @Override
     public TableAdditionalInfo getAdditionalInfo() {
         return additionalInfo;
+    }
+
+    @Override
+    @Association
+    public Collection<OracleTableIndex> getIndexes(@NotNull DBRProgressMonitor monitor) throws DBException {
+        return this.getContainer().indexCache.getObjects(monitor, getContainer(), this);
+    }
+
+    @Association
+    public OracleTableIndex getIndex(DBRProgressMonitor monitor, String name) throws DBException {
+        return this.getContainer().indexCache.getObject(monitor, getContainer(), this, name);
     }
 
     @Override
@@ -309,6 +324,7 @@ public class OracleMaterializedView extends OracleTableBase implements OracleSou
     public DBSObject refreshObject(@NotNull DBRProgressMonitor monitor) throws DBException
     {
         getContainer().constraintCache.clearObjectCache(this);
+        getContainer().indexCache.clearObjectCache(this);
 
         return getContainer().tableCache.refreshObject(monitor, getContainer(), this);
     }

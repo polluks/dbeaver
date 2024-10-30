@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,22 +22,30 @@ import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.widgets.*;
 import org.jkiss.code.NotNull;
+import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.DBPDataSourceContainer;
 import org.jkiss.dbeaver.model.access.DBAAuthModel;
 import org.jkiss.dbeaver.model.impl.auth.AuthModelDatabaseNative;
+import org.jkiss.dbeaver.registry.BasePolicyDataProvider;
+import org.jkiss.dbeaver.registry.DBConnectionConstants;
+import org.jkiss.dbeaver.registry.DataSourceDescriptor;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.runtime.ui.UIServiceSecurity;
 import org.jkiss.dbeaver.ui.DBeaverIcons;
 import org.jkiss.dbeaver.ui.IObjectPropertyConfigurator;
 import org.jkiss.dbeaver.ui.UIIcon;
 import org.jkiss.dbeaver.ui.UIUtils;
+import org.jkiss.dbeaver.ui.actions.DataSourceHandlerUtils;
 import org.jkiss.dbeaver.ui.internal.UIConnectionMessages;
+import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.utils.CommonUtils;
 
 /**
  * Database native auth model config
  */
 public class DatabaseNativeAuthModelConfigurator implements IObjectPropertyConfigurator<DBAAuthModel<?>, DBPDataSourceContainer> {
+
+    private static final Log log = Log.getLog(DatabaseNativeAuthModelConfigurator.class);
 
     protected Label usernameLabel;
     protected Text usernameText;
@@ -50,6 +58,9 @@ public class DatabaseNativeAuthModelConfigurator implements IObjectPropertyConfi
     protected ToolBar userManagementToolbar;
 
     protected DBPDataSourceContainer dataSource;
+
+    public static final boolean CREDENTIALS_SAVE_RESTRICTED = BasePolicyDataProvider.getInstance()
+        .isPolicyEnabled(DBConnectionConstants.POLICY_RESTRICT_PASSWORD_SAVE);
 
     public void createControl(@NotNull Composite authPanel, DBAAuthModel<?> object, @NotNull Runnable propertyChangeListener) {
         boolean userNameApplicable = true;
@@ -91,28 +102,55 @@ public class DatabaseNativeAuthModelConfigurator implements IObjectPropertyConfi
     public void loadSettings(@NotNull DBPDataSourceContainer dataSource) {
         this.dataSource = dataSource;
 
+        if (dataSource instanceof DataSourceDescriptor dsd && dataSource.isSharedCredentials()) {
+            DataSourceHandlerUtils.resolveSharedCredentials(dsd, null);
+        }
+
         if (this.usernameText != null) {
             this.usernameText.setText(CommonUtils.notEmpty(dataSource.getConnectionConfiguration().getUserName()));
         }
         if (this.passwordText != null) {
             this.passwordText.setText(CommonUtils.notEmpty(dataSource.getConnectionConfiguration().getUserPassword()));
-            this.savePasswordCheck.setSelection(dataSource.isSavePassword());
-            this.passwordText.setEnabled(dataSource.isSavePassword());
+            if (CREDENTIALS_SAVE_RESTRICTED) {
+                this.savePasswordCheck.setSelection(false);
+                this.savePasswordCheck.setEnabled(false);
+            } else {
+                this.savePasswordCheck.setSelection(dataSource.isSavePassword() || isForceSaveCredentials());
+                this.passwordText.setEnabled(dataSource.isSavePassword());
+            }
+        }
+        if (dataSource.isTemporary()) {
+            if (this.passwordText != null) {
+                this.passwordText.setEnabled(true);
+            }
+            if (this.savePasswordCheck != null) {
+                this.savePasswordCheck.setSelection(true);
+                this.savePasswordCheck.setEnabled(false);
+            }
+            if (this.userManagementToolbar != null) {
+                this.userManagementToolbar.setEnabled(false);
+            }
         }
     }
 
     @Override
     public void saveSettings(@NotNull DBPDataSourceContainer dataSource) {
+        boolean resetPassword = CREDENTIALS_SAVE_RESTRICTED || (this.savePasswordCheck != null && !this.savePasswordCheck.getSelection());
+
         if (this.usernameText != null) {
-            dataSource.getConnectionConfiguration().setUserName(this.usernameText.getText());
+            dataSource.getConnectionConfiguration().setUserName(GeneralUtils.trimAllWhitespaces(this.usernameText.getText()));
         }
-        if (this.passwordText != null && isPasswordApplicable()) {
-            dataSource.getConnectionConfiguration().setUserPassword(this.passwordText.getText());
+        if (this.passwordText != null && isPasswordApplicable() && !resetPassword) {
+            dataSource.getConnectionConfiguration().setUserPassword(GeneralUtils.trimAllWhitespaces(this.passwordText.getText()));
         } else {
             dataSource.getConnectionConfiguration().setUserPassword(null);
         }
-        if (this.savePasswordCheck != null) {
-            dataSource.setSavePassword(this.savePasswordCheck.getSelection());
+        if (CREDENTIALS_SAVE_RESTRICTED) {
+            dataSource.setSavePassword(false);
+        } else {
+            if (this.savePasswordCheck != null) {
+                dataSource.setSavePassword(this.savePasswordCheck.getSelection());
+            }
         }
     }
 
@@ -128,6 +166,10 @@ public class DatabaseNativeAuthModelConfigurator implements IObjectPropertyConfi
     @Override
     public boolean isComplete() {
         return true;
+    }
+
+    protected boolean isForceSaveCredentials() {
+        return false;
     }
 
     protected Text createPasswordText(Composite parent, String label) {
@@ -162,15 +204,19 @@ public class DatabaseNativeAuthModelConfigurator implements IObjectPropertyConfi
         panel.setLayoutData(gd);
 
         savePasswordCheck = UIUtils.createCheckbox(panel,
-            UIConnectionMessages.dialog_connection_wizard_final_checkbox_save_password_locally,
-            dataSource == null || dataSource.isSavePassword());
-        savePasswordCheck.setToolTipText(UIConnectionMessages.dialog_connection_wizard_final_checkbox_save_password_locally);
+            UIConnectionMessages.dialog_connection_wizard_final_checkbox_save_password,
+            !CREDENTIALS_SAVE_RESTRICTED &&
+                (dataSource == null || dataSource.isSavePassword() || isForceSaveCredentials()));
+        savePasswordCheck.setToolTipText(UIConnectionMessages.dialog_connection_wizard_final_checkbox_save_password);
         savePasswordCheck.addSelectionListener(new SelectionAdapter() {
             @Override
             public void widgetSelected(SelectionEvent e) {
                 passwordText.setEnabled(savePasswordCheck.getSelection());
             }
         });
+        if (isForceSaveCredentials()) {
+            this.savePasswordCheck.setEnabled(false);
+        }
 
         if (supportsPasswordView) {
             userManagementToolbar = new ToolBar(panel, SWT.HORIZONTAL);
@@ -193,13 +239,14 @@ public class DatabaseNativeAuthModelConfigurator implements IObjectPropertyConfi
     private void showPasswordText(UIServiceSecurity serviceSecurity) {
         boolean passHidden = (passwordText.getStyle() & SWT.PASSWORD) == SWT.PASSWORD;
         if (passHidden) {
-            if (!serviceSecurity.validatePassword(
-                dataSource.getProject(),
-                "Enter project password",
-                "Enter project password to unlock connection password view",
-                true))
-            {
-                return;
+            if (dataSource.getRegistry().getDataSource(dataSource.getId()) != null) {
+                if (!serviceSecurity.validatePassword(
+                    dataSource.getProject(),
+                    "Enter project password",
+                    "Enter project password to unlock connection password view",
+                    true)) {
+                    return;
+                }
             }
         }
 

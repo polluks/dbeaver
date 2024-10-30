@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package org.jkiss.dbeaver.ext.postgresql.model.impls.redshift;
 
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
+import org.jkiss.dbeaver.DBDatabaseException;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ext.postgresql.model.*;
@@ -83,7 +84,72 @@ public class PostgreServerRedshift extends PostgreServerExtensionBase implements
         "TEMP",
         "UNLOAD",
         "VACUUM",
-        "YES"
+        "YES",
+        "AES128",
+        "AES256",
+        "ALLOWOVERWRITE",
+        "BLANKSASNULL",
+        "BYTEDICT",
+        "BZIP2",
+        "CREDENTIALS",
+        "DEFLATE",
+        "DEFRAG",
+        "DELTA",
+        "DELTA32K",
+        "EMPTYASNULL",
+        "ENCRYPT",
+        "ENCRYPTION",
+        "EXPLICIT",
+        "GLOBALDICT256",
+        "GLOBALDICT64K",
+        "GZIP",
+        "LUN",
+        "LUNS",
+        "LZO",
+        "LZOP",
+        "MINUS",
+        "MOSTLY16",
+        "MOSTLY32",
+        "MOSTLY8",
+        "OFFLINE",
+        "OID",
+        "PERMISSIONS",
+        "PIVOT",
+        "RAW",
+        "READRATIO",
+        "RECOVER",
+        "REJECTLOG",
+        "RESORT",
+        "SNAPSHOT",
+        "TAG",
+        "TDES",
+        "TEXT255",
+        "TEXT32K",
+        "TOP",
+        "TRUNCATECOLUMNS",
+        "UNPIVOT",
+        "WALLET",
+        "ACCEPTANYDATE",
+        "ACCEPTINVCHARS",
+        "BLANKSASNULL",
+        "DATEFORMAT",
+        "EMPTYASNULL",
+        "EXPLICIT_IDS",
+        "FILLRECORD",
+        "IGNOREBLANKLINES",
+        "IGNOREHEADER",
+        "NULLAS",
+        "REMOVEQUOTES",
+        "ROUNDEC",
+        "TIMEFORMAT",
+        "TRIMBLANKS",
+        "TRUNCATECOLUMNS",
+        "COMPROWS",
+        "COMPUPDATE",
+        "IGNOREALLERRORS",
+        "MAXERROR",
+        "NOLOAD",
+        "STATUPDATE"        
     };
    
     public static String[] REDSHIFT_FUNCTIONS_CONDITIONAL = new String[]{
@@ -240,7 +306,7 @@ public class PostgreServerRedshift extends PostgreServerExtensionBase implements
                 }
             }
         } catch (Exception e) {
-            throw new DBException(e, table.getDataSource());
+            throw new DBDatabaseException(e, table.getDataSource());
         }
     }
 
@@ -265,16 +331,8 @@ public class PostgreServerRedshift extends PostgreServerExtensionBase implements
     }
 
     @Override
-    public PostgreTableColumn createTableColumn(DBRProgressMonitor monitor, PostgreSchema schema, PostgreTableBase table, JDBCResultSet dbResult) throws DBException {
-        if (table instanceof RedshiftTable) {
-            return new RedshiftTableColumn(monitor, (RedshiftTable)table, dbResult);
-        }
-        return super.createTableColumn(monitor, schema, table, dbResult);
-    }
-
-    @Override
     public boolean supportsStoredProcedures() {
-        return isRedshiftVersionAtLeast(1, 0, 7562);
+        return isRedshiftVersionAtLeast(1, 0, 6118);
     }
 
     @Override
@@ -327,7 +385,7 @@ public class PostgreServerRedshift extends PostgreServerExtensionBase implements
 
         @NotNull
         @Override
-        public JDBCStatement prepareLookupStatement(@NotNull JDBCSession session, @NotNull PostgreDatabase database, PostgreSchema object, String objectName) throws SQLException {
+        public JDBCStatement prepareLookupStatement(@NotNull JDBCSession session, @NotNull PostgreDatabase database, @Nullable PostgreSchema object, @Nullable String objectName) throws SQLException {
             // 1. Read all external schemas info
             esSchemaMap.clear();
             try (JDBCPreparedStatement dbStat = session.prepareStatement(
@@ -411,6 +469,16 @@ public class PostgreServerRedshift extends PostgreServerExtensionBase implements
     }
 
     @Override
+    public boolean supportsAcl() {
+        return false;
+    }
+
+    @Override
+    public boolean supportsCustomDataTypes() {
+        return false;
+    }
+
+    @Override
     public boolean supportsAlterTableColumnWithUSING() {
         return false;
     }
@@ -418,5 +486,10 @@ public class PostgreServerRedshift extends PostgreServerExtensionBase implements
     @Override
     public boolean supportsAlterTableForViewRename() {
         return true;
+    }
+
+    @Override
+    public boolean supportsNativeClient() {
+        return false;
     }
 }

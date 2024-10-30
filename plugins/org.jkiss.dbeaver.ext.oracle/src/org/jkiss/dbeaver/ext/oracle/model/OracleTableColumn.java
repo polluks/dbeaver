@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@ package org.jkiss.dbeaver.ext.oracle.model;
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
-import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.*;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCUtils;
 import org.jkiss.dbeaver.model.impl.jdbc.struct.JDBCTableColumn;
@@ -35,7 +34,6 @@ import org.jkiss.dbeaver.model.struct.rdb.DBSTableColumn;
 import java.sql.ResultSet;
 import java.sql.Types;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 /**
@@ -44,7 +42,6 @@ import java.util.List;
 public class OracleTableColumn extends JDBCTableColumn<OracleTableBase> implements
     DBSTableColumn, DBSTypedObjectEx, DBSTypedObjectExt3, DBPHiddenObject, DBPNamedObject2, DBSTypedObjectExt4<OracleDataType>, DBPObjectWithLazyDescription
 {
-    private static final Log log = Log.getLog(OracleTableColumn.class);
 
     private OracleDataType type;
     private OracleDataTypeModifier typeMod;
@@ -104,6 +101,7 @@ public class OracleTableColumn extends JDBCTableColumn<OracleTableBase> implemen
         return getTable().getDataSource();
     }
 
+    @NotNull
     @Property(viewable = true, editable = true, updatable = true, order = 20, listProvider = ColumnTypeNameListProvider.class)
     @Override
     public String getFullTypeName() {
@@ -125,7 +123,7 @@ public class OracleTableColumn extends JDBCTableColumn<OracleTableBase> implemen
     }
 
     @Override
-    public void setDataType(OracleDataType type)
+    public void setDataType(@NotNull OracleDataType type)
     {
         this.type = type;
         this.typeName = type == null ? "" : type.getFullyQualifiedName(DBPEvaluationContext.DDL);
@@ -138,6 +136,7 @@ public class OracleTableColumn extends JDBCTableColumn<OracleTableBase> implemen
     }
 
     //@Property(name = "Data Type", viewable = true, editable = true, updatable = true, order = 20, listProvider = ColumnTypeNameListProvider.class)
+    @NotNull
     @Override
     public String getTypeName()
     {
@@ -158,6 +157,7 @@ public class OracleTableColumn extends JDBCTableColumn<OracleTableBase> implemen
         return super.getPrecision();
     }
 
+    @Nullable
     @Override
     @Property(viewable = false, editableExpr = "!object.table.view", updatableExpr = "!object.table.view", order = 42)
     public Integer getScale()
@@ -247,8 +247,8 @@ public class OracleTableColumn extends JDBCTableColumn<OracleTableBase> implemen
             if (!dataTypes.contains(column.getDataType())) {
                 dataTypes.add(column.getDataType());
             }
-            Collections.sort(dataTypes, DBUtils.nameComparator());
-            return dataTypes.toArray(new DBSDataType[dataTypes.size()]);
+            dataTypes.sort(DBUtils.nameComparator());
+            return dataTypes.toArray(new DBSDataType[0]);
         }
     }
 

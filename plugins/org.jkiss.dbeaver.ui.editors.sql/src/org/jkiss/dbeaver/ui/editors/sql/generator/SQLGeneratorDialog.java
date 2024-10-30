@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,8 +18,11 @@ package org.jkiss.dbeaver.ui.editors.sql.generator;
 
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Status;
+import org.eclipse.core.runtime.jobs.IJobChangeEvent;
 import org.eclipse.core.runtime.jobs.Job;
+import org.eclipse.core.runtime.jobs.JobChangeAdapter;
 import org.eclipse.jface.dialogs.IDialogConstants;
+import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
@@ -35,15 +38,16 @@ import org.jkiss.dbeaver.model.DBPScriptObject;
 import org.jkiss.dbeaver.model.DBPScriptObjectExt2;
 import org.jkiss.dbeaver.model.exec.DBCExecutionContext;
 import org.jkiss.dbeaver.model.exec.DBExecUtils;
+import org.jkiss.dbeaver.model.navigator.DBNDatabaseNode;
+import org.jkiss.dbeaver.model.navigator.DBNUtils;
 import org.jkiss.dbeaver.model.runtime.AbstractJob;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.sql.generator.SQLGenerator;
+import org.jkiss.dbeaver.model.struct.DBSObject;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.editors.sql.dialogs.ViewSQLDialog;
 import org.jkiss.dbeaver.ui.editors.sql.internal.SQLEditorMessages;
 import org.jkiss.utils.CommonUtils;
-
-import java.lang.reflect.InvocationTargetException;
 
 class SQLGeneratorDialog extends ViewSQLDialog {
     private static final Log log = Log.getLog(SQLGeneratorDialog.class);
@@ -59,11 +63,17 @@ class SQLGeneratorDialog extends ViewSQLDialog {
 
     SQLGeneratorDialog(IWorkbenchPartSite parentSite, DBCExecutionContext context, SQLGenerator<?> sqlGenerator) {
         super(parentSite, () -> context,
-            "Generated SQL (" + context.getDataSource().getContainer().getName() + ")",
+            NLS.bind(SQLEditorMessages.sql_generator_dialog_title, context.getDataSource().getContainer().getName()),
             null, "");
         this.sqlGenerator = sqlGenerator;
     }
 
+    @Override
+    protected void createButtonsForButtonBar(Composite parent) {
+        createRefreshButton(parent);
+        super.createButtonsForButtonBar(parent);
+    }
+    
     @Override
     protected Composite createDialogArea(Composite parent) {
         sqlGenerator.setFullyQualifiedNames(getDialogBoundsSettings().get(PROP_USE_FQ_NAMES) == null ||
@@ -275,6 +285,45 @@ class SQLGeneratorDialog extends ViewSQLDialog {
             });
         }
         return composite;
+    }
+
+    @Override
+    protected void buttonPressed(int buttonId) {
+        if (buttonId == IDialogConstants.RETRY_ID) {
+            final AbstractJob job = new AbstractJob("Refresh metadata for SQL Generator") { //$NON-NLS-1$
+                @Override
+                protected IStatus run(DBRProgressMonitor monitor) {
+                    for (Object object : sqlGenerator.getObjects()) {
+                        if (object instanceof DBSObject) {
+                            DBSObject dbsObject = (DBSObject) object;
+                            try {
+                                DBNDatabaseNode dbnNode = DBNUtils.getNodeByObject(dbsObject);
+                                dbnNode.refreshNode(monitor, object);
+                                if (monitor.isCanceled()) {
+                                    break;
+                                }
+                                monitor.worked(1);
+                            } catch (Exception e) {
+                                log.error("Error refreshing object '" + dbsObject.getName() + "'", e); //$NON-NLS-1$ //$NON-NLS-2$
+                            }
+                        }
+                    }
+                    monitor.done();
+                    return Status.OK_STATUS;
+                }
+            };
+            job.addJobChangeListener(new JobChangeAdapter() {
+                public void done(IJobChangeEvent event) {
+                    UIUtils.syncExec(() -> {
+                        if (event.getResult() == Status.OK_STATUS) {
+                            startGenerateJob();
+                        }
+                    });
+                }
+            });
+            job.schedule();
+        }
+        super.buttonPressed(buttonId);
     }
 
     private void startGenerateJob() {

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
  */
 package org.jkiss.dbeaver.ext.oracle.model;
 
+import org.jkiss.dbeaver.DBDatabaseException;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ext.oracle.edit.OracleTableColumnManager;
@@ -68,16 +69,13 @@ public class OracleUtils {
         OracleDDLFormat ddlFormat,
         Map<String, Object> options) throws DBException
     {
+        if (monitor.isCanceled()) {
+            return "";
+        }
         String objectFullName = DBUtils.getObjectFullName(object, DBPEvaluationContext.DDL);
 
         OracleSchema schema = object.getContainer();
-/*
-        if (object instanceof OracleSchemaObject) {
-            schema = ((OracleSchemaObject)object).getSchema();
-        } else if (object instanceof OracleTableBase) {
-            schema = ((OracleTableBase)object).getContainer();
-        }
-*/
+
         final OracleDataSource dataSource = object.getDataSource();
 
         monitor.subTask("Load sources for " + objectType + " '" + objectFullName + "'...");
@@ -94,9 +92,6 @@ public class OracleUtils {
             if (dataSource.isAtLeastV9()) {
                 try {
                     // Do not add semicolon in the end
-//                    JDBCUtils.executeProcedure(
-//                        session,
-//                        "begin DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM,'SQLTERMINATOR',true); end;");
                     JDBCUtils.executeProcedure(
                         session,
                         "begin\n" +
@@ -111,6 +106,10 @@ public class OracleUtils {
                 } catch (SQLException e) {
                     log.error("Can't apply DDL transform parameters", e);
                 }
+            }
+
+            if (monitor.isCanceled()) {
+                return "";
             }
 
             String ddl;
@@ -145,6 +144,7 @@ public class OracleUtils {
             }
             ddl = ddl.trim();
 
+            if (monitor.isCanceled()) return ddl;
 
             if (!CommonUtils.isEmpty(object.getConstraints(monitor)) && 
                 !CommonUtils.getOption(options, DBPScriptObject.OPTION_DDL_SKIP_FOREIGN_KEYS) &&
@@ -152,14 +152,27 @@ public class OracleUtils {
                 ddl += invokeDBMSMetadataGetDependentDDL(session, schema, object, DBMSMetaDependentObjectType.REF_CONSTRAINT);
             }
 
+            if (monitor.isCanceled()) return ddl;
+
             if (!CommonUtils.isEmpty(object.getTriggers(monitor))) {
                 ddl += invokeDBMSMetadataGetDependentDDL(session, schema, object, DBMSMetaDependentObjectType.TRIGGER);
             }
+
+            if (monitor.isCanceled()) return ddl;
 
             if (!CommonUtils.isEmpty(object.getIndexes(monitor))) {
                 // Add index info to main DDL. For some reasons, GET_DDL returns columns, constraints, but not indexes
                 ddl += invokeDBMSMetadataGetDependentDDL(session, schema, object, DBMSMetaDependentObjectType.INDEX);
             }
+
+            if (monitor.isCanceled()) return ddl;
+
+            if (ddlFormat == OracleDDLFormat.FULL) {
+                // Add grants info to main DDL
+                ddl += invokeDBMSMetadataGetDependentDDL(session, schema, object, DBMSMetaDependentObjectType.OBJECT_GRANT);
+            }
+
+            if (monitor.isCanceled()) return ddl;
 
             if (ddlFormat != OracleDDLFormat.COMPACT) {
                 // Add object and objects columns info to main DDL
@@ -171,7 +184,7 @@ public class OracleUtils {
                 log.error("Error generating Oracle DDL. Generate default.", e);
                 return DBStructUtils.generateTableDDL(monitor, object, options, true);
             } else {
-                throw new DBException(e, dataSource);
+                throw new DBDatabaseException(e, dataSource);
             }
         }
     }
@@ -180,7 +193,8 @@ public class OracleUtils {
         INDEX,
         CONSTRAINT,
         REF_CONSTRAINT,
-        TRIGGER
+        TRIGGER,
+        OBJECT_GRANT
     }
 
     private static String invokeDBMSMetadataGetDependentDDL(JDBCSession session, OracleSchema schema, OracleTableBase object, DBMSMetaDependentObjectType dependentObjectType) {
@@ -198,7 +212,8 @@ public class OracleUtils {
             }
         } catch (Exception e) {
             // No dependent index DDL or something went wrong
-            log.debug("Error reading dependent index DDL", e);
+            log.debug("Error reading dependent DDL '" + dependentObjectType +
+                "' for '" + object.getFullyQualifiedName(DBPEvaluationContext.DDL) + "': " + e.getMessage());
         }
         return ddl;
     }
@@ -471,13 +486,16 @@ public class OracleUtils {
         if (body) {
             sourceType += " BODY";
         }
-        Pattern srcPattern = Pattern.compile("^(" + sourceType + ")\\s+(\"{0,1}\\w+\"{0,1})", Pattern.CASE_INSENSITIVE);
+        Pattern srcPattern = Pattern.compile("^(" + sourceType + ")\\s+(\"?\\w+\"?)(?:\\.(\"?\\w+\"?))?", Pattern.CASE_INSENSITIVE);
         Matcher matcher = srcPattern.matcher(source);
         if (matcher.find()) {
-            return
-                "CREATE OR REPLACE " + matcher.group(1) + " " +
-                DBUtils.getQuotedIdentifier(object.getSchema()) + "." + matcher.group(2) +
-                source.substring(matcher.end());
+            if (matcher.group(3) == null) {
+                return "CREATE OR REPLACE " + matcher.group(1) + " " +
+                    DBUtils.getQuotedIdentifier(object.getSchema()) + "." + matcher.group(2) +
+                    source.substring(matcher.end());
+            } else {
+                return "CREATE OR REPLACE " + source;
+            }
         }
         return source;
     }

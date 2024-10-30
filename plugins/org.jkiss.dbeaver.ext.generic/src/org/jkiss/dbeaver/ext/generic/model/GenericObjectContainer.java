@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
+import org.jkiss.dbeaver.ext.generic.GenericMessages;
 import org.jkiss.dbeaver.model.DBPEvaluationContext;
 import org.jkiss.dbeaver.model.DBPRefreshableObject;
 import org.jkiss.dbeaver.model.DBUtils;
@@ -154,14 +155,12 @@ public abstract class GenericObjectContainer implements GenericStructContainer, 
     }
 
     @Override
-    public List<? extends GenericTableBase> getTables(DBRProgressMonitor monitor)
-        throws DBException {
+    public List<? extends GenericTableBase> getTables(@NotNull DBRProgressMonitor monitor) throws DBException {
         return tableCache.getAllObjects(monitor, this);
     }
 
     @Override
-    public GenericTableBase getTable(DBRProgressMonitor monitor, String name)
-        throws DBException {
+    public GenericTableBase getTable(DBRProgressMonitor monitor, String name) throws DBException {
         return tableCache.getObject(monitor, this, name);
     }
 
@@ -189,7 +188,7 @@ public abstract class GenericObjectContainer implements GenericStructContainer, 
                 try {
                     newIndexCache = indexCache.getObjects(monitor, this, null);
                 } catch (DBException e) {
-                    log.debug("Error reading global indexes. Get indexes from tables", e);
+                    log.debug("Error reading catalog/schema indexes. Get indexes from tables", e);
                     newIndexCache = new ArrayList<>();
                 }
 
@@ -365,7 +364,7 @@ public abstract class GenericObjectContainer implements GenericStructContainer, 
 
     @Override
     public Collection<? extends GenericSequence> getSequences(DBRProgressMonitor monitor) throws DBException {
-        return sequenceCache.getAllObjects(monitor, this);
+        return monitor == null ? sequenceCache.getCachedObjects() : sequenceCache.getAllObjects(monitor, this);
     }
 
     public GenericSequence getSequence(DBRProgressMonitor monitor, String name) throws DBException {
@@ -373,7 +372,7 @@ public abstract class GenericObjectContainer implements GenericStructContainer, 
     }
 
     @Override
-    public Collection<? extends GenericSynonym> getSynonyms(DBRProgressMonitor monitor) throws DBException {
+    public Collection<? extends GenericSynonym> getSynonyms(@NotNull DBRProgressMonitor monitor) throws DBException {
         return synonymCache.getAllObjects(monitor, this);
     }
 
@@ -382,13 +381,20 @@ public abstract class GenericObjectContainer implements GenericStructContainer, 
     }
 
     @Override
-    public Collection<? extends GenericTrigger> getTriggers(DBRProgressMonitor monitor) throws DBException {
+    public Collection<? extends GenericTrigger> getTriggers(@NotNull DBRProgressMonitor monitor) throws DBException {
         return getDataSource().getMetaModel().supportsDatabaseTriggers(getDataSource()) ? containerTriggerCache.getAllObjects(monitor, this) : Collections.emptyList();
     }
 
     @Override
     public Collection<? extends GenericTrigger> getTableTriggers(DBRProgressMonitor monitor) throws DBException {
         return getDataSource().getMetaModel().supportsTriggers(getDataSource()) ? tableTriggerCache.getAllObjects(monitor, this) : Collections.emptyList();
+    }
+
+    @Association
+    @Nullable
+    public GenericTrigger getTableTrigger(@NotNull DBRProgressMonitor monitor, String triggerName) throws DBException {
+        return getDataSource().getMetaModel().supportsTriggers(getDataSource()) ?
+            tableTriggerCache.getObject(monitor, this, triggerName) : null;
     }
 
     @Association
@@ -437,7 +443,7 @@ public abstract class GenericObjectContainer implements GenericStructContainer, 
     }
 
     public String toString() {
-        return getName() == null ? "<NONE>" : getName();
+        return getName() == null ? GenericMessages.generic_object_container_none : getName();
     }
 
     private synchronized void loadProcedures(DBRProgressMonitor monitor)

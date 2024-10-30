@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -146,7 +146,16 @@ public class PostgreTableColumnManager extends SQLTableColumnManager<PostgreTabl
 
     protected ColumnModifier[] getSupportedModifiers(PostgreTableColumn column, Map<String, Object> options)
     {
-        ColumnModifier[] modifiers = {PostgreDataTypeModifier, NullNotNullModifier, PostgreDefaultModifier, PostgreIdentityModifier, PostgreCollateModifier, PostgreGeneratedModifier};
+        ColumnModifier[] modifiers = {
+            PostgreDataTypeModifier,
+            PostgreDefaultModifier,
+            PostgreIdentityModifier,
+            PostgreCollateModifier,
+            PostgreGeneratedModifier
+        };
+        if (column.getDataSource().getServerType().supportsColumnsRequiring()) {
+            modifiers = ArrayUtils.add(ColumnModifier.class, modifiers, NullNotNullModifier);
+        }
         if (CommonUtils.getOption(options, DBPScriptObject.OPTION_INCLUDE_COMMENTS)) {
             modifiers = ArrayUtils.add(ColumnModifier.class, modifiers, PostgreCommentModifier);
         }
@@ -154,7 +163,7 @@ public class PostgreTableColumnManager extends SQLTableColumnManager<PostgreTabl
     }
 
     @Override
-    public StringBuilder getNestedDeclaration(DBRProgressMonitor monitor, PostgreTableBase owner, DBECommandAbstract<PostgreTableColumn> command, Map<String, Object> options)
+    public StringBuilder getNestedDeclaration(@NotNull DBRProgressMonitor monitor, @NotNull PostgreTableBase owner, @NotNull DBECommandAbstract<PostgreTableColumn> command, @NotNull Map<String, Object> options)
     {
         StringBuilder decl = super.getNestedDeclaration(monitor, owner, command, options);
         final PostgreAttribute column = command.getObject();
@@ -162,7 +171,7 @@ public class PostgreTableColumnManager extends SQLTableColumnManager<PostgreTabl
     }
 
     @Override
-    protected PostgreTableColumn createDatabaseObject(final DBRProgressMonitor monitor, final DBECommandContext context, final Object container, Object copyFrom, Map<String, Object> options) throws DBException {
+    protected PostgreTableColumn createDatabaseObject(@NotNull final DBRProgressMonitor monitor, @NotNull final DBECommandContext context, final Object container, Object copyFrom, @NotNull Map<String, Object> options) throws DBException {
         PostgreTableBase table = (PostgreTableBase) container;
 
         final PostgreTableColumn column;
@@ -179,7 +188,7 @@ public class PostgreTableColumnManager extends SQLTableColumnManager<PostgreTabl
     }
 
     @Override
-    protected void addObjectCreateActions(DBRProgressMonitor monitor, DBCExecutionContext executionContext, List<DBEPersistAction> actions, ObjectCreateCommand command, Map<String, Object> options) {
+    protected void addObjectCreateActions(@NotNull DBRProgressMonitor monitor, @NotNull DBCExecutionContext executionContext, @NotNull List<DBEPersistAction> actions, @NotNull ObjectCreateCommand command, @NotNull Map<String, Object> options) {
         options.put(OPTION_NON_STRUCT_CREATE_ACTION, true);
         PostgreTableBase table = command.getObject().getParentObject();
         String sql = "ALTER " + table.getTableTypeName() + " " + DBUtils.getObjectFullName(table, DBPEvaluationContext.DDL) + " ADD " +
@@ -191,7 +200,7 @@ public class PostgreTableColumnManager extends SQLTableColumnManager<PostgreTabl
     }
 
     @Override
-    protected void addObjectModifyActions(DBRProgressMonitor monitor, DBCExecutionContext executionContext, List<DBEPersistAction> actionList, ObjectChangeCommand command, Map<String, Object> options)
+    protected void addObjectModifyActions(@NotNull DBRProgressMonitor monitor, @NotNull DBCExecutionContext executionContext, @NotNull List<DBEPersistAction> actionList, @NotNull ObjectChangeCommand command, @NotNull Map<String, Object> options)
     {
         final PostgreAttribute column = command.getObject();
         boolean isAtomic = column.getDataSource().getServerType().isAlterTableAtomic();
@@ -207,8 +216,7 @@ public class PostgreTableColumnManager extends SQLTableColumnManager<PostgreTabl
 //        ALTER [ COLUMN ] column SET STORAGE { PLAIN | EXTERNAL | EXTENDED | MAIN }
         String prefix = "ALTER " + table.getTableTypeName() + " " + DBUtils.getObjectFullName(table, DBPEvaluationContext.DDL) +
             " ALTER COLUMN " + DBUtils.getQuotedIdentifier(column) + " ";
-        final PostgreDataType type = column.getDataType();
-        final String fullTypeName = type != null ? DBUtils.getObjectFullName(type, DBPEvaluationContext.DDL) : column.getFullTypeName();
+        final String fullTypeName = column.getFullTypeName();
         String typeClause = fullTypeName;
         if (column.getDataSource().getServerType().supportsAlterTableColumnWithUSING()) {
             typeClause += " USING ";
@@ -251,7 +259,7 @@ public class PostgreTableColumnManager extends SQLTableColumnManager<PostgreTabl
     }
 
     @Override
-    protected void addObjectRenameActions(DBRProgressMonitor monitor, DBCExecutionContext executionContext, List<DBEPersistAction> actions, ObjectRenameCommand command, Map<String, Object> options)
+    protected void addObjectRenameActions(@NotNull DBRProgressMonitor monitor, @NotNull DBCExecutionContext executionContext, @NotNull List<DBEPersistAction> actions, @NotNull ObjectRenameCommand command, @NotNull Map<String, Object> options)
     {
         final PostgreAttribute column = command.getObject();
         PostgreTableBase table = (PostgreTableBase) column.getTable();
@@ -272,11 +280,11 @@ public class PostgreTableColumnManager extends SQLTableColumnManager<PostgreTabl
 
     @Override
     protected void addObjectDeleteActions(
-        DBRProgressMonitor monitor,
-        DBCExecutionContext executionContext,
-        List<DBEPersistAction> actions,
-        ObjectDeleteCommand command,
-        Map<String, Object> options
+        @NotNull DBRProgressMonitor monitor,
+        @NotNull DBCExecutionContext executionContext,
+        @NotNull List<DBEPersistAction> actions,
+        @NotNull ObjectDeleteCommand command,
+        @NotNull Map<String, Object> options
     ) {
         PostgreTableColumn column = command.getObject();
         PostgreTableBase table = column.getParentObject();

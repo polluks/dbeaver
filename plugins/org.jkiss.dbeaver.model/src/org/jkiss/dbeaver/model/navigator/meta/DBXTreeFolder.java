@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package org.jkiss.dbeaver.model.navigator.meta;
 import org.eclipse.core.runtime.IConfigurationElement;
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
+import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.DBPDataSource;
 import org.jkiss.dbeaver.model.DBPDataSourceContainer;
 import org.jkiss.dbeaver.model.DBPImage;
@@ -33,17 +34,22 @@ import org.jkiss.utils.CommonUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * DBXTreeFolder
  */
 public class DBXTreeFolder extends DBXTreeNode {
+    private static final Log log = Log.getLog(DBXTreeFolder.class);
     private String type;
     private String label;
     private String description;
     private String optionalItem;
 
     private boolean isOptional;
+    private boolean isAdminFolder;
+
+    private IConfigurationElement injectedConfig;
 
     private List<String> contributedCategories = null;
     private ItemType[] itemTypes = null;
@@ -79,6 +85,7 @@ public class DBXTreeFolder extends DBXTreeNode {
         this.description = config.getAttribute("description");
         this.optionalItem = config.getAttribute("optionalItem");
         this.isOptional = isOptional;
+        this.isAdminFolder = CommonUtils.getBoolean(config.getAttribute("adminFolder"), false);
 
         IConfigurationElement[] itemTypesConfig = config.getChildren("itemType");
         if (!ArrayUtils.isEmpty(itemTypesConfig)) {
@@ -123,9 +130,32 @@ public class DBXTreeFolder extends DBXTreeNode {
         this.type = type;
     }
 
+    public void setLabel(String label) {
+        this.label = label;
+    }
+
     public String getIdOrType() {
         String id = getId();
         return !CommonUtils.isEmpty(id) ? id : type;
+    }
+
+    public String getHumanReadableId() {
+        String id = getId();
+        if (CommonUtils.isNotEmpty(id)) {
+            return id;
+        }
+        String childId = getChildren()
+            .stream()
+            .filter(child -> child instanceof DBXTreeItem)
+            .map(child -> (DBXTreeItem) child)
+            .map(DBXTreeItem::getPath)
+            .filter(CommonUtils::isNotEmpty)
+            .collect(Collectors.joining("_"));
+        if (CommonUtils.isNotEmpty(childId)) {
+            return childId;
+        }
+        log.warn("Type will be used as id: " + type);
+        return type;
     }
 
     public String getOptionalItem() {
@@ -136,12 +166,20 @@ public class DBXTreeFolder extends DBXTreeNode {
         return isOptional;
     }
 
+    public boolean isAdminFolder() {
+        return isAdminFolder;
+    }
+
     @Override
     public String getNodeTypeLabel(@Nullable DBPDataSource dataSource, @Nullable String locale) {
         if (locale == null) {
             return label;
         } else {
-            return getConfig().getAttribute("label", locale);
+            String injectedLabel = null;
+            if (injectedConfig != null) {
+                injectedLabel = injectedConfig.getAttribute("changeFolderLabel", locale);
+            }
+            return CommonUtils.isNotEmpty(injectedLabel) ? injectedLabel : getConfig().getAttribute("label", locale);
         }
     }
 
@@ -240,5 +278,9 @@ public class DBXTreeFolder extends DBXTreeNode {
 
     public ItemType[] getItemTypes() {
         return itemTypes;
+    }
+
+    public void setInjectedConfig(IConfigurationElement injectedConfig) {
+        this.injectedConfig = injectedConfig;
     }
 }

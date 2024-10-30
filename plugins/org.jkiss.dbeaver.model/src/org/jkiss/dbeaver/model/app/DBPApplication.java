@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,10 +17,11 @@
 
 package org.jkiss.dbeaver.model.app;
 
-import org.eclipse.core.resources.IWorkspace;
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
+import org.jkiss.dbeaver.runtime.DBWorkbench;
+import org.jkiss.dbeaver.runtime.ui.DBPPlatformUI;
 
 import java.nio.file.Path;
 
@@ -31,9 +32,6 @@ import java.nio.file.Path;
 public interface DBPApplication {
 
     default void beforeWorkspaceInitialization() {}
-
-    @NotNull
-    DBPWorkspace createWorkspace(@NotNull DBPPlatform platform, @NotNull IWorkspace eclipseWorkspace);
 
     boolean isStandalone();
 
@@ -64,6 +62,8 @@ public interface DBPApplication {
      * Distributed application requires remote server.
      */
     boolean isDistributed();
+
+    boolean isDetachedProcess();
 
     /**
      * Application information details.
@@ -100,5 +100,59 @@ public interface DBPApplication {
      */
     long getApplicationStartTime();
 
+    /**
+     * Platform implementation class.
+     * Platform instance can be obtained thru {@link DBWorkbench#getPlatform()}.
+     * Platform is initialized in a lazy way during application startup.
+     */
+    @NotNull
+    Class<? extends DBPPlatform> getPlatformClass();
+
+    /**
+     * Platform UI implementation class.
+     * If not specified then base console UI is used.
+     */
+    @Nullable
+    default Class<? extends DBPPlatformUI> getPlatformUIClass() {
+        return null;
+    }
+
+    /**
+     * enables the use of environment variables while the application is in use
+     * for example, in a script template
+     */
+    boolean isEnvironmentVariablesAccessible();
+
+    /**
+     * The boolean flag in order identify community application
+     *
+     * @return - true if community application
+     */
+    default boolean isCommunity() {
+        return false;
+    }
+
+    /**
+     * Whether the user is allowed to switch workspaces or the default workspace is enforced
+     */
+    default boolean isWorkspaceSwitchingAllowed() {
+        return true;
+    }
+
+    /**
+     * Whether the statistics collection is enforced or can be disabled by the user
+     */
+    default boolean isStatisticsCollectionRequired() {
+        return false;
+    }
+
+
+    /**
+     * Returns last user activity time
+     * @return -1 by default
+     */
+    default long getLastUserActivityTime() {
+        return -1;
+    }
 
 }

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,6 +34,7 @@ public @interface Property
     String DEFAULT_LOCAL_STRING = "#"; //NON-NLS-1
     String RESOURCE_TYPE_NAME = "name"; //NON-NLS-1
     String RESOURCE_TYPE_DESCRIPTION = "description"; //NON-NLS-1
+    String RESOURCE_TYPE_HINT = "hint"; //NON-NLS-1
 
     /**
      * Property unique ID (unique within class)
@@ -67,6 +68,12 @@ public @interface Property
      * @return description
      */
     String description() default DEFAULT_LOCAL_STRING;
+
+    /**
+     * Property hint (optional)
+     * @return hint
+     */
+    String hint() default DEFAULT_LOCAL_STRING;
 
     /**
      * Editable flag. If set to true then property may be edited for new objects.
@@ -112,7 +119,7 @@ public @interface Property
 
     /**
      * It is possible that value of this property will be an object which can be linked.
-     * Used for caheable properties which may return java.lang.Object ot DBSObject.
+     * Used for cacheable properties which may return java.lang.Object ot DBSObject.
      */
     boolean linkPossible() default false;
 
@@ -137,6 +144,8 @@ public @interface Property
      * Does not show the field in the connection window of CB when this property is true.
      */
     boolean nonSecuredProperty() default false;
+
+    boolean required() default false;
 
     int order() default Integer.MAX_VALUE;
 

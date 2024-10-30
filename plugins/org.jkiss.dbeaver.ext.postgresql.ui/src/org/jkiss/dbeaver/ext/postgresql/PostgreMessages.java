@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  * Copyright (C) 2017 Liu, Yuanyuan (liuyuanyuan@highgo.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -154,6 +154,7 @@ public class PostgreMessages extends NLS {
     public static String dialog_setting_connection_show_not_available_for_conn_tip;
     public static String dialog_setting_connection_database_statistics;
     public static String dialog_setting_connection_database_statistics_tip;
+    public static String dialog_setting_connection_advanced_group_label;
     public static String dialog_setting_connection_read_all_data_types;
     public static String dialog_setting_connection_read_all_data_types_tip;
     public static String dialog_setting_connection_read_keys_with_columns;
@@ -183,6 +184,7 @@ public class PostgreMessages extends NLS {
     public static String edit_command_grant_privilege_action_grant_privilege;
     public static String edit_command_grant_privilege_action_revoke_privilege;
     public static String edit_constraint_page_add_constraint;
+    public static String role_privileges_editor_default_privileges_label;
 
     public static String dialog_create_push_button_grant_all;
     public static String dialog_create_push_button_revoke_all;
@@ -244,6 +246,8 @@ public class PostgreMessages extends NLS {
 
     public static String dialog_connection_pgpass_hostname_override;
     public static String dialog_connection_pgpass_hostname_override_tip;
+
+    public static String wizard_info_label_incompatible_tool;
 
     static {
         // initialize resource bundle

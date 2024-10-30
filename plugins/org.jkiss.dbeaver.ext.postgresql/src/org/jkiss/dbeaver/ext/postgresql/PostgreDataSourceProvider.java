@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,8 +16,6 @@
  */
 package org.jkiss.dbeaver.ext.postgresql;
 
-import com.sun.jna.platform.win32.Advapi32Util;
-import com.sun.jna.platform.win32.WinReg;
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
@@ -32,6 +30,7 @@ import org.jkiss.dbeaver.model.connection.*;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCDataSourceProvider;
 import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
+import org.jkiss.dbeaver.registry.LocalSystemRegistry;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.utils.PrefUtils;
 import org.jkiss.dbeaver.utils.RuntimeUtils;
@@ -45,6 +44,8 @@ import java.util.*;
 
 public class PostgreDataSourceProvider extends JDBCDataSourceProvider implements DBPNativeClientLocationManager {
     private static Map<String, String> connectionsProps;
+    @Nullable
+    private static Collection<DBPNativeClientLocation> localClients;
 
     static {
         connectionsProps = new HashMap<>();
@@ -70,7 +71,7 @@ public class PostgreDataSourceProvider extends JDBCDataSourceProvider implements
 
     @Override
     public String getConnectionURL(DBPDriver driver, DBPConnectionConfiguration connectionInfo) {
-        DBAAuthModel authModel = connectionInfo.getAuthModel();
+        DBAAuthModel<?> authModel = connectionInfo.getAuthModel();
         if (authModel instanceof DBPDataSourceURLProvider) {
             String connectionURL = ((DBPDataSourceURLProvider) authModel).getConnectionURL(driver, connectionInfo);
             if (CommonUtils.isNotEmpty(connectionURL)) {
@@ -128,18 +129,14 @@ public class PostgreDataSourceProvider extends JDBCDataSourceProvider implements
     ////////////////////////////////////////////////////////////////
     // Local client
 
-    private static Map<String, PostgreServerHome> localServers = null;
-
     @Override
     public List<DBPNativeClientLocation> findLocalClientLocations() {
-        findLocalClients();
-        return new ArrayList<>(localServers.values());
+        return new ArrayList<>(findLocalClients());
     }
 
     @Override
     public DBPNativeClientLocation getDefaultLocalClientLocation() {
-        findLocalClients();
-        return localServers.isEmpty() ? null : localServers.values().iterator().next();
+        return CommonUtils.getFirstOrNull(findLocalClientLocations());
     }
 
     @Override
@@ -155,25 +152,26 @@ public class PostgreDataSourceProvider extends JDBCDataSourceProvider implements
         return getFullServerVersion(location.getPath());
     }
 
-    public synchronized static void findLocalClients() {
-        if (localServers != null) {
-            return;
+    private static synchronized Collection<DBPNativeClientLocation> findLocalClients() {
+        if (localClients != null) {
+            return localClients;
         }
-        localServers = new LinkedHashMap<>();
 
         // find homes in Windows registry
         if (RuntimeUtils.isWindows()) {
+            localClients = new HashSet<>();
             try {
-                if (Advapi32Util.registryKeyExists(WinReg.HKEY_LOCAL_MACHINE, PostgreConstants.PG_INSTALL_REG_KEY)) {
-                    String[] homeKeys = Advapi32Util.registryGetKeys(WinReg.HKEY_LOCAL_MACHINE, PostgreConstants.PG_INSTALL_REG_KEY);
+                LocalSystemRegistry.Registry registry = LocalSystemRegistry.getInstance();
+                if (registry.registryKeyExists("HKEY_LOCAL_MACHINE", PostgreConstants.PG_INSTALL_REG_KEY)) {
+                    String[] homeKeys = registry.registryGetKeys("HKEY_LOCAL_MACHINE", PostgreConstants.PG_INSTALL_REG_KEY);
                     if (homeKeys != null) {
                         for (String homeKey : homeKeys) {
-                            Map<String, Object> valuesMap = Advapi32Util.registryGetValues(WinReg.HKEY_LOCAL_MACHINE, PostgreConstants.PG_INSTALL_REG_KEY + "\\" + homeKey);
+                            Map<String, Object> valuesMap = registry.registryGetValues("HKEY_LOCAL_MACHINE", PostgreConstants.PG_INSTALL_REG_KEY + "\\" + homeKey);
                             for (String key : valuesMap.keySet()) {
                                 if (PostgreConstants.PG_INSTALL_PROP_BASE_DIRECTORY.equalsIgnoreCase(key)) {
                                     String baseDir = CommonUtils.removeTrailingSlash(CommonUtils.toString(valuesMap.get(PostgreConstants.PG_INSTALL_PROP_BASE_DIRECTORY)));
                                     String branding = CommonUtils.toString(valuesMap.get(PostgreConstants.PG_INSTALL_PROP_BRANDING));
-                                    localServers.put(homeKey, new PostgreServerHome(homeKey, baseDir, branding));
+                                    localClients.add(new PostgreServerHome(homeKey, baseDir, branding));
                                     break;
                                 }
                             }
@@ -183,60 +181,18 @@ public class PostgreDataSourceProvider extends JDBCDataSourceProvider implements
             } catch (Throwable e) {
                 log.warn("Error reading Windows registry", e);
             }
-        } else if (RuntimeUtils.isMacOS()) {
-            Collection<File> postgresDirs = new ArrayList<>();
-            Collections.addAll(
-                postgresDirs,
-                NativeClientLocationUtils.getSubdirectories(NativeClientLocationUtils.getSubdirectoriesWithNamesStartingWith("postgresql", new File(NativeClientLocationUtils.HOMEBREW_FORMULAE_LOCATION)))
-            );
-            Collections.addAll(
-                postgresDirs,
-                NativeClientLocationUtils.getSubdirectories(new File("/Library/PostgreSQL/")) //standard location for EDB installer
-            );
-            Collections.addAll(
-                postgresDirs,
-                NativeClientLocationUtils.getSubdirectories(new File("/Applications/Postgres.app/Contents/versions/"))
-            );
-            for (File dir: postgresDirs) {
-                File bin = new File(dir, NativeClientLocationUtils.BIN);
-                File psql = new File(bin, "psql");
-                if (!bin.exists() || !bin.isDirectory() || !psql.exists() || !psql.canExecute()) {
-                    continue;
+        } else {
+            localClients = NativeClientLocationUtils.findLocalClientsOnUnix(
+                List.of("/Library/PostgreSQL", "/Applications/Postgres.app/Contents/versions"),
+                List.of("bin/psql"),
+                path -> {
+                    String absolutePath = path.toAbsolutePath().toString();
+                    return new PostgreServerHome(absolutePath, absolutePath, absolutePath);
                 }
-                String branding = getBranding(dir);
-                if (branding.isEmpty()) {
-                    continue;
-                }
-                String canonicalPath = NativeClientLocationUtils.getCanonicalPath(dir);
-                if (canonicalPath.isEmpty()) {
-                    continue;
-                }
-                PostgreServerHome home = new PostgreServerHome(branding, canonicalPath, branding);
-                PostgreServerHome duplicate = localServers.putIfAbsent(branding, home);
-                if (duplicate == null) {
-                    continue;
-                }
-                localServers.remove(branding);
-                home = new PostgreServerHome(canonicalPath, canonicalPath, canonicalPath);
-                String duplicatePath = duplicate.getPath().getAbsolutePath();
-                duplicate = new PostgreServerHome(duplicatePath, duplicatePath, duplicatePath);
-                localServers.put(canonicalPath, home);
-                localServers.put(duplicatePath, duplicate);
-                //there is a possibility that there will be more that two duplicates. the code above does not account for that
-            }
+            ).values();
         }
-    }
 
-    private static String getBranding(File path) {
-        String fullVersion = getFullServerVersion(path);
-        if (fullVersion == null) {
-            return "";
-        }
-        if (fullVersion.length() < 7) {
-            log.warn("Unable to figure out PostgreSQL server branding from psql output!");
-            return "";
-        }
-        return fullVersion.substring(6).replace(")", "").trim();
+        return localClients;
     }
 
     @Nullable
@@ -268,7 +224,7 @@ public class PostgreDataSourceProvider extends JDBCDataSourceProvider implements
             }
         }
         catch (Exception ex) {
-            log.warn("Error reading PostgreSQL native client version from " + cmd, ex);
+            log.warn("Error reading PostgreSQL local client version from " + cmd, ex);
         }
         return null;
     }

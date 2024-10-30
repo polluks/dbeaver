@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,5 +43,18 @@ public class SQLUtilsTest {
             + "FROM Persons drai where PersonID  = 1\r\n"
             + "-- AND ResourceId  = 1\n\r"
             + "ORDER BY PersonID ;"));
+    }
+
+    @Test
+    public void makeGlobFromSqlLikePattern_whenWithNoSpecialSymbols_thenSuccess(){
+
+        String source = "key1234";
+        Assert.assertEquals(source, SQLUtils.makeGlobFromSqlLikePattern(source));
+    }
+
+    @Test
+    public void makeGlobFromSqlLikePattern_whenWithSpecialSymbols_thenSuccess(){
+
+        Assert.assertEquals("key?*\\?*\\", SQLUtils.makeGlobFromSqlLikePattern("key_%?*\\"));
     }
 }

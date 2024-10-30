@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,6 +34,8 @@ import org.jkiss.dbeaver.model.app.DBPPlatformDesktop;
 import org.jkiss.dbeaver.model.app.DBPProject;
 import org.jkiss.dbeaver.model.connection.DBPDriver;
 import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
+import org.jkiss.dbeaver.model.rcp.RCPProject;
+import org.jkiss.dbeaver.model.sql.SQLConstants;
 import org.jkiss.dbeaver.model.sql.SQLUtils;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.ui.editors.EditorUtils;
@@ -44,13 +46,16 @@ import org.jkiss.dbeaver.ui.editors.sql.internal.SQLEditorActivator;
 import org.jkiss.dbeaver.ui.editors.sql.scripts.ScriptsHandlerImpl;
 import org.jkiss.dbeaver.ui.editors.sql.templates.SQLContextTypeBase;
 import org.jkiss.dbeaver.ui.editors.sql.templates.SQLContextTypeDriver;
+import org.jkiss.dbeaver.ui.editors.sql.templates.SQLContextTypeProvider;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.dbeaver.utils.ResourceUtils;
 import org.jkiss.utils.CommonUtils;
 import org.jkiss.utils.Pair;
 
+import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
@@ -64,6 +69,7 @@ public class SQLEditorUtils {
     public static final String SCRIPT_FILE_EXTENSION = "sql"; //$NON-NLS-1$
 
     private static final String DISABLE_SQL_SYNTAX_PARSER_RESOURCE_PROPERTY = "disable-sql-syntax-parser";
+    private static final int MIN_SQL_DESCRIPTION_LENGTH = 512;
 
     /**
      * A {@link IResource}'s session property to distinguish between persisted and newly created resources.
@@ -95,7 +101,7 @@ public class SQLEditorUtils {
     }
 
     @Nullable
-    public static ResourceInfo findRecentScript(DBPProject project, @Nullable SQLNavigatorContext context) throws CoreException
+    public static ResourceInfo findRecentScript(RCPProject project, @Nullable SQLNavigatorContext context) throws CoreException
     {
         List<ResourceInfo> scripts = new ArrayList<>();
         findScriptList(
@@ -118,7 +124,7 @@ public class SQLEditorUtils {
         return recentFile;
     }
 
-    private static void findScriptList(@NotNull DBPProject project, IFolder folder, @Nullable DBPDataSourceContainer container, @NotNull List<ResourceInfo> result) {
+    private static void findScriptList(@NotNull RCPProject project, IFolder folder, @Nullable DBPDataSourceContainer container, @NotNull List<ResourceInfo> result) {
         if (folder == null || container == null) {
             return;
         }
@@ -144,7 +150,7 @@ public class SQLEditorUtils {
         }
     }
 
-    public static List<ResourceInfo> findScriptTree(DBPProject project, IFolder folder, @Nullable DBPDataSourceContainer container)
+    public static List<ResourceInfo> findScriptTree(RCPProject project, IFolder folder, @Nullable DBPDataSourceContainer container)
     {
         List<ResourceInfo> result = new ArrayList<>();
         findScriptList(project, folder, container, result);
@@ -152,7 +158,7 @@ public class SQLEditorUtils {
     }
 
     @NotNull
-    public static List<ResourceInfo> getScriptsFromProject(@NotNull DBPProject dbpProject) throws CoreException {
+    public static List<ResourceInfo> getScriptsFromProject(@NotNull RCPProject dbpProject) throws CoreException {
         IFolder resourceDefaultRoot = DBPPlatformDesktop.getInstance().getWorkspace().getResourceDefaultRoot(dbpProject, ScriptsHandlerImpl.class, false);
         if (resourceDefaultRoot != null) {
             return getScriptsFromFolder(resourceDefaultRoot);
@@ -165,13 +171,11 @@ public class SQLEditorUtils {
     private static List<ResourceInfo> getScriptsFromFolder(@NotNull IFolder folder) throws CoreException {
         List<ResourceInfo> scripts = new ArrayList<>();
         for (IResource member : folder.members()) {
-            if (member instanceof IFile) {
-                IFile iFile = (IFile) member;
+            if (member instanceof IFile iFile) {
                 ResourceInfo resourceInfo = new ResourceInfo(iFile, EditorUtils.getFileDataSource(iFile));
                 scripts.add(resourceInfo);
             }
-            if (member instanceof IFolder){
-                IFolder iFolder = (IFolder) member;
+            if (member instanceof IFolder iFolder){
                 scripts.addAll(getScriptsFromFolder(iFolder));
             }
         }
@@ -258,7 +262,7 @@ public class SQLEditorUtils {
         if (resource instanceof IFolder) {
             return "";
         } else if (resource instanceof IFile && SCRIPT_FILE_EXTENSION.equals(resource.getFileExtension())) {
-            String description = SQLUtils.getScriptDescription((IFile) resource);
+            String description = getScriptDescription((IFile) resource);
             if (CommonUtils.isEmptyTrimmed(description)) {
                 description = "<empty>";
             }
@@ -296,6 +300,40 @@ public class SQLEditorUtils {
 
     public static IContentType getSQLContentType() {
         return Platform.getContentTypeManager().getContentType("org.jkiss.dbeaver.sql");
+    }
+
+    @Nullable
+    public static String getScriptDescription(@NotNull IFile sqlScript)
+    {
+        try {
+            //log.debug("Read script '" + sqlScript.getName() + "' description");
+            StringBuilder sql = new StringBuilder();
+            try (BufferedReader is = new BufferedReader(new InputStreamReader(sqlScript.getContents()))) {
+                for (;;) {
+                    String line = is.readLine();
+                    if (line == null) {
+                        break;
+                    }
+                    line = line.trim();
+                    if (line.startsWith(SQLConstants.SL_COMMENT) ||
+                        line.startsWith("Rem") ||
+                        line.startsWith("rem") ||
+                        line.startsWith("REM")
+                        )
+                    {
+                        continue;
+                    }
+                    sql.append(line).append('\n');
+                    if (sql.length() > MIN_SQL_DESCRIPTION_LENGTH) {
+                        break;
+                    }
+                }
+            }
+            return SQLUtils.getScriptDescripion(sql.toString());
+        } catch (Exception e) {
+            log.warn("", e);
+        }
+        return null;
     }
 
     public static class ResourceInfo {
@@ -400,7 +438,7 @@ public class SQLEditorUtils {
         @Nullable
         @Override
         public Object getPropertyValue(@NotNull String propertyName) {
-            DBPProject project = DBPPlatformDesktop.getInstance().getWorkspace().getProject(projectFile.getProject());
+            RCPProject project = DBPPlatformDesktop.getInstance().getWorkspace().getProject(projectFile.getProject());
             if (project == null) {
                 log.debug("Project '" + projectFile.getProject() + "' not recognized (property read)");
                 return null;
@@ -410,7 +448,7 @@ public class SQLEditorUtils {
         
         @Override
         public void setPropertyValue(@NotNull String propertyName, @NotNull Object value) {
-            DBPProject project = DBPPlatformDesktop.getInstance().getWorkspace().getProject(projectFile.getProject());
+            RCPProject project = DBPPlatformDesktop.getInstance().getWorkspace().getProject(projectFile.getProject());
             if (project == null) {
                 log.debug("Project '" + projectFile.getProject() + "' not recognized (property write)");
                 return;
@@ -497,8 +535,7 @@ public class SQLEditorUtils {
             for (IWorkbenchPage page : window.getPages()) {
                 for (IEditorReference editorRef : page.getEditorReferences()) {
                     IEditorPart editor = editorRef.getEditor(false);
-                    if (editor instanceof SQLEditorBase) {
-                        SQLEditorBase sqlEditor = (SQLEditorBase) editor;
+                    if (editor instanceof SQLEditorBase sqlEditor) {
                         EditorFileInfo editorFile = EditorFileInfo.getFromEditor(editor.getEditorInput());
                         if (editorFile != null && editorFile.equals(file)) {
                             affectedPrefs.add(sqlEditor.getActivePreferenceStore());
@@ -516,6 +553,7 @@ public class SQLEditorUtils {
         }
         for (SQLEditor sqlEditor : affectedEditors) {
             sqlEditor.refreshEditorIconAndTitle();
+            sqlEditor.refreshAdvancedServices();
         }
 
         PlatformUI.getWorkbench().getService(ICommandService.class).refreshElements(DisableSQLSyntaxParserHandler.COMMAND_ID, null);
@@ -562,17 +600,17 @@ public class SQLEditorUtils {
      */
     public static boolean isTemplateContextFitsEditorContext(@NotNull String templateContextTypeId, @NotNull SQLEditorBase editor) {
         boolean result = false;
-        String editorContextTypeId = null;
         if (editor instanceof SQLEditor) {
             DBPDataSourceContainer dsContainer = ((SQLEditor) editor).getDataSourceContainer();
             if (dsContainer != null) {
                 DBPDriver driver = dsContainer.getDriver();
-                editorContextTypeId = SQLContextTypeDriver.getTypeId(driver);
-                result = isTemplateContextFitsEditorContext(templateContextTypeId, editorContextTypeId);
+                String driverContextTypeId = SQLContextTypeDriver.getTypeId(driver);
+                String providerContextTypeId = SQLContextTypeProvider.getTypeId(driver.getProviderId());
+                result = isTemplateContextFitsEditorContext(templateContextTypeId, driverContextTypeId, providerContextTypeId);
                 if (!result) {
                     for (Pair<String, String> replInfo : driver.getDriverReplacementsInfo()) {
-                        editorContextTypeId = SQLContextTypeDriver.getTypeId(replInfo.getFirst(), replInfo.getSecond());
-                        result = isTemplateContextFitsEditorContext(templateContextTypeId, editorContextTypeId);
+                        driverContextTypeId = SQLContextTypeDriver.getTypeId(replInfo.getFirst(), replInfo.getSecond());
+                        result = isTemplateContextFitsEditorContext(templateContextTypeId, driverContextTypeId, providerContextTypeId);
                         if (result) {
                             break;
                         }
@@ -587,8 +625,14 @@ public class SQLEditorUtils {
     /**
      * Checks whether template's context is suitable for the editor context
      */
-    private static boolean isTemplateContextFitsEditorContext(@NotNull String templateContextTypeId, @Nullable String editorContextTypeId) {
-        return editorContextTypeId != null && templateContextTypeId.equalsIgnoreCase(editorContextTypeId) 
-            || templateContextTypeId.equalsIgnoreCase(SQLContextTypeBase.ID_SQL);
+    private static boolean isTemplateContextFitsEditorContext(
+        @NotNull String templateContextTypeId,
+        @Nullable String driverContextTypeId,
+        @Nullable String providerContextTypeId
+    ) {
+        return templateContextTypeId.equalsIgnoreCase(SQLContextTypeBase.ID_SQL) ||
+            templateContextTypeId.equalsIgnoreCase(driverContextTypeId) ||
+            templateContextTypeId.equalsIgnoreCase(providerContextTypeId);
     }
+
 }

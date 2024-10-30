@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.model.DBPImage;
 import org.jkiss.dbeaver.model.DBPNamedObjectLocalized;
 import org.jkiss.dbeaver.model.DBPObject;
+import org.jkiss.dbeaver.model.impl.AbstractDescriptor;
 import org.jkiss.dbeaver.model.impl.PropertyDescriptor;
 import org.jkiss.dbeaver.model.preferences.DBPPropertyDescriptor;
 import org.jkiss.dbeaver.model.struct.DBSEntityElement;
@@ -43,7 +44,7 @@ public class TaskTypeDescriptor extends DataSourceBindingDescriptor implements D
 
     private final TaskCategoryDescriptor category;
     private final IConfigurationElement config;
-    private final ObjectType handlerImplType;
+    private final AbstractDescriptor.ObjectType handlerImplType;
     private final DBPPropertyDescriptor[] properties;
     private Boolean matchesEntityElements;
 
@@ -53,7 +54,7 @@ public class TaskTypeDescriptor extends DataSourceBindingDescriptor implements D
         this.category.addTask(this);
         this.config = config;
 
-        this.handlerImplType = new ObjectType(config, "handler");
+        this.handlerImplType = new AbstractDescriptor.ObjectType(config, "handler");
 
         this.properties = PropertyDescriptor.extractPropertyGroups(config);
     }
@@ -101,7 +102,7 @@ public class TaskTypeDescriptor extends DataSourceBindingDescriptor implements D
     @Override
     public Class<?>[] getInputTypes() {
         List<Class<?>> objClasses = new ArrayList<>();
-        for (ObjectType objectType : getObjectTypes()) {
+        for (AbstractDescriptor.ObjectType objectType : getObjectTypes()) {
             Class<?> aClass = objectType.getObjectClass();
             if (aClass != null) {
                 objClasses.add(aClass);
@@ -113,6 +114,11 @@ public class TaskTypeDescriptor extends DataSourceBindingDescriptor implements D
     @Override
     public boolean supportsVariables() {
         return CommonUtils.toBoolean(config.getAttribute("supportsVariables"));
+    }
+
+    @Override
+    public boolean supportsDistributedMode() {
+        return CommonUtils.getBoolean(config.getAttribute("supportsDistributedMode"), true);
     }
 
     @NotNull
@@ -136,6 +142,13 @@ public class TaskTypeDescriptor extends DataSourceBindingDescriptor implements D
         return CommonUtils.getBoolean(config.getAttribute(RegistryConstants.ATTR_STANDALONE));
     }
 
+    /**
+     * Defines if task execution is prohibited for readonly connections
+     */
+    public boolean requiresMutableDatabase() {
+        return CommonUtils.getBoolean(config.getAttribute(RegistryConstants.ATTR_REQUIRES_MUTABILITY), false);
+    }
+
     @Nullable
     @Override
     public String confirmationMessageIfNeeded() {
@@ -146,7 +159,7 @@ public class TaskTypeDescriptor extends DataSourceBindingDescriptor implements D
         if (matchesEntityElements != null) {
             return matchesEntityElements;
         }
-        for (ObjectType ot : getObjectTypes()) {
+        for (AbstractDescriptor.ObjectType ot : getObjectTypes()) {
             if (DBSEntityElement.class.isAssignableFrom(ot.getObjectClass())) {
                 matchesEntityElements = true;
                 break;

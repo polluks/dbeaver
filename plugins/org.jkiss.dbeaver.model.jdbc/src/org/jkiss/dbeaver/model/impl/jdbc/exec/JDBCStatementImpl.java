@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,15 +34,12 @@ import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.sql.DBSQLException;
 import org.jkiss.utils.CommonUtils;
 
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.SQLWarning;
-import java.sql.Statement;
+import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Managable statement.
+ * Manageable statement.
  * Stores information about execution in query manager and operated progress monitor.
  */
 public class JDBCStatementImpl<STATEMENT extends Statement> extends AbstractStatement<JDBCSession> implements JDBCStatement {
@@ -146,11 +143,17 @@ public class JDBCStatementImpl<STATEMENT extends Statement> extends AbstractStat
     }
 
     @Override
-    public int[] executeStatementBatch() throws DBCException
+    public long[] executeStatementBatch() throws DBCException
     {
         try {
-//            return SecurityManagerUtils.wrapDriverActions(connection.getDataSource().getContainer(), this::executeBatch);
-            return this.executeBatch();
+            try {
+                return this.executeLargeBatch();
+            } catch (SQLFeatureNotSupportedException | UnsupportedOperationException | IncompatibleClassChangeError e) {
+                int[] result = this.executeBatch();
+                long[] longResult = new long[result.length];
+                for (int i = 0; i < result.length; i++) longResult[i] = result[i];
+                return longResult;
+            }
         } catch (Throwable e) {
             throw new DBSQLException(query, e, connection.getExecutionContext());
         }
@@ -161,7 +164,7 @@ public class JDBCStatementImpl<STATEMENT extends Statement> extends AbstractStat
     public JDBCResultSet openResultSet() throws DBCException
     {
         // Some driver perform real RS fetch at this moment.
-        // So let's start thge block
+        // So let's start the block
         this.startBlock();
         try {
             return getResultSet();
@@ -296,10 +299,11 @@ public class JDBCStatementImpl<STATEMENT extends Statement> extends AbstractStat
         }
     }
 
-    protected void beforeExecute()
-    {
+    protected void beforeExecute() {
         this.updateCount = -1;
         this.executeError = null;
+        this.connection.getExecutionContext().lockQueryExecution();
+
         if (isQMLoggingEnabled()) {
             QMUtils.getDefaultHandler().handleStatementExecuteBegin(this);
         }
@@ -309,8 +313,9 @@ public class JDBCStatementImpl<STATEMENT extends Statement> extends AbstractStat
         this.startBlock();
     }
 
-    protected void afterExecute()
-    {
+    protected void afterExecute() {
+        this.connection.getExecutionContext().unlockQueryExecution();
+
         this.endBlock();
         if (isQMLoggingEnabled()) {
             QMUtils.getDefaultHandler().handleStatementExecuteEnd(this, this.updateCount, this.executeError);

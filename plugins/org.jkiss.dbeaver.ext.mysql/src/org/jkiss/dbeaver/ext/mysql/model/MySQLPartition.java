@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ import org.jkiss.dbeaver.model.meta.Property;
 import org.jkiss.dbeaver.model.meta.PropertyLength;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.struct.DBSEntity;
+import org.jkiss.dbeaver.model.struct.rdb.DBSTable;
 import org.jkiss.dbeaver.model.struct.rdb.DBSTablePartition;
 
 import java.sql.ResultSet;
@@ -130,8 +131,15 @@ public class MySQLPartition extends MySQLTable implements DBSTablePartition {
         subPartitions.add(partition);
     }
 
-    public MySQLPartition getParent()
-    {
+    @NotNull
+    @Override
+    public DBSTable getParentTable() {
+        return table;
+    }
+
+    @Nullable
+    @Override
+    public MySQLPartition getPartitionParent() {
         return parent;
     }
 
@@ -140,6 +148,13 @@ public class MySQLPartition extends MySQLTable implements DBSTablePartition {
     {
         return subPartitions;
     }
+
+    @Override
+    public boolean isSubPartition() {
+        return parent != null;
+    }
+
+
 
     @NotNull
     @Override

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,24 +27,30 @@ import org.eclipse.draw2d.geometry.Rectangle;
 import org.eclipse.gef.*;
 import org.eclipse.gef.editpolicies.ConnectionEndpointEditPolicy;
 import org.eclipse.osgi.util.NLS;
-import org.eclipse.swt.SWT;
 import org.eclipse.swt.accessibility.AccessibleEvent;
 import org.eclipse.swt.graphics.Color;
-import org.jkiss.dbeaver.erd.model.*;
+import org.eclipse.swt.graphics.RGB;
+import org.jkiss.code.NotNull;
+import org.jkiss.dbeaver.Log;
+import org.jkiss.dbeaver.erd.model.ERDAssociation;
+import org.jkiss.dbeaver.erd.model.ERDEntityAttribute;
 import org.jkiss.dbeaver.erd.ui.ERDUIConstants;
 import org.jkiss.dbeaver.erd.ui.ERDUIUtils;
-import org.jkiss.dbeaver.erd.ui.editor.ERDGraphicalViewer;
-import org.jkiss.dbeaver.erd.ui.editor.ERDHighlightingHandle;
-import org.jkiss.dbeaver.erd.ui.editor.ERDViewStyle;
-import org.jkiss.dbeaver.erd.ui.internal.ERDUIActivator;
+import org.jkiss.dbeaver.erd.ui.connector.ERDConnection;
+import org.jkiss.dbeaver.erd.ui.editor.*;
 import org.jkiss.dbeaver.erd.ui.internal.ERDUIMessages;
+import org.jkiss.dbeaver.erd.ui.notations.ERDNotation;
+import org.jkiss.dbeaver.erd.ui.notations.ERDNotationDescriptor;
 import org.jkiss.dbeaver.erd.ui.policy.AssociationBendEditPolicy;
 import org.jkiss.dbeaver.erd.ui.policy.AssociationEditPolicy;
+import org.jkiss.dbeaver.erd.ui.router.ERDConnectionRouter;
+import org.jkiss.dbeaver.erd.ui.router.ERDConnectionRouterDescriptor;
+import org.jkiss.dbeaver.erd.ui.router.shortpath.ShortPathRouting;
 import org.jkiss.dbeaver.model.DBIcon;
-import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
-import org.jkiss.dbeaver.model.struct.DBSEntityConstraintType;
+import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.ui.DBeaverIcons;
 import org.jkiss.dbeaver.ui.UIUtils;
+import org.jkiss.dbeaver.utils.ListNode;
 import org.jkiss.utils.CommonUtils;
 
 import java.util.ArrayList;
@@ -57,14 +63,19 @@ import java.util.List;
  * @author Serge Rider
  */
 public class AssociationPart extends PropertyAwareConnectionPart {
-
+    private static final Log log = Log.getLog(AssociationPart.class);
     // Keep original line width to visualize selection
     private Integer oldLineWidth;
 
     private ERDHighlightingHandle associatedAttributesHighlighing = null;
-    private AccessibleGraphicalEditPart accPart;
+    protected AccessibleGraphicalEditPart accPart;
+    private final Color labelForegroundColor;
 
     public AssociationPart() {
+        Color foreground = UIUtils.getColorRegistry().get(ERDUIConstants.COLOR_ERD_ATTR_FOREGROUND);
+        final Color contrastColor = UIUtils.getContrastColor(foreground);
+        final RGB labelForeground = UIUtils.blend(foreground.getRGB(), contrastColor.getRGB(), 60);
+        labelForegroundColor = UIUtils.getSharedColor(labelForeground);
     }
 
     public ERDAssociation getAssociation() {
@@ -95,36 +106,55 @@ public class AssociationPart extends PropertyAwareConnectionPart {
 
     @Override
     protected IFigure createFigure() {
-        PolylineConnection conn = new PolylineConnection();
+        DBRProgressMonitor monitor = getDiagramPart().getDiagram().getMonitor();
+        PolylineConnection conn = createConnectionFigure(monitor);
+        UIUtils.syncExec(() -> {
+            setConnectionStyles(monitor, conn);
+            setConnectionRouting(monitor, conn);
+            setConnectionToolTip(monitor, conn);
+        });
+        return conn;
+    }
 
+    private PolylineConnection createConnectionFigure(@NotNull DBRProgressMonitor monitor) {
+        ERDConnectionRouter router = getDiagramPart().getActiveRouter();
+        PolylineConnection conn;
+        if (router != null) {
+            conn = router.getConnectionInstance();
+        } else {
+            conn = new ERDConnection();
+        }
         conn.setForegroundColor(UIUtils.getColorRegistry().get(ERDUIConstants.COLOR_ERD_LINES_FOREGROUND));
-
+        if (monitor.isCanceled()) {
+            return conn;
+        }
         boolean showComments = getDiagramPart().getDiagram().hasAttributeStyle(ERDViewStyle.COMMENTS);
         if (showComments) {
             ERDAssociation association = getAssociation();
             if (association != null && association.getObject() != null && !CommonUtils.isEmpty(association.getObject().getDescription())) {
                 ConnectionLocator descLabelLocator = new ConnectionLocator(conn, ConnectionLocator.MIDDLE);
-                //descLabelLocator.setRelativePosition(50);
-                //descLabelLocator.setGap(50);
                 Label descLabel = new Label(association.getObject().getDescription());
                 descLabel.setForegroundColor(UIUtils.getColorRegistry().get(ERDUIConstants.COLOR_ERD_ATTR_FOREGROUND));
-//                Border border = new MarginBorder(20, 0, 0, 0);
-//                descLabel.setBorder(border);
                 conn.add(descLabel, descLabelLocator);
             }
         }
-
-        setConnectionStyles(conn);
-        setConnectionRouting(conn);
-        setConnectionToolTip(conn);
-
         return conn;
     }
 
-    protected void setConnectionRouting(PolylineConnection conn) {
+    protected void setConnectionRouting(
+        @NotNull DBRProgressMonitor monitor,
+        @NotNull PolylineConnection conn
+    ) {
+        if (monitor.isCanceled()) {
+            return;
+        }
+        if (getViewer() == null) {
+            return;
+        }
         ERDAssociation association = getAssociation();
         // Set router and initial bends
         ConnectionLayer cLayer = (ConnectionLayer) getLayer(LayerConstants.CONNECTION_LAYER);
+        ERDConnectionRouterDescriptor router = getDiagramPart().getEditor().getDiagramRouter();
         conn.setConnectionRouter(cLayer.getConnectionRouter());
         if (!CommonUtils.isEmpty(association.getInitBends())) {
             List<AbsoluteBendpoint> connBends = new ArrayList<>();
@@ -137,82 +167,68 @@ public class AssociationPart extends PropertyAwareConnectionPart {
             if (entityPart == null) {
                 entityPart = getTarget();
             }
-            final DBPPreferenceStore store = ERDUIActivator.getDefault().getPreferences();
-            if (entityPart instanceof GraphicalEditPart && (!store.getString(ERDUIConstants.PREF_ROUTING_TYPE).equals(ERDUIConstants.ROUTING_MIKAMI) || ERDAttributeVisibility.isHideAttributeAssociations(store))) {
-                // Self link
+            if (entityPart instanceof GraphicalEditPart
+                && !router.supportedAttributeAssociation()) {
                 final IFigure entityFigure = ((GraphicalEditPart) entityPart).getFigure();
-                //EntityPart entity = (EntityPart) connEdge.source.getParent().data;
-                //final Dimension entitySize = entity.getFigure().getSize();
                 final Dimension figureSize = entityFigure.getMinimumSize();
                 int entityWidth = figureSize.width;
                 int entityHeight = figureSize.height;
-
                 List<RelativeBendpoint> bends = new ArrayList<>();
-                {
-                    RelativeBendpoint bp1 = new RelativeBendpoint(conn);
-                    bp1.setRelativeDimensions(new Dimension(entityWidth, entityHeight / 2), new Dimension(entityWidth / 2, entityHeight / 2));
-                    bends.add(bp1);
-                }
-                {
-                    RelativeBendpoint bp2 = new RelativeBendpoint(conn);
-                    bp2.setRelativeDimensions(new Dimension(-entityWidth, entityHeight / 2), new Dimension(entityWidth, entityHeight));
-                    bends.add(bp2);
-                }
+                int w2 = entityWidth / 2;
+                int h2 = entityHeight / 2;
+                RelativeBendpoint bp1 = new RelativeBendpoint(conn);
+                bp1.setRelativeDimensions(new Dimension(entityWidth, h2), new Dimension(entityWidth / 2, -h2 + w2));
+                bends.add(bp1);
+                RelativeBendpoint bp2 = new RelativeBendpoint(conn);
+                bp2.setRelativeDimensions(new Dimension(entityWidth, h2), new Dimension(entityWidth, -h2 + w2 / 2));
+                bends.add(bp2);
+                RelativeBendpoint bp3 = new RelativeBendpoint(conn);
+                bp3.setRelativeDimensions(new Dimension(entityWidth, h2), new Dimension(entityWidth, -h2 - w2 / 2));
+                bends.add(bp3);
+                RelativeBendpoint bp4 = new RelativeBendpoint(conn);
+                bp4.setRelativeDimensions(new Dimension(entityWidth, h2), new Dimension(entityWidth / 2, -h2 - w2));
+                bends.add(bp4);
                 conn.setRoutingConstraint(bends);
             }
         }
+        if (cLayer.getConnectionRouter() instanceof ShortPathRouting) {
+            ERDNotationDescriptor diagramNotationDescriptor = getDiagramPart().getEditor().getDiagramNotation();
+            ((ShortPathRouting) cLayer.getConnectionRouter())
+                .setIndentation(diagramNotationDescriptor.getNotation().getIndentation());
+        }
     }
 
-    protected void setConnectionStyles(PolylineConnection conn) {
-
-        ERDAssociation association = getAssociation();
-        boolean identifying = ERDUtils.isIdentifyingAssociation(association);
-
-        DBSEntityConstraintType constraintType = association.getObject().getConstraintType();
-        if (constraintType == DBSEntityConstraintType.INHERITANCE) {
-            final PolygonDecoration srcDec = new PolygonDecoration();
-            srcDec.setTemplate(PolygonDecoration.TRIANGLE_TIP);
-            srcDec.setFill(true);
-            srcDec.setBackgroundColor(getParent().getViewer().getControl().getBackground());
-            srcDec.setScale(10, 6);
-            conn.setTargetDecoration(srcDec);
-        } else if (constraintType.isAssociation() &&
-            association.getSourceEntity() instanceof ERDEntity &&
-            association.getTargetEntity() instanceof ERDEntity)
-        {
-            final CircleDecoration sourceDecor = new CircleDecoration();
-            sourceDecor.setRadius(3);
-            sourceDecor.setFill(true);
-            sourceDecor.setBackgroundColor(getParent().getViewer().getControl().getForeground());
-            //dec.setBackgroundColor(getParent().getViewer().getControl().getBackground());
-            conn.setSourceDecoration(sourceDecor);
-            if (ERDUtils.isOptionalAssociation(association)) {
-                final RhombusDecoration targetDecor = new RhombusDecoration();
-                targetDecor.setBackgroundColor(getParent().getViewer().getControl().getBackground());
-                //dec.setBackgroundColor(getParent().getViewer().getControl().getBackground());
-                conn.setTargetDecoration(targetDecor);
-            }
+    protected void setConnectionStyles(
+        @NotNull DBRProgressMonitor monitor,
+        @NotNull PolylineConnection conn
+    ) {
+        if (monitor.isCanceled()) {
+            return;
         }
-
-        conn.setLineWidth(2);
-        if (!identifying || constraintType.isLogical()) {
-            final DBPPreferenceStore store = ERDUIActivator.getDefault().getPreferences();
-            if (store.getString(ERDUIConstants.PREF_ROUTING_TYPE).equals(ERDUIConstants.ROUTING_MIKAMI)) {
-                conn.setLineStyle(SWT.LINE_DOT);
+        ERDNotationDescriptor diagramNotationDescriptor = getDiagramPart().getEditor().getDiagramNotation();
+        if (diagramNotationDescriptor == null) {
+            log.error("ERD notation descriptor is not defined");
+        }
+        if (diagramNotationDescriptor != null) {
+            Color background = getParent().getViewer().getControl().getBackground();
+            ERDNotation notation = diagramNotationDescriptor.getNotation();
+            if (notation != null) {
+                notation.applyNotationForArrows(monitor, conn, getAssociation(), background, labelForegroundColor);
             } else {
-                conn.setLineStyle(SWT.LINE_CUSTOM);
+                log.error("ERD notation instance not created for id: " + diagramNotationDescriptor.getId());
             }
-            conn.setLineDash(
-                constraintType.isLogical() ? new float[]{ 4  } : new float[]{ 5 });
         }
     }
 
-    protected void setConnectionToolTip(PolylineConnection conn) {
-        // Set tool tip
+    protected void setConnectionToolTip(
+        @NotNull DBRProgressMonitor monitor,
+        @NotNull PolylineConnection conn
+    ) {
+        if (monitor.isCanceled()) {
+            return;
+        }
         Label toolTip = new Label(getAssociation().getObject().getName() + " [" + getAssociation().getObject().getConstraintType().getName() + "]");
         toolTip.setIcon(DBeaverIcons.getImage(DBIcon.TREE_FOREIGN_KEY));
-        //toolTip.setTextPlacement(PositionConstants.SOUTH);
-        //toolTip.setIconTextGap();
         conn.setToolTip(toolTip);
     }
 
@@ -231,7 +247,7 @@ public class AssociationPart extends PropertyAwareConnectionPart {
         }
 
         if (value != EditPart.SELECTED_NONE) {
-            ((PolylineConnection) getFigure()).setLineWidth(oldLineWidth + 1);
+            ((PolylineConnection) getFigure()).setLineWidth(oldLineWidth + 3);
         } else {
             ((PolylineConnection) getFigure()).setLineWidth(oldLineWidth);
         }
@@ -240,11 +256,14 @@ public class AssociationPart extends PropertyAwareConnectionPart {
             return;
         }
 
-
         if (value != EditPart.SELECTED_NONE) {
             if (this.getViewer() instanceof ERDGraphicalViewer && associatedAttributesHighlighing == null) {
-                Color color = UIUtils.getColorRegistry().get(ERDUIConstants.COLOR_ERD_FK_HIGHLIGHTING);
-                associatedAttributesHighlighing = ((ERDGraphicalViewer)this.getViewer()).getEditor().getHighlightingManager().highlightAssociationAndRelatedAttributes(this, color);
+                Color attributeColor = UIUtils.getColorRegistry().get(ERDUIConstants.COLOR_ERD_FK_HIGHLIGHTING);
+                Color associationColor = UIUtils.getColorRegistry().get(ERDUIConstants.COLOR_ERD_FK_HIGHLIGHTING);
+                ERDHighlightingManager highlightingManager = ((ERDGraphicalViewer) this.getViewer()).getEditor().getHighlightingManager();
+                ListNode<ERDHighlightingHandle> nodes = highlightingManager.highlightRelatedAttributes(this, attributeColor);
+                nodes = highlightingManager.highlightAssociation(nodes, this, associationColor);
+                associatedAttributesHighlighing = highlightingManager.makeHighlightingGroupHandle(nodes);
             }
         } else if (associatedAttributesHighlighing != null) {
             associatedAttributesHighlighing.release();
@@ -315,7 +334,7 @@ public class AssociationPart extends PropertyAwareConnectionPart {
 
     public static class CircleDecoration extends Ellipse implements RotatableDecoration {
 
-        private int radius = 5;
+        private int radius = 4;
         private Point location = new Point();
 
         public CircleDecoration() {

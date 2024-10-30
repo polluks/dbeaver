@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,21 +16,20 @@
  */
 package org.jkiss.dbeaver.registry;
 
+import com.google.gson.reflect.TypeToken;
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
-import org.jkiss.dbeaver.model.DBPDataSourceContainer;
-import org.jkiss.dbeaver.model.DBPDataSourceFolder;
-import org.jkiss.dbeaver.model.DBPDataSourceProvider;
-import org.jkiss.dbeaver.model.DBPInformationProvider;
+import org.jkiss.dbeaver.model.*;
 import org.jkiss.dbeaver.model.app.DBPDataSourceRegistry;
 import org.jkiss.dbeaver.model.app.DBPProject;
 import org.jkiss.dbeaver.model.connection.DBPConnectionConfiguration;
 import org.jkiss.dbeaver.model.connection.DBPDriver;
 import org.jkiss.dbeaver.model.connection.DBPDriverConfigurationType;
 import org.jkiss.dbeaver.model.net.DBWHandlerConfiguration;
-import org.jkiss.dbeaver.model.net.DBWHandlerType;
+import org.jkiss.dbeaver.model.net.DBWUtils;
+import org.jkiss.dbeaver.model.secret.DBSSecretValue;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.utils.CommonUtils;
@@ -52,6 +51,7 @@ public class DataSourceUtils {
     public static final String PARAM_SERVER = "server";
     public static final String PARAM_DATABASE = "database";
     public static final String PARAM_USER = "user";
+    public static final String PROP_JUMP_SERVER = "jumpServer";
 
     private static final String PARAM_PASSWORD = "password";
     private static final String PARAM_SAVE_PASSWORD = "savePassword";
@@ -380,7 +380,7 @@ public class DataSourceUtils {
         }
         DBPConnectionConfiguration cfg = dataSourceContainer.getConnectionConfiguration();
         if (cfg.getConfigurationType() == DBPDriverConfigurationType.MANUAL) {
-            String hostText = getTargetTunnelHostName(cfg);
+            String hostText = DBWUtils.getTargetTunnelHostName(cfg);
             String hostPort = cfg.getHostPort();
             if (!CommonUtils.isEmpty(hostPort)) {
                 return hostText + ":" + hostPort;
@@ -391,21 +391,30 @@ public class DataSourceUtils {
         }
     }
 
+    public static boolean isFolderHasTemporaryDataSources(DataSourceFolder folder) {
+        return folder.getDataSourceRegistry().getDataSources().stream().anyMatch(d -> d.getFolder() == folder && d.isTemporary());
+    }
+
     @NotNull
-    public static String getTargetTunnelHostName(DBPConnectionConfiguration cfg) {
-        String hostText = cfg.getHostName();
-        // For localhost ry to get real host name from tunnel configuration
-        if (CommonUtils.isEmpty(hostText) || hostText.equals("localhost") || hostText.equals("127.0.0.1")) {
-            for (DBWHandlerConfiguration hc : cfg.getHandlers()) {
-                if (hc.isEnabled() && hc.getType() == DBWHandlerType.TUNNEL) {
-                    String tunnelHost = hc.getStringProperty(DBWHandlerConfiguration.PROP_HOST);
-                    if (!CommonUtils.isEmpty(tunnelHost)) {
-                        hostText = tunnelHost;
-                        break;
-                    }
-                }
+    public static String getJumpServerSettingsPrefix(int index) {
+        return PROP_JUMP_SERVER + index + ".";
+    }
+
+    public static String getSubjectFromSecret(DBSSecretValue secret) {
+        String subjectId = secret.getSubjectId();
+        return subjectId == null ? secret.getDisplayName() : subjectId;
+    }
+
+    public static String getUserNameFromSecret(DBSSecretValue secret) {
+        Map<String, Object> secretMap = DBInfoUtils.SECRET_GSON.fromJson(
+            secret.getValue(),
+            new TypeToken<Map<String, Object>>() {}.getType());
+        if (secretMap != null) {
+            Object userName = secretMap.get(DBConstants.PROP_USER);
+            if (userName != null) {
+                return userName.toString();
             }
         }
-        return CommonUtils.notEmpty(hostText);
+        return "......";
     }
 }

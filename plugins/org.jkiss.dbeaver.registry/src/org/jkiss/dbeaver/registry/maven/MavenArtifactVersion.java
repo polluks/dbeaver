@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,6 +50,7 @@ public class MavenArtifactVersion implements IMavenIdentifier {
     private static final String DEFAULT_PROFILE_ID = "#root";
 
     private final MavenArtifact artifact;
+    private final boolean snapshotVersion;
     private String name;
     private String version;
     private String packaging;
@@ -60,6 +61,7 @@ public class MavenArtifactVersion implements IMavenIdentifier {
     private final List<MavenArtifactLicense> licenses = new ArrayList<>();
     private final List<MavenProfile> profiles = new ArrayList<>();
     private final List<MavenRepository> repositories = new ArrayList<>();
+    private boolean invalidVersion;
 
     private final IVariableResolver propertyResolver = new IVariableResolver() {
         @Override
@@ -93,14 +95,30 @@ public class MavenArtifactVersion implements IMavenIdentifier {
         @NotNull DBRProgressMonitor monitor,
         @NotNull MavenArtifact artifact,
         @NotNull String version,
-        boolean resolveOptionalDependencies
+        boolean resolveOptionalDependencies,
+        boolean snapshotVersion
     ) throws IOException {
         this.artifact = artifact;
         this.version = CommonUtils.trim(version);
-
+        this.snapshotVersion = snapshotVersion;
         loadPOM(monitor, resolveOptionalDependencies);
         this.version = evaluateString(this.version);
+    }
 
+    private MavenArtifactVersion(
+        @NotNull MavenArtifact artifact,
+        @NotNull String version
+    ) {
+        this.artifact = artifact;
+        this.version = version;
+        this.snapshotVersion = false;
+        this.invalidVersion = true;
+    }
+
+    public static MavenArtifactVersion createInvalidVersion(
+        @NotNull MavenArtifact artifact,
+        @NotNull String version) {
+        return new MavenArtifactVersion(artifact, version);
     }
 
     @NotNull
@@ -110,6 +128,10 @@ public class MavenArtifactVersion implements IMavenIdentifier {
 
     public String getName() {
         return name;
+    }
+
+    public boolean isInvalidVersion() {
+        return invalidVersion;
     }
 
     @NotNull
@@ -206,25 +228,21 @@ public class MavenArtifactVersion implements IMavenIdentifier {
     }
 
     public String getExternalURL() {
-        return artifact.getFileURL(version, getPackagingFileExtension());
+        return artifact.getFileURL(version, getPackagingFileExtension(), snapshotVersion);
     }
 
     @NotNull
     private String getPackagingFileExtension() {
         final String packaging = CommonUtils.notEmpty(this.packaging);
-        switch (packaging) {
-            case "": // empty packaging
-            case MavenArtifact.PACKAGING_BUNDLE:
-            case MavenArtifact.PACKAGING_MAVEN_PLUGIN:
-            case MavenArtifact.FILE_POM:
-                return MavenArtifact.FILE_JAR;
-            default:
-                return packaging;
-        }
+        return switch (packaging) { // empty packaging
+            case "", MavenArtifact.PACKAGING_BUNDLE, MavenArtifact.PACKAGING_MAVEN_PLUGIN, MavenArtifact.FILE_POM ->
+                MavenArtifact.FILE_JAR;
+            default -> packaging;
+        };
     }
 
     public String getExternalURL(String fileType) {
-        return artifact.getFileURL(version, fileType);
+        return artifact.getFileURL(version, fileType, snapshotVersion);
     }
 
     public String getPath() {
@@ -249,15 +267,15 @@ public class MavenArtifactVersion implements IMavenIdentifier {
     }
 
     private String getRemotePOMLocation() {
-        return artifact.getFileURL(version, MavenArtifact.FILE_POM);
+        return artifact.getFileURL(version, MavenArtifact.FILE_POM, snapshotVersion);
     }
 
-    private void cachePOM(File localPOM) throws IOException {
+    private void cachePOM(DBRProgressMonitor monitor, File localPOM) throws IOException {
         if (artifact.getRepository().getType() == MavenRepository.RepositoryType.LOCAL) {
             return;
         }
         String pomURL = getRemotePOMLocation();
-        try (InputStream is = WebUtils.openConnection(pomURL, artifact.getRepository().getAuthInfo(), null).getInputStream()) {
+        try (InputStream is = WebUtils.openConnection(monitor, pomURL, artifact.getRepository().getAuthInfo(), null).getInputStream()) {
             File folder = localPOM.getParentFile();
             if (!folder.exists() && !folder.mkdirs()) {
                 throw new IOException("Can't create cache folder '" + folder.getAbsolutePath() + "'");
@@ -274,7 +292,7 @@ public class MavenArtifactVersion implements IMavenIdentifier {
 
         File localPOM = getLocalPOM();
         if (!localPOM.exists()) {
-            cachePOM(localPOM);
+            cachePOM(monitor, localPOM);
         }
 
 

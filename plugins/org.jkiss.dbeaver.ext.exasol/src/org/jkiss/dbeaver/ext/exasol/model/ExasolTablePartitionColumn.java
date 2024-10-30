@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  * Copyright (C) 2019 Karl Griesser (fullref@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -116,7 +116,7 @@ public class ExasolTablePartitionColumn extends AbstractTableIndexColumn {
 		@Override
 		public Object[] getPossibleValues(ExasolTablePartitionColumn object) {
 			try {
-				return ((ExasolTable) object.getTable()).getAvailableColumns(new VoidProgressMonitor()).toArray();
+				return object.getTable().getAvailableColumns(new VoidProgressMonitor()).toArray();
 			} catch (DBException e) {
 				log.error("Failed to get list of available columns",e);
 				return new Object[0];

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,13 +18,12 @@
 package org.jkiss.dbeaver.utils;
 
 import org.eclipse.core.runtime.Platform;
+import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.runtime.IVariableResolver;
 import org.jkiss.utils.StandardConstants;
 
 import java.io.File;
-import java.net.InetAddress;
 import java.net.URL;
-import java.net.UnknownHostException;
 import java.util.Properties;
 
 /**
@@ -43,9 +42,14 @@ public class SystemVariablesResolver implements IVariableResolver {
     public static final String VAR_LOCAL_IP = "local.ip";
 
     private static Properties configuration;
+    private static String installPath;
 
     public static void setConfiguration(Properties configuration) {
         SystemVariablesResolver.configuration = configuration;
+    }
+
+    protected boolean isResolveSystemVariables() {
+        return true;
     }
 
     @Override
@@ -64,11 +68,7 @@ public class SystemVariablesResolver implements IVariableResolver {
             case VAR_APP_PATH:
                 return getInstallPath();
             case VAR_LOCAL_IP:
-                try {
-                    return InetAddress.getLocalHost().getHostAddress();
-                } catch (UnknownHostException e) {
-                    return "127.0.0.1";
-                }
+                return RuntimeUtils.getLocalHostOrLoopback().getHostAddress();
             default:
                 if (configuration != null) {
                     final Object o = configuration.get(name);
@@ -76,20 +76,27 @@ public class SystemVariablesResolver implements IVariableResolver {
                         return o.toString();
                     }
                 }
-                String var = System.getProperty(name);
-                if (var != null) {
-                    return var;
+                if (isResolveSystemVariables()) {
+                    // Enable system variables resolve for standalone applications only
+                    String var = System.getProperty(name);
+                    if (var != null) {
+                        return var;
+                    }
+                    return System.getenv(name);
                 }
-                return System.getenv(name);
+                return null;
         }
     }
 
     public static String getInstallPath() {
-        return getPlainPath(Platform.getInstallLocation().getURL());
+        if (installPath == null) {
+            installPath = getPlainPath(Platform.getInstallLocation().getURL());
+        }
+        return installPath;
     }
 
     public static String getWorkspacePath() {
-        return getPlainPath(Platform.getInstanceLocation().getURL());
+        return DBWorkbench.getPlatform().getWorkspace().getAbsolutePath().toString();
     }
 
     public static String getUserHome() {

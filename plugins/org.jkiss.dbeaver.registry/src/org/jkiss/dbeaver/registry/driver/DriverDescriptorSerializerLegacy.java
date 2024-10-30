@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,10 +25,10 @@ import org.jkiss.dbeaver.model.connection.LocalNativeClientLocation;
 import org.jkiss.dbeaver.registry.DataSourceProviderDescriptor;
 import org.jkiss.dbeaver.registry.DataSourceProviderRegistry;
 import org.jkiss.dbeaver.registry.RegistryConstants;
-import org.jkiss.dbeaver.registry.VersionUtils;
 import org.jkiss.dbeaver.registry.maven.MavenArtifactReference;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.utils.GeneralUtils;
+import org.jkiss.dbeaver.utils.VersionUtils;
 import org.jkiss.utils.CommonUtils;
 import org.jkiss.utils.xml.SAXListener;
 import org.jkiss.utils.xml.SAXReader;
@@ -90,10 +90,14 @@ public class DriverDescriptorSerializerLegacy extends DriverDescriptorSerializer
             if (!CommonUtils.isEmpty(driver.getCategory())) {
                 xml.addAttribute(RegistryConstants.ATTR_CATEGORY, driver.getCategory());
             }
-            xml.addAttribute(RegistryConstants.ATTR_CATEGORIES, String.join(",", driver.getCategories()));
+            if (!CommonUtils.isEmpty(driver.getCategories())) {
+                xml.addAttribute(RegistryConstants.ATTR_CATEGORIES, String.join(",", driver.getCategories()));
+            }
 
             xml.addAttribute(RegistryConstants.ATTR_NAME, driver.getName());
-            xml.addAttribute(RegistryConstants.ATTR_CLASS, driver.getDriverClassName());
+            if (!CommonUtils.isEmpty(driver.getDriverClassName())) {
+                xml.addAttribute(RegistryConstants.ATTR_CLASS, driver.getDriverClassName());
+            }
             if (!CommonUtils.isEmpty(driver.getSampleURL())) {
                 xml.addAttribute(RegistryConstants.ATTR_URL, driver.getSampleURL());
             }
@@ -109,13 +113,18 @@ public class DriverDescriptorSerializerLegacy extends DriverDescriptorSerializer
             if (!CommonUtils.isEmpty(driver.getDefaultUser())) {
                 xml.addAttribute(RegistryConstants.ATTR_DEFAULT_USER, driver.getDefaultUser());
             }
-            xml.addAttribute(RegistryConstants.ATTR_DESCRIPTION, CommonUtils.notEmpty(driver.getDescription()));
+            if (!CommonUtils.isEmpty(driver.getDescription())) {
+                xml.addAttribute(RegistryConstants.ATTR_DESCRIPTION, driver.getDescription());
+            }
             if (driver.isCustomDriverLoader()) {
                 xml.addAttribute(RegistryConstants.ATTR_CUSTOM_DRIVER_LOADER, driver.isCustomDriverLoader());
             }
             xml.addAttribute(RegistryConstants.ATTR_CUSTOM, driver.isCustom());
             if (driver.isEmbedded()) {
                 xml.addAttribute(RegistryConstants.ATTR_EMBEDDED, driver.isEmbedded());
+            }
+            if (driver.isPropagateDriverProperties()) {
+                xml.addAttribute(RegistryConstants.ATTR_PROPAGATE_DRIVER_PROPERTIES, driver.isPropagateDriverProperties());
             }
             if (driver.isAnonymousAccess()) {
                 xml.addAttribute(RegistryConstants.ATTR_ANONYMOUS, driver.isAnonymousAccess());
@@ -128,6 +137,9 @@ public class DriverDescriptorSerializerLegacy extends DriverDescriptorSerializer
             }
             if (!driver.isSupportsDistributedMode()) {
                 xml.addAttribute(RegistryConstants.ATTR_SUPPORTS_DISTRIBUTED_MODE, driver.isSupportsDistributedMode());
+            }
+            if (driver.isThreadSafeDriver() != driver.isOrigThreadSafeDriver()) {
+                xml.addAttribute("threadSafe", driver.isThreadSafeDriver());
             }
 
             // Libraries
@@ -226,8 +238,10 @@ public class DriverDescriptorSerializerLegacy extends DriverDescriptorSerializer
         DataSourceProviderDescriptor curProvider;
         DriverDescriptor curDriver;
         DBPDriverLibrary curLibrary;
-        boolean isLibraryUpgraded = false;
-        boolean isDistributed = DBWorkbench.isDistributed();
+        private boolean isLibraryUpgraded = false;
+        private final boolean isDistributed = DBWorkbench.isDistributed();
+        // In detached process we usually have just one driver
+        private final boolean isDetachedProcess = DBWorkbench.getPlatform().getApplication().isDetachedProcess();
 
         public DriversParser(boolean provided) {
             this.providedDrivers = provided;
@@ -246,7 +260,9 @@ public class DriverDescriptorSerializerLegacy extends DriverDescriptorSerializer
                     }
                     curProvider = DataSourceProviderRegistry.getInstance().getDataSourceProvider(idAttr);
                     if (curProvider == null) {
-                        log.warn("Datasource provider '" + idAttr + "' not found. Bad provider description.");
+                        if (!isDetachedProcess) {
+                            log.warn("Datasource provider '" + idAttr + "' not found. Bad provider description.");
+                        }
                     }
                     break;
                 }
@@ -257,12 +273,14 @@ public class DriverDescriptorSerializerLegacy extends DriverDescriptorSerializer
                         String providerId = atts.getValue(RegistryConstants.ATTR_PROVIDER);
                         if (!CommonUtils.isEmpty(providerId)) {
                             curProvider = DataSourceProviderRegistry.getInstance().getDataSourceProvider(providerId);
-                            if (curProvider == null) {
+                            if (curProvider == null && !isDetachedProcess) {
                                 log.warn("Datasource provider '" + providerId + "' not found. Bad driver description.");
                             }
                         }
                         if (curProvider == null) {
-                            log.warn("Driver '" + idAttr + "' outside of datasource provider");
+                            if (!isDetachedProcess) {
+                                log.warn("Driver '" + idAttr + "' outside of datasource provider");
+                            }
                             return;
                         }
                     }
@@ -287,9 +305,11 @@ public class DriverDescriptorSerializerLegacy extends DriverDescriptorSerializer
                         curDriver.setDriverDefaultServer(CommonUtils.toString(atts.getValue(RegistryConstants.ATTR_DEFAULT_SERVER), curDriver.getDefaultServer()));
                         curDriver.setDriverDefaultUser(CommonUtils.toString(atts.getValue(RegistryConstants.ATTR_DEFAULT_USER), curDriver.getDefaultUser()));
                         curDriver.setEmbedded(CommonUtils.getBoolean(atts.getValue(RegistryConstants.ATTR_EMBEDDED), curDriver.isEmbedded()));
+                        curDriver.setPropagateDriverProperties(CommonUtils.getBoolean(atts.getValue(RegistryConstants.ATTR_PROPAGATE_DRIVER_PROPERTIES), curDriver.isPropagateDriverProperties()));
                         curDriver.setAnonymousAccess(CommonUtils.getBoolean(atts.getValue(RegistryConstants.ATTR_ANONYMOUS), curDriver.isAnonymousAccess()));
                         curDriver.setAllowsEmptyPassword(CommonUtils.getBoolean(atts.getValue("allowsEmptyPassword"), curDriver.isAllowsEmptyPassword()));
                         curDriver.setInstantiable(CommonUtils.getBoolean(atts.getValue(RegistryConstants.ATTR_INSTANTIABLE), curDriver.isInstantiable()));
+                        curDriver.setThreadSafeDriver(CommonUtils.getBoolean(atts.getValue("threadSafe"), curDriver.isThreadSafeDriver()));
                     }
                     if (atts.getValue(RegistryConstants.ATTR_CUSTOM_DRIVER_LOADER) != null) {
                         curDriver.setCustomDriverLoader((
@@ -312,7 +332,9 @@ public class DriverDescriptorSerializerLegacy extends DriverDescriptorSerializer
                 }
                 case RegistryConstants.TAG_LIBRARY: {
                     if (curDriver == null) {
-                        log.warn("Library outside of driver (" + atts.getValue(RegistryConstants.ATTR_PATH) + ")");
+                        if (!isDetachedProcess) {
+                            log.warn("Library outside of driver (" + atts.getValue(RegistryConstants.ATTR_PATH) + ")");
+                        }
                         return;
                     }
                     isLibraryUpgraded = false;

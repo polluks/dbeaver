@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +25,11 @@ public class AICompletionConstants {
 
     public static final String AI_DISABLED = "ai.completion.disabled";
     public static final String AI_COMPLETION_EXECUTE_IMMEDIATELY = "ai.completion.executeImmediately";
+
+
     public static final String AI_INCLUDE_SOURCE_TEXT_IN_QUERY_COMMENT = "ai.completion.includeSourceTextInQuery";
+    public static final String AI_SEND_TYPE_INFO = "ai.completion.sendType";
+    public static final String AI_SEND_DESCRIPTION = "ai.completion.description";
     public static final String AI_COMPLETION_MAX_CHOICES = "ai.completion.maxChoices";
 
     // Datasource-specific props

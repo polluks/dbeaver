@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,9 @@
  */
 package org.jkiss.dbeaver.erd.ui.part;
 
-import org.eclipse.draw2d.*;
+import org.eclipse.draw2d.ConnectionLayer;
+import org.eclipse.draw2d.IFigure;
+import org.eclipse.draw2d.PolylineConnection;
 import org.eclipse.draw2d.geometry.Point;
 import org.eclipse.draw2d.geometry.Rectangle;
 import org.eclipse.gef.*;
@@ -42,8 +44,12 @@ import org.jkiss.dbeaver.erd.ui.layout.GraphAnimation;
 import org.jkiss.dbeaver.erd.ui.layout.GraphLayoutAuto;
 import org.jkiss.dbeaver.erd.ui.model.EntityDiagram;
 import org.jkiss.dbeaver.erd.ui.policy.DiagramContainerEditPolicy;
-import org.jkiss.dbeaver.erd.ui.router.MikamiTabuchiConnectionRouter;
+import org.jkiss.dbeaver.erd.ui.router.ERDConnectionRouter;
+import org.jkiss.dbeaver.erd.ui.router.ERDConnectionRouterDescriptor;
+import org.jkiss.dbeaver.erd.ui.router.ERDConnectionRouterRegistry;
 import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
+import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
+import org.jkiss.dbeaver.ui.LoadingJob;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.utils.CommonUtils;
 
@@ -58,7 +64,7 @@ import java.util.List;
  * @author Serge Rider
  */
 public class DiagramPart extends PropertyAwarePart {
-
+    private ERDConnectionRouter router;
     private final CommandStackEventListener stackListener = new CommandStackEventListener() {
 
         @Override
@@ -76,9 +82,13 @@ public class DiagramPart extends PropertyAwarePart {
         }
     };
     private DelegatingLayoutManager delegatingLayoutManager;
-    private Font normalFont, boldFont, italicFont, boldItalicFont;
+    private Font normalFont;
+    private Font boldFont;
+    private Font italicFont;
+    private Font boldItalicFont;
 
     public DiagramPart() {
+        //default constructor
     }
 
     /**
@@ -125,40 +135,26 @@ public class DiagramPart extends PropertyAwarePart {
     }
 
     @Override
-    protected IFigure createFigure()
-    {
+    protected IFigure createFigure() {
         EntityDiagramFigure figure = new EntityDiagramFigure(this);
         delegatingLayoutManager = new DelegatingLayoutManager(this);
         figure.setLayoutManager(delegatingLayoutManager);
-
-/*
-        ConnectionLayer cLayer = (ConnectionLayer) getLayer(LayerConstants.CONNECTION_LAYER);
-        ViewportAwareConnectionLayerClippingStrategy clippingStrategy = new ViewportAwareConnectionLayerClippingStrategy(cLayer);
-        figure.setClippingStrategy(clippingStrategy);
-*/
         Control control = getViewer().getControl();
         ConnectionLayer cLayer = (ConnectionLayer) getLayer(LayerConstants.CONNECTION_LAYER);
         if ((control.getStyle() & SWT.MIRRORED) == 0) {
             cLayer.setAntialias(SWT.ON);
         }
-
-        FanRouter router = new FanRouter();
-        router.setSeparation(15);
-        final DBPPreferenceStore store = ERDUIActivator.getDefault().getPreferences();
-        //router.setNextRouter(new BendpointConnectionRouter());
-        if (store.getString(ERDUIConstants.PREF_ROUTING_TYPE).equals(ERDUIConstants.ROUTING_MIKAMI)) {
-            router.setNextRouter(new MikamiTabuchiConnectionRouter(figure));
-        } else {
-            router.setNextRouter(new ShortestPathConnectionRouter(figure));
+        ERDConnectionRouterDescriptor routerDescriptor = getEditor().getDiagramRouter();
+        if (routerDescriptor == null) {
+            routerDescriptor = ERDConnectionRouterRegistry.getInstance().getActiveRouter();
         }
-
-//        router.setNextRouter(new ManhattanConnectionRouter());
-        //router.setNextRouter(new BendpointConnectionRouter());
+        router = routerDescriptor.createRouter();
+        router.setContainer(figure);
         cLayer.setConnectionRouter(router);
-
         return figure;
     }
 
+    @Override
     @NotNull
     public EntityDiagram getDiagram()
     {
@@ -197,29 +193,57 @@ public class DiagramPart extends PropertyAwarePart {
         return boldItalicFont;
     }
 
-    public void rearrangeDiagram()
-    {
-        for (Object part : getChildren()) {
-            if (part instanceof NodePart) {
-                resetConnectionConstraints(((NodePart) part).getSourceConnections());
-            }
+    /**
+     * The method designed for diagram re-arrangement, reset alignment elements
+     * to original
+     */
+    public void resetArrangement() {
+        if (getEditor() == null) {
+            return;
         }
-        //delegatingLayoutManager.set
-        delegatingLayoutManager.rearrange(getFigure());
-
-        //getFigure().setLayoutManager(delegatingLayoutManager);
-        //getFigure().getLayoutManager().layout(getFigure());
-        getFigure().repaint();
+        RearrangeDiagramService diagramService = new RearrangeDiagramService(this);
+        LoadingJob.createService(
+            diagramService,
+            getEditor()
+                .getProgressControl()
+                .createLoadVisualizer())
+            .schedule();
     }
 
-    private void resetConnectionConstraints(List sourceConnections) {
+    void rearrangeDiagram(@NotNull DBRProgressMonitor monitor) {
+        if (monitor.isCanceled()) {
+            return;
+        }
+        monitor.beginTask(ERDUIMessages.erd_job_rearrange_diagram, getChildren().size() + 2);
+        getChildren().forEach(c -> {
+            if (c instanceof NodePart nodePart) {
+                UIUtils.syncExec(() -> resetConnectionConstraints(monitor, nodePart.getSourceConnections()));
+                monitor.worked(1);
+            }
+        });
+        monitor.subTask(ERDUIMessages.erd_job_reset_element_position);
+        delegatingLayoutManager.rearrange(monitor, getFigure());
+        if (monitor.isCanceled()) {
+            return;
+        } else {
+            monitor.worked(1);
+        }
+        monitor.subTask(ERDUIMessages.erd_job_repaint_diagram);
+        UIUtils.syncExec(() -> getFigure().repaint());
+        monitor.worked(1);
+    }
+
+    private void resetConnectionConstraints(DBRProgressMonitor monitor, List<?> sourceConnections) {
+        if (monitor.isCanceled()) {
+            return;
+        }
         if (!CommonUtils.isEmpty(sourceConnections)) {
             for (Object sc : sourceConnections) {
-                if (sc instanceof AbstractConnectionEditPart) {
-                    ((AbstractConnectionEditPart) sc).getConnectionFigure().setRoutingConstraint(null);
-                    if (sc instanceof AssociationPart) {
-                        ((AssociationPart) sc).getAssociation().setInitBends(null);
-                        ((AssociationPart) sc).setConnectionRouting((PolylineConnection) ((AbstractConnectionEditPart) sc).getConnectionFigure());
+                if (sc instanceof AbstractConnectionEditPart abstractPart) {
+                    abstractPart.getConnectionFigure().setRoutingConstraint(null);
+                    if (sc instanceof AssociationPart associationPart) {
+                        associationPart.getAssociation().setInitBends(null);
+                        associationPart.setConnectionRouting(monitor, (PolylineConnection) abstractPart.getConnectionFigure());
                     }
                 }
             }
@@ -423,5 +447,12 @@ public class DiagramPart extends PropertyAwarePart {
         return ERDUIMessages.entity_diagram_ + " " + getDiagram().getName();
     }
 
-
+    /**
+     * Gets the diagram router
+     *
+     * @return - router
+     */
+    public ERDConnectionRouter getActiveRouter() {
+        return router;
+    }
 }

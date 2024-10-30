@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 
 package org.jkiss.dbeaver.ext.postgresql;
 
+import org.jkiss.dbeaver.ext.postgresql.internal.PostgreSQLMessages;
 import org.jkiss.dbeaver.model.DBConstants;
 import org.jkiss.dbeaver.model.DBIcon;
 import org.jkiss.dbeaver.model.data.DBDPseudoAttribute;
@@ -93,8 +94,15 @@ public class PostgreConstants {
     // Workaround for EnterpriseDB
     public static final String EDB_OBJECT_CLASS = "com.edb.util.PGobject";
 
-    public static final DBDPseudoAttribute PSEUDO_ATTR_OID = new DBDPseudoAttribute(DBDPseudoAttributeType.ROWID, "oid",
-        "oid", "oid", "Row identifier", false);
+    public static final DBDPseudoAttribute PSEUDO_ATTR_OID = new DBDPseudoAttribute(
+        DBDPseudoAttributeType.ROWID,
+        "oid",
+        "oid",
+        "oid",
+        PostgreSQLMessages.pseudo_column_oid_description,
+        false,
+        DBDPseudoAttribute.PropagationPolicy.TABLE_LOCAL
+    );
 
     public static final String TYPE_CHAR = "char";
     public static final String TYPE_TEXT = "text";
@@ -118,6 +126,9 @@ public class PostgreConstants {
     public static final String TYPE_TIMESTAMPTZ = "timestamptz";
     public static final String TYPE_XML = "xml";
     public static final String TYPE_BOOLEAN = "boolean";
+    public static final String TYPE_BYTEA = "bytea";
+
+    public static final String OPERATION_ALTER = "alter";
 
     public static final String HANDLER_SSL = "postgre_ssl";
 
@@ -152,6 +163,8 @@ public class PostgreConstants {
     public static final String COLLATION_DEFAULT = "default";
     public static final String DEFAULT_ARRAY_DELIMITER = " ";
     public static final String PG_PASS_HOSTNAME = "overriddenUsername";
+    public static final String LEGACY_UA_TIMEZONE = "Europe/Kiev";
+    public static final String NEW_UA_TIMEZONE = "Europe/Kyiv";
 
     static {
         DATA_TYPE_ALIASES.put("boolean", TYPE_BOOL);

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,20 +37,19 @@ import org.jkiss.dbeaver.model.navigator.DBNModel;
 import org.jkiss.dbeaver.model.navigator.DBNUtils;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.VoidProgressMonitor;
+import org.jkiss.dbeaver.model.sql.SQLDialectInsertReplaceMethod;
 import org.jkiss.dbeaver.model.sql.SQLUtils;
-import org.jkiss.dbeaver.model.sql.registry.SQLInsertReplaceMethodDescriptor;
-import org.jkiss.dbeaver.model.sql.registry.SQLInsertReplaceMethodRegistry;
 import org.jkiss.dbeaver.model.struct.*;
 import org.jkiss.dbeaver.model.struct.rdb.DBSCatalog;
 import org.jkiss.dbeaver.model.struct.rdb.DBSManipulationType;
 import org.jkiss.dbeaver.model.struct.rdb.DBSSchema;
+import org.jkiss.dbeaver.model.task.DBTTask;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.runtime.ui.DBPPlatformUI;
-import org.jkiss.dbeaver.tools.transfer.IDataTransferAttributeTransformer;
-import org.jkiss.dbeaver.tools.transfer.IDataTransferConsumer;
-import org.jkiss.dbeaver.tools.transfer.IDataTransferNodePrimary;
-import org.jkiss.dbeaver.tools.transfer.IDataTransferProcessor;
+import org.jkiss.dbeaver.tools.transfer.*;
 import org.jkiss.dbeaver.tools.transfer.internal.DTMessages;
+import org.jkiss.dbeaver.tools.transfer.registry.DataTransferEventProcessorDescriptor;
+import org.jkiss.dbeaver.tools.transfer.registry.DataTransferRegistry;
 import org.jkiss.utils.CommonUtils;
 
 import java.lang.reflect.InvocationTargetException;
@@ -63,10 +62,12 @@ import java.util.Map;
 /**
  * Stream transfer consumer
  */
-@DBSerializable("databaseTransferConsumer")
+@DBSerializable(DatabaseTransferConsumer.NODE_ID)
 public class DatabaseTransferConsumer implements IDataTransferConsumer<DatabaseConsumerSettings, IDataTransferProcessor>,
         IDataTransferNodePrimary, DBPReferentialIntegrityController {
     private static final Log log = Log.getLog(DatabaseTransferConsumer.class);
+
+    public static final String NODE_ID = "databaseTransferConsumer";
 
     private final DBCStatistics statistics = new DBCStatistics();
     private DatabaseConsumerSettings settings;
@@ -172,7 +173,7 @@ public class DatabaseTransferConsumer implements IDataTransferConsumer<DatabaseC
     }
 
     @Override
-    public void fetchStart(DBCSession session, DBCResultSet resultSet, long offset, long maxRows) throws DBCException {
+    public void fetchStart(@NotNull DBCSession session, @NotNull DBCResultSet resultSet, long offset, long maxRows) throws DBCException {
         try {
             initExporter(session.getProgressMonitor());
         } catch (DBException e) {
@@ -187,12 +188,12 @@ public class DatabaseTransferConsumer implements IDataTransferConsumer<DatabaseC
         DBSDataManipulator targetObject = getTargetObject();
         if (targetObject != null && !isPreview && offset <= 0 && settings.isTruncateBeforeLoad() && (containerMapping == null || containerMapping.getMappingType() == DatabaseMappingType.existing)) {
             // Truncate target tables
-            if (targetObject.isFeatureSupported(DBSDataManipulator.FEATURE_DATA_TRUNCATE)) {
-                targetObject.truncateData(
-                    targetSession,
-                    executionSource);
-            } else {
-                log.error("Table '" + targetObject.getName() + "' doesn't support truncate operation");
+            // Note: all implementations support truncate in some way (e.g. DELETE FROM)
+            // even if DBSDataManipulator.FEATURE_DATA_TRUNCATE is reported to be not supported.
+            try {
+                targetObject.truncateData(targetSession, executionSource);
+            } catch (DBCFeatureNotSupportedException e) {
+                log.warn("Table '" + targetObject.getName() + "' doesn't support truncate operation");
             }
         }
 
@@ -202,7 +203,7 @@ public class DatabaseTransferConsumer implements IDataTransferConsumer<DatabaseC
             // Document-based datasource
             rsAttributes = DBUtils.getAttributeBindings(session, sourceObject, resultSet.getMeta());
         } else {
-            rsAttributes = DBUtils.makeLeafAttributeBindings(session, sourceObject, resultSet);
+            rsAttributes = DTUtils.makeLeafAttributeBindings(session, sourceObject, resultSet);
         }
         columnMappings = new ColumnMapping[rsAttributes.length];
         sourceBindings = rsAttributes;
@@ -320,7 +321,7 @@ public class DatabaseTransferConsumer implements IDataTransferConsumer<DatabaseC
     }
 
     @Override
-    public void fetchRow(DBCSession session, DBCResultSet resultSet) throws DBCException {
+    public void fetchRow(@NotNull DBCSession session, @NotNull DBCResultSet resultSet) throws DBCException {
         final Object document;
 
         if (session.getDataSource().getInfo().isDynamicMetadata()) {
@@ -433,7 +434,8 @@ public class DatabaseTransferConsumer implements IDataTransferConsumer<DatabaseC
                 if (onDuplicateKeyCaseOn) {
                     String insertMethodId = settings.getOnDuplicateKeyInsertMethodId();
                     if (!CommonUtils.isEmpty(insertMethodId)) {
-                        SQLInsertReplaceMethodDescriptor insertReplaceMethod = SQLInsertReplaceMethodRegistry.getInstance().getInsertMethod(insertMethodId);
+                        SQLDialectInsertReplaceMethod insertReplaceMethod =
+                            DBWorkbench.getPlatform().getSQLDialectRegistry().getInsertReplaceMethod(insertMethodId);
                         if (insertReplaceMethod != null) {
                             try {
                                 DBDInsertReplaceMethod insertMethod = insertReplaceMethod.createInsertMethod();
@@ -466,6 +468,12 @@ public class DatabaseTransferConsumer implements IDataTransferConsumer<DatabaseC
                         log.error("Error inserting row", e);
                         if (ignoreErrors) {
                             break;
+                        }
+                        if (DBWorkbench.getPlatform().getApplication().isHeadlessMode()) {
+                            if (e instanceof DBCException dbe) {
+                                throw dbe;
+                            }
+                            throw new DBCException(e.getMessage(), e);
                         }
                         String message;
                         if (disableUsingBatches) {
@@ -502,7 +510,7 @@ public class DatabaseTransferConsumer implements IDataTransferConsumer<DatabaseC
     }
 
     @Override
-    public void fetchEnd(DBCSession session, DBCResultSet resultSet) throws DBCException {
+    public void fetchEnd(@NotNull DBCSession session, @NotNull DBCResultSet resultSet) throws DBCException {
         try {
             if (rowsExported > 0) {
                 insertBatch(true);
@@ -613,7 +621,7 @@ public class DatabaseTransferConsumer implements IDataTransferConsumer<DatabaseC
     }
 
     @Override
-    public void initTransfer(DBSObject sourceObject, DatabaseConsumerSettings settings, TransferParameters parameters, IDataTransferProcessor processor, Map<String, Object> processorProperties) {
+    public void initTransfer(@NotNull DBSObject sourceObject, @Nullable DatabaseConsumerSettings settings, @NotNull TransferParameters parameters, @Nullable IDataTransferProcessor processor, @Nullable Map<String, Object> processorProperties, @Nullable DBPProject project) {
         this.settings = settings;
         this.containerMapping = settings.getDataMapping((DBSDataContainer) sourceObject);
     }
@@ -682,10 +690,6 @@ public class DatabaseTransferConsumer implements IDataTransferConsumer<DatabaseC
     }
 
     private boolean createTargetTable(DBCSession session, DatabaseMappingContainer containerMapping) throws DBException {
-        DBPDataSourceContainer dataSourceContainer = session.getDataSource().getContainer();
-        if (!dataSourceContainer.hasModifyPermission(DBPDataSourcePermission.PERMISSION_EDIT_METADATA)) {
-            throw new DBCException("New table creation in database [" + dataSourceContainer.getName() + "] restricted by connection configuration");
-        }
         DBSObjectContainer schema = settings.getContainer();
         if (schema == null) {
             throw new DBException("No target container selected");
@@ -715,14 +719,22 @@ public class DatabaseTransferConsumer implements IDataTransferConsumer<DatabaseC
 
     @Override
     public void finishTransfer(DBRProgressMonitor monitor, boolean last) {
-        if (last) {
+        finishTransfer(monitor, null, last);
+    }
+
+    @Override
+    public void finishTransfer(@NotNull DBRProgressMonitor monitor, @Nullable Throwable error, @Nullable DBTTask task, boolean last) {
+        if (last && error == null) {
             // Refresh navigator
             monitor.subTask("Refresh database model");
             try {
                 DBSObjectContainer container = settings.getContainer();
                 DBNModel navigatorModel = DBNUtils.getNavigatorModel(container);
                 if (navigatorModel != null) {
-                    var node = DBNUtils.getNodeByObject(container);
+                    var node = DBNUtils.getNodeByObject(containerMapping.getTarget());
+                    if (node == null) {
+                        node = DBNUtils.getNodeByObject(container);
+                    }
                     if (node != null) {
                         node.refreshNode(monitor, this);
                     }
@@ -734,7 +746,7 @@ public class DatabaseTransferConsumer implements IDataTransferConsumer<DatabaseC
             }
         }
 
-        if (!last && settings.isOpenTableOnFinish()) {
+        if (!last && settings.isOpenTableOnFinish() && error == null) {
             try {
                 // Mappings can be outdated so is the target object.
                 // This may happen when several database consumers point to the same container node
@@ -760,6 +772,29 @@ public class DatabaseTransferConsumer implements IDataTransferConsumer<DatabaseC
                 }
 
                 DBWorkbench.getPlatformUI().openEntityEditor(targetObject);
+            }
+        }
+
+        if (last) {
+            final DataTransferRegistry registry = DataTransferRegistry.getInstance();
+            for (Map.Entry<String, Map<String, Object>> entry : settings.getEventProcessors().entrySet()) {
+                final DataTransferEventProcessorDescriptor descriptor = registry.getEventProcessorById(entry.getKey());
+                if (descriptor == null) {
+                    log.debug("Can't find event processor '" + entry.getKey() + "'");
+                    continue;
+                }
+                try {
+                    final IDataTransferEventProcessor<DatabaseTransferConsumer> processor = descriptor.create();
+
+                    if (error == null) {
+                        processor.processEvent(monitor, IDataTransferEventProcessor.Event.FINISH, this, task, entry.getValue());
+                    } else {
+                        processor.processError(monitor, error, this, task, entry.getValue());
+                    }
+                } catch (DBException e) {
+                    DBWorkbench.getPlatformUI().showError("Transfer event processor", "Error executing data transfer event processor '" + entry.getKey() + "'", e);
+                    log.error("Error executing event processor '" + entry.getKey() + "'", e);
+                }
             }
         }
     }
@@ -972,9 +1007,18 @@ public class DatabaseTransferConsumer implements IDataTransferConsumer<DatabaseC
             return this.binding.getDataSource();
         }
 
+        @NotNull
         @Override
         public DBPDataKind getDataKind() {
             return this.binding.getDataKind();
         }
+    }
+
+    public void setSettings(@Nullable DatabaseConsumerSettings settings) {
+        this.settings = settings;
+    }
+
+    public void setContainerMapping(@Nullable DatabaseMappingContainer containerMapping) {
+        this.containerMapping = containerMapping;
     }
 }

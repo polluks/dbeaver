@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -73,7 +73,7 @@ public abstract class NavigatorHandlerObjectCreateBase extends NavigatorHandlerO
                 }
             }
             if (container == null) {
-                throw new DBException("Can't detect container for '" + element.getNodeName() + "'");
+                throw new DBException("Can't detect container for '" + element.getNodeDisplayName() + "'");
             }
             if (container instanceof DBNDatabaseNode && ObjectPropertyTester.isMetadataChangeDisabled((DBNDatabaseNode) container)) {
                 throw new DBException("Object create not available in simple view mode");
@@ -136,10 +136,10 @@ public abstract class NavigatorHandlerObjectCreateBase extends NavigatorHandlerO
             if (workbenchWindow.getActivePage().getActivePart() == activeEditor &&
                 activeEditor.getAdapter(IDatabaseModellerEditor.class) != null &&
                 activeEditor.getAdapter(IDatabaseModellerEditor.class).isModelEditEnabled() &&
-                activeEditor.getEditorInput() instanceof IDatabaseEditorInput)
+                activeEditor.getEditorInput() instanceof IDatabaseEditorInput editorInput)
             {
                 // We are in model editor.
-                editorNode = ((IDatabaseEditorInput) activeEditor.getEditorInput()).getNavigatorNode();
+                editorNode = editorInput.getNavigatorNode();
             }
 
             DBEObjectManager<?> objectManager = DBWorkbench.getPlatform().getEditorsRegistry().getObjectManager(newObjectType);
@@ -148,7 +148,7 @@ public abstract class NavigatorHandlerObjectCreateBase extends NavigatorHandlerO
             }
             DBEObjectMaker objectMaker = (DBEObjectMaker) objectManager;
 
-            DBPDataSource dataSource = container instanceof DBNDatabaseNode ? ((DBNDatabaseNode) container).getDataSource() : null;
+            DBPDataSource dataSource = container instanceof DBNDatabaseNode dbNode ? dbNode.getDataSource() : null;
 
             final boolean openEditor = dataSource != null &&
                 (objectMaker.getMakerOptions(dataSource) & DBEObjectMaker.FEATURE_EDITOR_ON_CREATE) != 0;
@@ -204,6 +204,7 @@ public abstract class NavigatorHandlerObjectCreateBase extends NavigatorHandlerO
         private final CONTAINER_TYPE parentObject;
         private final DBSObject sourceObject;
         private OBJECT_TYPE newObject;
+        private DBNDatabaseNode newNode = null;
 
         public CreateJob(CommandTarget commandTarget, DBEObjectMaker<OBJECT_TYPE, CONTAINER_TYPE> objectMaker, CONTAINER_TYPE parentObject, DBSObject sourceObject, OBJECT_TYPE newObject) {
             super("Create new database object with " + objectMaker.getClass().getSimpleName());
@@ -249,7 +250,8 @@ public abstract class NavigatorHandlerObjectCreateBase extends NavigatorHandlerO
                         if (monitor.isCanceled()) {
                             break;
                         }
-                        if (DBWorkbench.getPlatform().getNavigatorModel().findNode(newObject) != null) {
+                        newNode = DBWorkbench.getPlatform().getNavigatorModel().findNode(newObject);
+                        if (newNode != null) {
                             break;
                         }
                         RuntimeUtils.pause(100);
@@ -262,7 +264,7 @@ public abstract class NavigatorHandlerObjectCreateBase extends NavigatorHandlerO
                     @Override
                     public void done(IJobChangeEvent event) {
                         UIUtils.syncExec(() -> {
-                            openNewObject();
+                            openNewObject(newNode);
                         });
                     }
                 });
@@ -275,10 +277,9 @@ public abstract class NavigatorHandlerObjectCreateBase extends NavigatorHandlerO
             }
         }
 
-        private void openNewObject() {
+        private void openNewObject(@Nullable DBNDatabaseNode newChild) {
             IWorkbenchWindow workbenchWindow = UIUtils.getActiveWorkbenchWindow();
             try {
-                final DBNDatabaseNode newChild = DBWorkbench.getPlatform().getNavigatorModel().findNode(newObject);
                 if (newChild != null) {
                     DatabaseNavigatorView view = UIUtils.findView(workbenchWindow, DatabaseNavigatorView.class);
                     if (view != null) {

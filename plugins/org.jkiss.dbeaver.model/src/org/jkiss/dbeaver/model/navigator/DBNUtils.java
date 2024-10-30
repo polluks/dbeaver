@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@
 package org.jkiss.dbeaver.model.navigator;
 
 import org.apache.commons.jexl3.JexlContext;
-import org.eclipse.core.resources.IResource;
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
@@ -25,12 +24,14 @@ import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ModelPreferences;
 import org.jkiss.dbeaver.model.DBPDataSourcePermission;
 import org.jkiss.dbeaver.model.DBPHiddenObject;
+import org.jkiss.dbeaver.model.DBPObjectWithOrdinalPosition;
 import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.app.DBPProject;
 import org.jkiss.dbeaver.model.exec.DBCExecutionContext;
 import org.jkiss.dbeaver.model.exec.DBCExecutionContextDefaults;
-import org.jkiss.dbeaver.model.navigator.fs.DBNPath;
 import org.jkiss.dbeaver.model.navigator.meta.DBXTreeFolder;
+import org.jkiss.dbeaver.model.navigator.meta.DBXTreeItem;
+import org.jkiss.dbeaver.model.navigator.meta.DBXTreeNode;
 import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.struct.DBSEntity;
@@ -40,6 +41,7 @@ import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.utils.ArrayUtils;
 import org.jkiss.utils.CommonUtils;
 
+import java.nio.file.Path;
 import java.util.*;
 
 /**
@@ -71,10 +73,10 @@ public class DBNUtils {
     public static DBNDatabaseNode getChildFolder(DBRProgressMonitor monitor, DBNDatabaseNode node, Class<?> folderType) {
         try {
             for (DBNDatabaseNode childNode : node.getChildren(monitor)) {
-                if (!(childNode instanceof DBNDatabaseFolder)) {
+                if (!(childNode instanceof DBNDatabaseFolder folder)) {
                     continue;
                 }
-                final DBXTreeFolder meta = ((DBNDatabaseFolder) childNode).getMeta();
+                final DBXTreeFolder meta = folder.getMeta();
                 if (!CommonUtils.isEmpty(meta.getType())) {
                     final Class<?> objectClass = meta.getSource().getObjectClass(meta.getType());
                     if (objectClass != null && folderType.isAssignableFrom(objectClass)) {
@@ -104,16 +106,12 @@ public class DBNUtils {
         DBNNode[] result;
         if (forTree) {
             List<DBNNode> filtered = new ArrayList<>();
-            for (int i = 0; i < children.length; i++) {
-                DBNNode node = children[i];
-                if (node instanceof DBPHiddenObject && ((DBPHiddenObject) node).isHidden()) {
+            for (DBNNode node : children) {
+                if (node instanceof DBPHiddenObject hiddenObject && hiddenObject.isHidden()) {
                     continue;
                 }
-                if (node instanceof DBNDatabaseNode) {
-                    DBNDatabaseNode dbNode = (DBNDatabaseNode) node;
-                    if (dbNode.getMeta() != null && !dbNode.getMeta().isNavigable()) {
-                        continue;
-                    }
+                if (node instanceof DBNDatabaseNode dbNode && !dbNode.getMeta().isNavigable()) {
+                    continue;
                 }
                 filtered.add(node);
             }
@@ -133,7 +131,7 @@ public class DBNUtils {
         // and if children are not folders
         if (children.length > 0) {
             DBNNode firstChild = children[0];
-            boolean isResources = firstChild instanceof DBNResource || firstChild instanceof DBNPath;
+            boolean isResources = firstChild.getAdapter(Path.class) != null;
             {
                 if (isResources) {
                     Arrays.sort(children, NodeFolderComparator.INSTANCE);
@@ -150,15 +148,15 @@ public class DBNUtils {
     }
 
     private static boolean isMergedEntity(DBNNode node) {
-        return node instanceof DBNDatabaseNode &&
-            ((DBNDatabaseNode) node).getObject() instanceof DBSEntity &&
-            ((DBNDatabaseNode) node).getObject().getDataSource().getContainer().getNavigatorSettings().isMergeEntities();
+        return node instanceof DBNDatabaseNode dbNode &&
+           dbNode.getObject() instanceof DBSEntity &&
+           dbNode.getObject().getDataSource().getContainer().getNavigatorSettings().isMergeEntities();
     }
 
     public static boolean isDefaultElement(Object element)
     {
-        if (element instanceof DBSWrapper) {
-            DBSObject object = ((DBSWrapper) element).getObject();
+        if (element instanceof DBSWrapper wrapper) {
+            DBSObject object = wrapper.getObject();
             if (object != null) {
                 // Get default context from default instance - not from active object
                 DBCExecutionContext defaultContext = DBUtils.getDefaultContext(object.getDataSource(), false);
@@ -170,26 +168,10 @@ public class DBNUtils {
                     }
                 }
             }
-        } else if (element instanceof DBNProject) {
-            if (((DBNProject)element).getProject() == DBWorkbench.getPlatform().getWorkspace().getActiveProject()) {
-                return true;
-            }
+        } else if (element instanceof DBNProject nodeProject) {
+            return nodeProject.getProject() == DBWorkbench.getPlatform().getWorkspace().getActiveProject();
         }
         return false;
-    }
-
-    public static void refreshNavigatorResource(@NotNull DBPProject project, @NotNull IResource resource, Object source) {
-        DBNModel navigatorModel = project.getNavigatorModel();
-        if (navigatorModel == null) {
-            return;
-        }
-        final DBNProject projectNode = navigatorModel.getRoot().getProjectNode(resource.getProject());
-        if (projectNode != null) {
-            final DBNResource fileNode = projectNode.findResource(resource);
-            if (fileNode != null) {
-                fileNode.refreshResourceState(source);
-            }
-        }
     }
 
     @NotNull
@@ -200,16 +182,45 @@ public class DBNUtils {
 
     public static boolean isReadOnly(DBNNode node)
     {
-        return node instanceof DBNDatabaseNode &&
+        return node instanceof DBNDatabaseNode dbNode &&
             !(node instanceof DBNDataSource) &&
-            !((DBNDatabaseNode) node).getDataSourceContainer().hasModifyPermission(DBPDataSourcePermission.PERMISSION_EDIT_METADATA);
+            !dbNode.getDataSourceContainer().hasModifyPermission(DBPDataSourcePermission.PERMISSION_EDIT_METADATA);
+    }
+
+    public static boolean isFolderNode(DBNNode node) {
+        return node.allowsChildren();
+    }
+
+    public static DBXTreeItem getValidItemsMeta(DBRProgressMonitor monitor, DBNDatabaseNode dbNode) throws DBException {
+        DBXTreeItem itemsMeta = dbNode.getItemsMeta();
+        if (itemsMeta != null && itemsMeta.isOptional()) {
+            // Maybe we need nested item.
+            // Specifically this handles optional catalogs and schemas in Generic driver
+            Class<?> expectedChildrenType = dbNode.getChildrenOrFolderClass(itemsMeta);
+            if (expectedChildrenType != null) {
+                List<DBXTreeNode> childMetas = itemsMeta.getChildren(dbNode);
+                if (childMetas.size() == 1 && childMetas.get(0) instanceof DBXTreeItem nestedMeta) {
+                    Class<?> expectedNestedType = dbNode.getChildrenOrFolderClass(nestedMeta);
+                    DBNDatabaseNode[] nodeChildren = dbNode.getChildren(monitor);
+                    if (nodeChildren.length > 0 &&
+                        !expectedChildrenType.isInstance(nodeChildren[0].getObject()))
+                    {
+                        // Note: We should've check expectedNestedType.isInstance(nodeChildren[0].getObject())
+                        // but we cannot. Because after filters are applied child nodes may contain deeper nested type
+                        // FIXME: support it for databases which support only tables
+                        itemsMeta = nestedMeta;
+                    }
+                }
+            }
+        }
+        return itemsMeta;
     }
 
     private static class NodeNameComparator implements Comparator<DBNNode> {
         static NodeNameComparator INSTANCE = new NodeNameComparator();
         @Override
         public int compare(DBNNode node1, DBNNode node2) {
-            return node1.getNodeName().compareToIgnoreCase(node2.getNodeName());
+            return node1.getNodeDisplayName().compareToIgnoreCase(node2.getNodeDisplayName());
         }
     }
 
@@ -217,9 +228,16 @@ public class DBNUtils {
         static NodeFolderComparator INSTANCE = new NodeFolderComparator();
         @Override
         public int compare(DBNNode node1, DBNNode node2) {
-            int first = node1 instanceof DBNContainer || node1.allowsChildren() ? -1 : 1;
-            int second = node2 instanceof DBNContainer || node2.allowsChildren() ? -1 : 1;
+            int first = isFolderNode(node1) ? -1 : 1;
+            int second = isFolderNode(node2) ? -1 : 1;
             return first - second;
+        }
+
+        private static boolean isFolderNode(DBNNode node) {
+            if (node instanceof DBNDatabaseNode dbn && dbn.getObject() instanceof DBPObjectWithOrdinalPosition) {
+                return false;
+            }
+            return node instanceof DBNContainer || node.allowsChildren();
         }
     }
 
@@ -264,10 +282,35 @@ public class DBNUtils {
 
             @Override
             public boolean has(String name) {
-                return node instanceof DBNDatabaseNode && name.equals("object")
-                    && ((DBNDatabaseNode) node).getValueObject() != null;
+                return node instanceof DBNDatabaseNode dbNode && name.equals("object")
+                    && dbNode.getValueObject() != null;
             }
         };
+    }
+
+    /**
+     * The method decode symbols('%2F','%25')
+     *
+     * @param nodePath - path
+     * @return - node path object
+     */
+    public static String decodeNodePath(@NotNull String nodePath) {
+        return nodePath.replace("%2F", "/").replace("%25", "%");
+    }
+
+    /**
+     * The method encode symbols('/','%')
+     *
+     * @param path - path
+     * @return - string path segment
+     */
+    public static String encodeNodePath(@NotNull String path) {
+        return path.replace("%", "%25").replace("/", "%2F");
+    }
+
+
+    public static void disposeNode(DBNNode node, boolean reflect) {
+        node.dispose(reflect);
     }
 
 }

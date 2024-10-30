@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -90,50 +90,51 @@ public class ERDContentProviderDefault implements ERDContentProvider {
                 log.error("Error reading table identifier", e);
             }
             try {
-
                 boolean attrNodesCached = false;
-                Collection<? extends DBSEntityAttribute> attributes = entity.getAttributes(monitor);
-                DBSEntityAttribute firstAttr = CommonUtils.isEmpty(attributes) ? null : attributes.iterator().next();
-                DBSObjectFilter columnFilter = firstAttr == null ? null :
-                    entity.getDataSource().getContainer().getObjectFilter(firstAttr.getClass(), entity, false);
-                if (!CommonUtils.isEmpty(attributes)) {
-                    for (DBSEntityAttribute attribute : attributes) {
-                        boolean isInIdentifier = idColumns != null && idColumns.contains(attribute);
-                        if (!isAttributeVisible(erdEntity, attribute)) {
-                            // Show only visible attributes
-                            continue;
-                        }
-                        if (columnFilter != null && !columnFilter.matches(attribute.getName())) {
-                            continue;
-                        }
-                        if (!attrNodesCached) {
-                            // Pre-load navigator node as well.
-                            // It may be needed later because all ERD objects can be adapted to navigator nodes.
-                            DBNUtils.getNodeByObject(monitor, attribute, false);
-                            attrNodesCached = true;
-                        }
+                List<? extends DBSEntityAttribute> attributes = entity.getAttributes(monitor);
+                if (CommonUtils.isEmpty(attributes)) {
+                    return;
+                }
+                DBSEntityAttribute firstAttr = attributes.iterator().next();
+                DBSObjectFilter columnFilter = entity.getDataSource().getContainer().getObjectFilter(firstAttr.getClass(), entity, false);
+                for (int i = 0; i < attributes.size(); i++) {
+                    DBSEntityAttribute attribute = attributes.get(i);
+                    boolean isInIdentifier = idColumns != null && idColumns.contains(attribute);
+                    if (!isAttributeVisible(erdEntity, attribute)) {
+                        // Show only visible attributes
+                        continue;
+                    }
+                    if (columnFilter != null && !columnFilter.matches(attribute.getName())) {
+                        continue;
+                    }
+                    if (!attrNodesCached) {
+                        // Pre-load navigator node as well.
+                        // It may be needed later because all ERD objects can be adapted to navigator
+                        // nodes.
+                        DBNUtils.getNodeByObject(monitor, attribute, false);
+                        attrNodesCached = true;
+                    }
 
-                        switch (settings.getVisibility()) {
-                            case PRIMARY:
-                                if (!isInIdentifier) {
-                                    continue;
-                                }
-                                break;
-                            case KEYS:
-                                if (!keyColumns.contains(attribute)) {
-                                    continue;
-                                }
-                                break;
-                            default:
-                                break;
-                        }
-                        boolean inPrimaryKey = idColumns != null && idColumns.contains(attribute);
-                        ERDEntityAttribute c1 = new ERDEntityAttribute(attribute, inPrimaryKey);
-                        erdEntity.addAttribute(c1, false);
+                    switch (settings.getVisibility()) {
+                        case PRIMARY:
+                            if (!isInIdentifier) {
+                                continue;
+                            }
+                            break;
+                        case KEYS:
+                            if (!keyColumns.contains(attribute)) {
+                                continue;
+                            }
+                            break;
+                        default:
+                            break;
                     }
-                    if (settings.isAlphabeticalOrder()) {
-                        erdEntity.sortAttributes(DBUtils.nameComparatorIgnoreCase(), false);
-                    }
+                    boolean inPrimaryKey = idColumns != null && idColumns.contains(attribute);
+                    ERDEntityAttribute c1 = new ERDEntityAttribute(attribute, inPrimaryKey);
+                    erdEntity.addAttribute(c1, false);
+                }
+                if (settings.isAlphabeticalOrder()) {
+                    erdEntity.sortAttributes(DBUtils.nameComparatorIgnoreCase(), false);
                 }
             } catch (DBException e) {
                 // just skip this problematic attributes
@@ -156,9 +157,27 @@ public class ERDContentProviderDefault implements ERDContentProvider {
     }
 
     @Override
-    public ERDAssociation createAutoAssociation(ERDContainer diagram, @NotNull DBSEntityAssociation association, @NotNull ERDEntity sourceEntity, @NotNull ERDEntity targetEntity, boolean reflect) {
+    public ERDAssociation createAutoAssociation(ERDContainer diagram, 
+        @NotNull DBSEntityAssociation association,
+        @NotNull ERDEntity sourceEntity, 
+        @NotNull ERDEntity targetEntity,
+        boolean reflect) {
         // Allow all auto-associations
-        return new ERDAssociation(association, sourceEntity, targetEntity, reflect);
+        ERDAssociation erdAssociation = new ERDAssociation(association, sourceEntity, targetEntity, reflect);
+        erdAssociation.resolveAttributes();
+        return erdAssociation;
+    }
+
+    @Override
+    public ERDAssociation createAssociation(ERDContainer diagram,
+        DBSEntityAssociation association,
+        ERDEntity sourceEntity,
+        ERDEntityAttribute sourceAttribute,
+        ERDEntity targetEntity,
+        ERDEntityAttribute targetAttribute, boolean reflect) {
+        ERDAssociation erdAssociation = new ERDAssociation(association, sourceEntity, targetEntity, reflect);
+        erdAssociation.addCondition(sourceAttribute, targetAttribute);
+        return erdAssociation;
     }
 
     @Override

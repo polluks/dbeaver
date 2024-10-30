@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -124,7 +124,7 @@ public class DriverTabbedViewer extends StructuredViewer {
 
         String folderId = UIUtils.getDialogSettings(DIALOG_ID).get(PARAM_LAST_FOLDER);
         if (CommonUtils.isEmpty(folderId)) {
-            folderId = "popular";
+            folderId = "all";
         }
         folderComposite.setFolders(getClass().getSimpleName(), folders.toArray(new TabbedFolderInfo[0]));
         folderComposite.switchFolder(folderId, false);
@@ -334,12 +334,12 @@ public class DriverTabbedViewer extends StructuredViewer {
         private class DriverLabelProvider extends LabelProvider implements IToolTipProvider {
             @Override
             public Image getImage(Object element) {
-                return DBeaverIcons.getImage(((DBPDriver)element).getIconBig());
+                return DBeaverIcons.getImage(((DBPDriver) element).getIconBig());
             }
 
             @Override
             public String getText(Object element) {
-                return ((DBPDriver)element).getName();
+                return ((DBPDriver) element).getName();
             }
 
             @Override

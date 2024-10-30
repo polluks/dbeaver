@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,10 @@ import org.jkiss.dbeaver.ui.UIUtils;
 
 public class CSSUtils {
 
+    public static String getCSSClass(Widget widget){
+        return (String) widget.getData(CSSSWTConstants.CSS_CLASS_NAME_KEY);
+    }
+
     /**
      * Set value to a widget as a CSSSWTConstants.CSS_CLASS_NAME_KEY value.
      * @param widget
@@ -32,6 +36,14 @@ public class CSSUtils {
      */
     public static void setCSSClass(Widget widget, String value){
         widget.setData(CSSSWTConstants.CSS_CLASS_NAME_KEY, value);
+    }
+
+    public static Widget getMimicControl(Widget widget){
+        return (Widget) widget.getData(DBStyles.ATTR_MIMIC_CONTROL);
+    }
+
+    public static void setMimicControl(Widget widget, Widget mimicControl){
+        widget.setData(DBStyles.ATTR_MIMIC_CONTROL, mimicControl);
     }
 
     public static Color getCurrentEditorConnectionColor(Widget widget) {

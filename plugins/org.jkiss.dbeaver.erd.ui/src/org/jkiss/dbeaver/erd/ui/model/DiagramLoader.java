@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,9 +24,18 @@ import org.eclipse.draw2d.Bendpoint;
 import org.eclipse.draw2d.IFigure;
 import org.eclipse.draw2d.RelativeBendpoint;
 import org.eclipse.draw2d.geometry.Rectangle;
+import org.eclipse.jface.dialogs.IDialogConstants;
+import org.eclipse.jface.layout.GridDataFactory;
 import org.eclipse.jface.resource.StringConverter;
+import org.eclipse.jface.viewers.ColumnLabelProvider;
+import org.eclipse.jface.viewers.TableViewer;
+import org.eclipse.swt.SWT;
+import org.eclipse.swt.events.SelectionListener;
 import org.eclipse.swt.graphics.Color;
-import org.eclipse.swt.widgets.Display;
+import org.eclipse.swt.graphics.Image;
+import org.eclipse.swt.layout.GridData;
+import org.eclipse.swt.widgets.*;
+import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
@@ -35,11 +44,18 @@ import org.jkiss.dbeaver.erd.ui.ERDUIConstants;
 import org.jkiss.dbeaver.erd.ui.part.*;
 import org.jkiss.dbeaver.model.*;
 import org.jkiss.dbeaver.model.app.DBPProject;
+import org.jkiss.dbeaver.model.navigator.DBNDataSource;
+import org.jkiss.dbeaver.model.navigator.DBNNode;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.VoidProgressMonitor;
 import org.jkiss.dbeaver.model.struct.*;
+import org.jkiss.dbeaver.runtime.DBWorkbench;
+import org.jkiss.dbeaver.ui.DBeaverIcons;
 import org.jkiss.dbeaver.ui.SharedFonts;
 import org.jkiss.dbeaver.ui.UIUtils;
+import org.jkiss.dbeaver.ui.controls.ListContentProvider;
+import org.jkiss.dbeaver.ui.controls.ViewerColumnController;
+import org.jkiss.dbeaver.ui.dialogs.BaseDialog;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.dbeaver.utils.RuntimeUtils;
 import org.jkiss.utils.CommonUtils;
@@ -52,6 +68,7 @@ import org.w3c.dom.Element;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.StringWriter;
+import java.util.List;
 import java.util.*;
 
 /**
@@ -140,15 +157,48 @@ public class DiagramLoader extends ERDPersistedState {
 
         final Element entitiesElem = XMLUtils.getChildElement(diagramElem, TAG_ENTITIES);
         if (entitiesElem != null) {
+            final List<Element> dataSourceElements = XMLUtils.getChildElementList(entitiesElem, TAG_DATA_SOURCE);
+            final Map<String, DBPDataSourceContainer> containers = new LinkedHashMap<>();
+
+            // Collect data sources
+            for (Element element : dataSourceElements) {
+                final String id = element.getAttribute(ATTR_ID);
+                if (CommonUtils.isEmpty(id)) {
+                    continue;
+                }
+                containers.put(id, projectMeta.getDataSourceRegistry().getDataSource(id));
+            }
+
+            // Check for missing data sources in the project
+            final String[] nonExistingDataSourceIds = containers.entrySet().stream()
+                .filter(entry -> entry.getValue() == null)
+                .map(Map.Entry::getKey)
+                .toArray(String[]::new);
+
+            if (nonExistingDataSourceIds.length > 0) {
+                UIUtils.syncExec(() -> {
+                    final ChooseDataSourcesDialog dialog = new ChooseDataSourcesDialog(
+                        UIUtils.getActiveWorkbenchWindow().getShell(),
+                        projectMeta,
+                        nonExistingDataSourceIds
+                    );
+
+                    if (dialog.open() == IDialogConstants.OK_ID) {
+                        containers.putAll(dialog.containers);
+                        diagram.setDirty(true);
+                    }
+                });
+            }
+
             // Parse data source
-            for (Element dsElem : XMLUtils.getChildElementList(entitiesElem, TAG_DATA_SOURCE)) {
+            for (Element dsElem : dataSourceElements) {
                 String dsId = dsElem.getAttribute(ATTR_ID);
                 if (CommonUtils.isEmpty(dsId)) {
                     log.warn("Missing datasource ID");
                     continue;
                 }
                 // Get connected datasource
-                final DBPDataSourceContainer dataSourceContainer = projectMeta.getDataSourceRegistry().getDataSource(dsId);
+                final DBPDataSourceContainer dataSourceContainer = containers.get(dsId);
                 if (dataSourceContainer == null) {
                     log.warn("Datasource '" + dsId + "' not found");
                     continue;
@@ -200,14 +250,13 @@ public class DiagramLoader extends ERDPersistedState {
                         continue;
                     }
                     final DBSObject child = container.getChild(monitor, tableName);
-                    if (!(child instanceof DBSEntity)) {
+                    if (!(child instanceof DBSEntity table)) {
                         log.debug("Cannot find table '" + tableName + "' in '" + container.getName() + "'");
                         continue;
                     }
                     String locX = entityElem.getAttribute(ATTR_X);
                     String locY = entityElem.getAttribute(ATTR_Y);
 
-                    DBSEntity table = (DBSEntity) child;
                     EntityDiagram.NodeVisualInfo visualInfo = new EntityDiagram.NodeVisualInfo();
 
                     visualInfo.initBounds = new Rectangle();
@@ -327,8 +376,8 @@ public class DiagramLoader extends ERDPersistedState {
         // Add logical relations
         for (RelationLoadInfo info : relInfos) {
             if (info.type.equals(ERDConstants.CONSTRAINT_LOGICAL_FK.getId())) {
-                final ERDElement sourceEntity = info.pkTable.entity != null ? diagram.getEntity(info.pkTable.entity) : info.pkTable.note;
-                final ERDElement targetEntity = info.fkTable.entity != null ? diagram.getEntity(info.fkTable.entity) : info.fkTable.note;
+                final ERDElement<?> sourceEntity = info.pkTable.entity != null ? diagram.getEntity(info.pkTable.entity) : info.pkTable.note;
+                final ERDElement<?> targetEntity = info.fkTable.entity != null ? diagram.getEntity(info.fkTable.entity) : info.fkTable.note;
                 if (sourceEntity != null && targetEntity != null) {
                     new ERDAssociation(targetEntity, sourceEntity, false);
                 }
@@ -372,25 +421,27 @@ public class DiagramLoader extends ERDPersistedState {
         xml.setButify(!compact);
         if (verbose) {
             xml.addContent(
-                "\n<!DOCTYPE diagram [\n" +
-                "<!ATTLIST diagram version CDATA #REQUIRED\n" +
-                " name CDATA #IMPLIED\n" +
-                " time CDATA #REQUIRED>\n" +
-                "<!ELEMENT diagram (entities, relations, notes)>\n" +
-                "<!ELEMENT entities (data-source*)>\n" +
-                "<!ELEMENT data-source (entity*)>\n" +
-                "<!ATTLIST data-source id CDATA #REQUIRED>\n" +
-                "<!ELEMENT entity (path*)>\n" +
-                "<!ATTLIST entity id ID #REQUIRED\n" +
-                " name CDATA #REQUIRED\n" +
-                " fq-name CDATA #REQUIRED>\n" +
-                "<!ELEMENT relations (relation*)>\n" +
-                "<!ELEMENT relation (bend*)>\n" +
-                "<!ATTLIST relation name CDATA #REQUIRED\n" +
-                " fq-name CDATA #REQUIRED\n" +
-                " pk-ref IDREF #REQUIRED\n" +
-                " fk-ref IDREF #REQUIRED>\n" +
-                "]>\n"
+                """
+                    <!DOCTYPE diagram [
+                    <!ATTLIST diagram version CDATA #REQUIRED
+                     name CDATA #IMPLIED
+                     time CDATA #REQUIRED>
+                    <!ELEMENT diagram (entities, relations, notes)>
+                    <!ELEMENT entities (data-source*)>
+                    <!ELEMENT data-source (entity*)>
+                    <!ATTLIST data-source id CDATA #REQUIRED>
+                    <!ELEMENT entity (path*)>
+                    <!ATTLIST entity id ID #REQUIRED
+                     name CDATA #REQUIRED
+                     fq-name CDATA #REQUIRED>
+                    <!ELEMENT relations (relation*)>
+                    <!ELEMENT relation (bend*)>
+                    <!ATTLIST relation name CDATA #REQUIRED
+                     fq-name CDATA #REQUIRED
+                     pk-ref IDREF #REQUIRED
+                     fk-ref IDREF #REQUIRED>
+                    ]>
+                    """
             );
         }
         xml.startElement(TAG_DIAGRAM);
@@ -485,7 +536,7 @@ public class DiagramLoader extends ERDPersistedState {
             // Relations
             xml.startElement(TAG_RELATIONS);
 
-            List<ERDElement> allElements = new ArrayList<>();
+            List<ERDElement<?>> allElements = new ArrayList<>();
             allElements.addAll(diagram.getEntities());
             allElements.addAll(diagram.getNotes());
             for (ERDElement<?> element : allElements) {
@@ -638,4 +689,112 @@ public class DiagramLoader extends ERDPersistedState {
         }
     }
 
+    private static class ChooseDataSourcesDialog extends BaseDialog {
+        private final DBPProject project;
+        private final String[] ids;
+        private final Map<String, DBPDataSourceContainer> containers;
+
+        public ChooseDataSourcesDialog(@NotNull Shell shell, @NotNull DBPProject project, @NotNull String[] ids) {
+            super(shell, "Missing data sources", null);
+
+            this.project = project;
+            this.ids = ids;
+            this.containers = new LinkedHashMap<>(ids.length);
+
+            for (String id : ids) {
+                containers.put(id, null);
+            }
+        }
+
+        @Override
+        protected Composite createDialogArea(Composite parent) {
+            final Composite composite = super.createDialogArea(parent);
+            composite.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
+
+            UIUtils.createLabel(composite, "This diagram refers data sources that don't exist.\n\nPlease specify new data sources:");
+
+            final TableViewer viewer = new TableViewer(composite, SWT.BORDER | SWT.SINGLE | SWT.FULL_SELECTION);
+
+            final Table table = viewer.getTable();
+            table.setLayoutData(GridDataFactory.fillDefaults().grab(true, true).hint(600, SWT.DEFAULT).create());
+            table.setHeaderVisible(true);
+            table.addSelectionListener(SelectionListener.widgetSelectedAdapter(e -> {
+                if (table.getSelectionIndex() < 0) {
+                    return;
+                }
+
+                final String id = ids[table.getSelectionIndex()];
+                final DBNNode root = project.getNavigatorModel().getRoot().getProjectNode(project);
+                final DBNNode leaf = DBWorkbench.getPlatformUI().selectObject(
+                    getShell(),
+                    "Select new data source",
+                    root,
+                    null,
+                    new Class[]{DBPDataSourceContainer.class},
+                    new Class[]{DBPDataSourceContainer.class},
+                    new Class[]{DBPDataSourceContainer.class}
+                );
+
+                if (leaf != null) {
+                    containers.put(id, ((DBNDataSource) leaf).getDataSourceContainer());
+                    viewer.refresh();
+                    updateCompletion();
+                }
+            }));
+
+            final ViewerColumnController<Object, Object> controller = new ViewerColumnController<>(ChooseDataSourcesDialog.class.getName(), viewer);
+            controller.addColumn("Original data source", null, SWT.LEFT, true, true, new ColumnLabelProvider() {
+                @Override
+                public String getText(Object element) {
+                    return (String) element;
+                }
+
+                @Override
+                public Image getImage(Object element) {
+                    return DBeaverIcons.getImage(DBIcon.DATABASE_DEFAULT);
+                }
+            });
+            controller.addColumn("New data source", null, SWT.LEFT, true, true, new ColumnLabelProvider() {
+                @Override
+                public String getText(Object element) {
+                    final DBPDataSourceContainer container = containers.get((String) element);
+                    if (container != null) {
+                        return container.getName();
+                    } else {
+                        return "<unspecified>";
+                    }
+                }
+
+                @Override
+                public Image getImage(Object element) {
+                    final DBPDataSourceContainer container = containers.get((String) element);
+                    if (container != null) {
+                        return DBeaverIcons.getImage(container.getDriver().getIcon());
+                    } else {
+                        return DBeaverIcons.getImage(DBIcon.DATABASE_DEFAULT);
+                    }
+                }
+            });
+
+            controller.createColumns(false);
+
+            viewer.setContentProvider(new ListContentProvider());
+            viewer.setInput(ids);
+
+            UIUtils.asyncExec(() -> UIUtils.packColumns(viewer.getTable(), true));
+
+            updateCompletion();
+
+            return composite;
+        }
+
+        private void updateCompletion() {
+            UIUtils.asyncExec(() -> {
+                final Button button = getButton(IDialogConstants.OK_ID);
+                if (button != null) {
+                    button.setEnabled(!containers.containsValue(null));
+                }
+            });
+        }
+    }
 }

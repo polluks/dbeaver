@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,6 +36,7 @@ import org.jkiss.dbeaver.ui.DialogSettingsDelegate;
 import org.jkiss.dbeaver.ui.ShellUtils;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.dialogs.DialogUtils;
+import org.jkiss.dbeaver.utils.RuntimeUtils;
 import org.jkiss.utils.CommonUtils;
 
 import java.io.File;
@@ -142,21 +143,23 @@ public class CompareObjectsWizard extends Wizard implements IExportWizard {
         return report;
     }
 
-    private void renderReport(DBRProgressMonitor monitor, CompareReport report)
-    {
+    private void renderReport(DBRProgressMonitor monitor, CompareReport report) {
         try {
             File reportFile;
             switch (settings.getOutputType()) {
                 case BROWSER:
                     reportFile = File.createTempFile("compare-report", ".html");
                     break;
-                default:
-                {
-                    StringBuilder fileName = new StringBuilder("compare");//"compare-report.html";
-                    for (DBNDatabaseNode node : report.getNodes()) {
-                        fileName.append("-").append(CommonUtils.escapeIdentifier(node.getName()));
+                default: {
+                    StringBuilder fileName = new StringBuilder("compare"); //"compare-report.html";
+                    if (report.getNodes().size() <= 3) {
+                        for (DBNDatabaseNode node : report.getNodes()) {
+                            fileName.append("-").append(CommonUtils.escapeIdentifier(node.getName()));
+                        }
+                        fileName.append("-report.html");
+                    } else {
+                        fileName.append("-report").append("-").append(RuntimeUtils.getCurrentTimeStamp()).append(".html");
                     }
-                    fileName.append("-report.html");
                     File parentFolder = new File(settings.getOutputFolder());
                     if (!parentFolder.exists()) {
                         if (!parentFolder.mkdirs()) {

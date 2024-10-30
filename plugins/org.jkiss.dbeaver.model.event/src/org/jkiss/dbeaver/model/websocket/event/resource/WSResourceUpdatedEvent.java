@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,15 +18,12 @@ package org.jkiss.dbeaver.model.websocket.event.resource;
 
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
-import org.jkiss.dbeaver.model.rm.RMResource;
-import org.jkiss.dbeaver.model.websocket.event.WSProjectResourceEvent;
 import org.jkiss.dbeaver.model.websocket.event.WSEventType;
+import org.jkiss.dbeaver.model.websocket.event.WSProjectResourceEvent;
 
 public class WSResourceUpdatedEvent extends WSProjectResourceEvent {
     @NotNull
     private final String resourcePath;
-    @NotNull
-    private final RMResource[] resourceParsedPath;
     @NotNull
     private final WSResourceProperty property;
     @Nullable
@@ -38,14 +35,12 @@ public class WSResourceUpdatedEvent extends WSProjectResourceEvent {
         @Nullable String userId,
         @NotNull String projectId,
         @NotNull String resourcePath,
-        @NotNull RMResource[] resourceParsedPath,
         @NotNull WSResourceProperty property,
         @Nullable String details
         ) {
         super(eventType, sessionId, userId, projectId);
         this.property = property;
         this.resourcePath = resourcePath;
-        this.resourceParsedPath = resourceParsedPath;
         this.details = details;
     }
 
@@ -54,7 +49,6 @@ public class WSResourceUpdatedEvent extends WSProjectResourceEvent {
         @Nullable String userId,
         @NotNull String projectId,
         @NotNull String resourcePath,
-        @NotNull RMResource[] resourceParsedPath,
         @NotNull WSResourceProperty property,
         @Nullable String details
 
@@ -65,7 +59,6 @@ public class WSResourceUpdatedEvent extends WSProjectResourceEvent {
             userId,
             projectId,
             resourcePath,
-            resourceParsedPath,
             property,
             details
         );
@@ -76,7 +69,6 @@ public class WSResourceUpdatedEvent extends WSProjectResourceEvent {
         @Nullable String userId,
         @NotNull String projectId,
         @NotNull String resourcePath,
-        @NotNull RMResource[] resourceParsedPath,
         @NotNull WSResourceProperty property,
         @Nullable String details
     ) {
@@ -86,7 +78,6 @@ public class WSResourceUpdatedEvent extends WSProjectResourceEvent {
             userId,
             projectId,
             resourcePath,
-            resourceParsedPath,
             property,
             details
         );
@@ -97,7 +88,6 @@ public class WSResourceUpdatedEvent extends WSProjectResourceEvent {
         @Nullable String userId,
         @NotNull String projectId,
         @NotNull String resourcePath,
-        @NotNull RMResource[] resourceParsedPath,
         @NotNull WSResourceProperty property,
         @Nullable String details
     ) {
@@ -107,7 +97,6 @@ public class WSResourceUpdatedEvent extends WSProjectResourceEvent {
             userId,
             projectId,
             resourcePath,
-            resourceParsedPath,
             property,
             details
         );
@@ -121,11 +110,6 @@ public class WSResourceUpdatedEvent extends WSProjectResourceEvent {
     @NotNull
     public String getResourcePath() {
         return resourcePath;
-    }
-
-    @NotNull
-    public Object getResourceParsedPath() {
-        return resourceParsedPath;
     }
 
     @NotNull

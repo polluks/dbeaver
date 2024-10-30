@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -68,9 +68,7 @@ public class GlobalPropertyTester extends PropertyTester {
             case PROP_CAN_CREATE_CONNECTION:
             {
                 for (DBPProject project : DBWorkbench.getPlatform().getWorkspace().getProjects()) {
-                    if (project.hasRealmPermission(RMConstants.PERMISSION_PROJECT_DATASOURCES_EDIT)
-                        && project.hasRealmPermission(RMConstants.PERMISSION_DATABASE_DEVELOPER)
-                    ) {
+                    if (project.hasRealmPermission(RMConstants.PERMISSION_PROJECT_DATASOURCES_EDIT)) {
                         return true;
                     }
                 }
@@ -109,7 +107,7 @@ public class GlobalPropertyTester extends PropertyTester {
     }
 
     public static boolean canManageProjects() {
-        return !DBWorkbench.isDistributed() || DBWorkbench.getPlatform().getWorkspace().hasRealmPermission(RMConstants.PERMISSION_PROJECT_ADMIN);
+        return DBWorkbench.getPlatform().getWorkspace().canManageProjects();
     }
 
     public static void firePropertyChange(String propName)

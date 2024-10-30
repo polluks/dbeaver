@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,9 +22,8 @@ import org.eclipse.jface.action.Separator;
 import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.ui.ISharedImages;
-import org.jkiss.dbeaver.ext.postgresql.model.PostgreDataSource;
 import org.jkiss.dbeaver.ext.postgresql.model.session.PostgreSession;
-import org.jkiss.dbeaver.ext.postgresql.model.session.PostgreSessionManager;
+import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.admin.sessions.DBAServerSession;
 import org.jkiss.dbeaver.model.admin.sessions.DBAServerSessionManager;
 import org.jkiss.dbeaver.model.exec.DBCExecutionContext;
@@ -49,7 +48,8 @@ public class PostgreSessionEditor extends AbstractSessionEditor
 
     @Override
     protected SessionManagerViewer createSessionViewer(DBCExecutionContext executionContext, Composite parent) {
-        return new SessionManagerViewer<PostgreSession>(this, parent, new PostgreSessionManager((PostgreDataSource) executionContext.getDataSource())) {
+        DBAServerSessionManager sessionManager = DBUtils.getAdapter(DBAServerSessionManager.class, executionContext.getDataSource());
+        return new SessionManagerViewer<PostgreSession>(this, parent, sessionManager) {
             @Override
             protected void contributeToToolbar(DBAServerSessionManager sessionManager, IContributionManager contributionManager)
             {

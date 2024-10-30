@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -172,7 +172,7 @@ public abstract class JDBCComposite implements DBDComposite, DBDValueCloneable {
     public Object getAttributeValue(@NotNull DBSAttributeBase attribute) {
         int position = attribute.getOrdinalPosition();
         if (position >= values.length) {
-            log.debug("Attribute index is out of range (" + position + ">=" + values.length + ")");
+            log.debug("Index for attribute '" + attribute.getName() + "' is out of range (" + position + ">=" + values.length + ")");
             return null;
         }
         return values[position];
@@ -212,6 +212,7 @@ public abstract class JDBCComposite implements DBDComposite, DBDValueCloneable {
             return Types.STRUCT;
         }
 
+        @NotNull
         @Override
         public DBPDataKind getDataKind() {
             return DBPDataKind.STRUCT;
@@ -233,8 +234,11 @@ public abstract class JDBCComposite implements DBDComposite, DBDValueCloneable {
     protected static class StructAttribute extends AbstractAttribute implements DBSEntityAttribute {
         final DBSDataType type;
         DBPDataKind dataKind;
-        public StructAttribute(DBSDataType type, int index, Object value) throws DBException
-        {
+        public StructAttribute(DBSDataType type, int index, Object value) throws DBException {
+            this("Attr" + index, type, index, value);
+        }
+
+        public StructAttribute(String name, DBSDataType type, int index, Object value) throws DBException {
             this.type = type;
             if (value instanceof CharSequence) {
                 dataKind = DBPDataKind.STRING;
@@ -251,11 +255,17 @@ public abstract class JDBCComposite implements DBDComposite, DBDValueCloneable {
             } else if (value instanceof byte[]) {
                 dataKind = DBPDataKind.BINARY;
                 setValueType(Types.BINARY);
+            } else if (value instanceof JDBCComposite) {
+                dataKind = DBPDataKind.STRUCT;
+                setValueType(Types.STRUCT);
+            } else if (value instanceof JDBCCollection) {
+                dataKind = DBPDataKind.ARRAY;
+                setValueType(Types.ARRAY);
             } else {
                 dataKind = DBPDataKind.OBJECT;
                 setValueType(Types.OTHER);
             }
-            setName("Attr" + index);
+            setName(name);
             setOrdinalPosition(index);
             setTypeName(dataKind.name());
         }
@@ -276,6 +286,7 @@ public abstract class JDBCComposite implements DBDComposite, DBDValueCloneable {
             dataKind = JDBCUtils.resolveDataKind(type.getDataSource(), getTypeName(), getTypeID());
         }
 
+        @NotNull
         @Override
         public DBPDataKind getDataKind()
         {

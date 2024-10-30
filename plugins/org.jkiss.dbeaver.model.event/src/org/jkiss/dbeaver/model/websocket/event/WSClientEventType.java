@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package org.jkiss.dbeaver.model.websocket.event;
 
 import org.jkiss.code.Nullable;
+import org.jkiss.dbeaver.model.websocket.event.client.WSSessionPingClientEvent;
 import org.jkiss.dbeaver.model.websocket.event.client.WSSubscribeOnTopicClientEvent;
 import org.jkiss.dbeaver.model.websocket.event.client.WSUnsubscribeFromTopicClientEvent;
 import org.jkiss.dbeaver.model.websocket.event.client.WSUpdateActiveProjectsClientEvent;
@@ -25,6 +26,7 @@ public enum WSClientEventType {
     TOPIC_SUBSCRIBE("cb_client_topic_subscribe", WSSubscribeOnTopicClientEvent.class),
     TOPIC_UNSUBSCRIBE("cb_client_topic_unsubscribe", WSUnsubscribeFromTopicClientEvent.class),
     ACTIVE_PROJECTS("cb_client_projects_active", WSUpdateActiveProjectsClientEvent.class),
+    SESSION_PING("cb_client_session_ping", WSSessionPingClientEvent.class),
     ;
 
     private final String eventId;

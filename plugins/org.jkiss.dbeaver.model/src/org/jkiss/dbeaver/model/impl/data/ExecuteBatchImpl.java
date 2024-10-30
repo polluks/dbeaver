@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -205,7 +205,6 @@ public abstract class ExecuteBatchImpl implements DBSDataManipulator.ExecuteBatc
                     }
                 }
             }
-            values.clear();
 
             if (statementsInBatch > 0) {
                 if (actions == null) {
@@ -214,6 +213,7 @@ public abstract class ExecuteBatchImpl implements DBSDataManipulator.ExecuteBatc
                 statement.close();
                 statement = null;
             }
+            values.clear();
         } finally {
             if (reuseStatement && statement != null) {
                 statement.close();
@@ -287,10 +287,10 @@ public abstract class ExecuteBatchImpl implements DBSDataManipulator.ExecuteBatc
 
     void flushBatch(DBCStatistics statistics, DBCStatement statement) throws DBCException {
         long startTime = System.currentTimeMillis();
-        int[] updatedRows = statement.executeStatementBatch();
+        long[] updatedRows = statement.executeStatementBatch();
         statistics.addExecuteTime(System.currentTimeMillis() - startTime);
         if (!ArrayUtils.isEmpty(updatedRows)) {
-            for (int rows : updatedRows) {
+            for (long rows : updatedRows) {
                 if (rows < 0) {
                     // In some cases (e.g. JDBC API) negative means "unknown".
                     // "Statement.SUCCESS_NO_INFO — the command was processed successfully, but the number of rows affected is unknown"

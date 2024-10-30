@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ import org.jkiss.dbeaver.ModelPreferences;
 import org.jkiss.dbeaver.model.DBPDataSource;
 import org.jkiss.dbeaver.model.exec.DBCSession;
 import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
+import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.dbeaver.utils.RuntimeUtils;
 import org.jkiss.utils.CommonUtils;
@@ -48,6 +49,8 @@ public abstract class AbstractJob extends Job
     private volatile boolean blockCanceled = false;
     private volatile long cancelTimestamp = -1;
     private AbstractJob attachedJob = null;
+    private boolean skipErrorOnCanceling;
+    private volatile boolean runDirectly = false;
 
     // Attached job may be used to "overwrite" current job.
     // It happens if some other AbstractJob runs in sync mode
@@ -60,6 +63,14 @@ public abstract class AbstractJob extends Job
 
     public boolean isFinished() {
         return finished;
+    }
+
+    private boolean isSkipErrorOnCanceling() {
+        return skipErrorOnCanceling;
+    }
+
+    protected void setSkipErrorOnCanceling(boolean skipErrorOnCanceling) {
+        this.skipErrorOnCanceling = skipErrorOnCanceling;
     }
 
     protected Thread getActiveThread()
@@ -76,6 +87,7 @@ public abstract class AbstractJob extends Job
     {
         progressMonitor = monitor;
         blockCanceled = false;
+        runDirectly = true;
         try {
             finished = false;
             IStatus result;
@@ -159,11 +171,19 @@ public abstract class AbstractJob extends Job
         }
     }
 
+    public boolean isForceCancel() {
+        return true;
+    }
+
     private void runBlockCanceler() {
         final List<DBRBlockingObject> activeBlocks = new ArrayList<>(
             CommonUtils.safeList(progressMonitor.getActiveBlocks()));
         if (activeBlocks.isEmpty()) {
             // Nothing to cancel
+            return;
+        }
+
+        if (!isForceCancel() && activeBlocks.size() < 2) {
             return;
         }
 
@@ -185,7 +205,7 @@ public abstract class AbstractJob extends Job
                 }
                 preferenceStore = dataSource.getContainer().getPreferenceStore();
             } else {
-                preferenceStore = ModelPreferences.getPreferences();
+                preferenceStore = DBWorkbench.getPlatform().getPreferenceStore();
             }
 
             int cancelCheckTimeout = preferenceStore.getInt(ModelPreferences.EXECUTE_CANCEL_CHECK_TIMEOUT);
@@ -234,7 +254,9 @@ public abstract class AbstractJob extends Job
                     BlockCanceler.cancelBlock(progressMonitor, block, getActiveThread());
                 } catch (DBException e) {
                     log.debug("Block cancel error", e); //$NON-N LS-1$
-                    return GeneralUtils.makeExceptionStatus(e);
+                    if (!isSkipErrorOnCanceling()) {
+                        return GeneralUtils.makeExceptionStatus(e);
+                    }
                 } catch (Throwable e) {
                     log.debug("Block cancel internal error", e); //$NON-N LS-1$
                     return Status.CANCEL_STATUS;
@@ -243,5 +265,9 @@ public abstract class AbstractJob extends Job
             }
             return Status.OK_STATUS;
         }
+    }
+
+    public boolean isRunDirectly() {
+        return runDirectly;
     }
 }

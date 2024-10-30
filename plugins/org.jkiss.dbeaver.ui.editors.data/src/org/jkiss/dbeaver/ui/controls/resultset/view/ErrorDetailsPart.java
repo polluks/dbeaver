@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,10 +22,13 @@ import org.eclipse.jface.dialogs.IDialogConstants;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.graphics.Image;
-import org.eclipse.swt.layout.FillLayout;
+import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
-import org.eclipse.swt.widgets.*;
+import org.eclipse.swt.widgets.Button;
+import org.eclipse.swt.widgets.Composite;
+import org.eclipse.swt.widgets.Label;
+import org.eclipse.swt.widgets.Text;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.internal.WorkbenchMessages;
 import org.eclipse.ui.internal.WorkbenchPlugin;
@@ -39,6 +42,7 @@ import org.jkiss.dbeaver.ui.IActionConstants;
 import org.jkiss.dbeaver.ui.UIIcon;
 import org.jkiss.dbeaver.ui.controls.resultset.IResultSetContainerExt;
 import org.jkiss.dbeaver.ui.controls.resultset.internal.ResultSetMessages;
+import org.jkiss.dbeaver.ui.dialogs.EditTextDialog;
 import org.jkiss.utils.CommonUtils;
 
 import java.io.PrintWriter;
@@ -51,14 +55,12 @@ import static org.eclipse.swt.events.SelectionListener.widgetSelectedAdapter;
  */
 class ErrorDetailsPart {
 
-	private boolean showingDetails = false;
-	private Button detailsButton;
-	private Composite detailsArea;
-	private Control details = null;
-	private IStatus reason;
-	private IResultSetContainerExt resultSetContainer;
+	private final Composite parent;
+	private final IStatus reason;
+	private final IResultSetContainerExt resultSetContainer;
 
 	ErrorDetailsPart(final Composite parent, IStatus reason_, @Nullable IResultSetContainerExt resultSetContainer) {
+		this.parent = parent;
 		this.resultSetContainer = resultSetContainer;
 		Color bgColor = parent.getDisplay().getSystemColor(SWT.COLOR_LIST_BACKGROUND);
 		Color fgColor = parent.getDisplay().getSystemColor(SWT.COLOR_LIST_FOREGROUND);
@@ -69,7 +71,8 @@ class ErrorDetailsPart {
 		this.reason = reason_;
 		GridLayout layout = new GridLayout();
 
-		layout.numColumns = 3;
+		layout.numColumns = 2;
+		layout.makeColumnsEqualWidth = false;
 
 		int spacing = 8;
 		int margins = 8;
@@ -91,14 +94,26 @@ class ErrorDetailsPart {
 			imageLabel.setLayoutData(gridData);
 		}
 
-		Text text = new Text(parent, SWT.MULTI | SWT.READ_ONLY | SWT.WRAP);
+		Text text = new Text(parent, SWT.MULTI | SWT.READ_ONLY | SWT.WRAP | SWT.V_SCROLL);
 		text.setBackground(bgColor);
 		text.setForeground(fgColor);
 
-		text.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+		text.setLayoutData(new GridData(GridData.FILL_BOTH));
 		text.setText(reason.getMessage());
 
+		text.addListener(SWT.Resize, e -> {
+			final Point size = text.getSize();
+			if (size.y > 100) {
+				// Can't use the setSize here - will revalidate every time the parent is resized
+				((GridData) text.getLayoutData()).heightHint = 100;
+				parent.layout(true);
+			}
+		});
+
 		Composite buttonParent = new Composite(parent, SWT.NONE);
+		GridData gd = new GridData(GridData.VERTICAL_ALIGN_BEGINNING);
+		gd.horizontalSpan = 2;
+		buttonParent.setLayoutData(gd);
 		buttonParent.setBackground(parent.getBackground());
 		GridLayout buttonsLayout = new GridLayout();
 		buttonsLayout.numColumns = 3;
@@ -107,27 +122,16 @@ class ErrorDetailsPart {
 		buttonsLayout.horizontalSpacing = 0;
 		buttonParent.setLayout(buttonsLayout);
 
-		detailsButton = new Button(buttonParent, SWT.PUSH);
-		detailsButton.addSelectionListener(widgetSelectedAdapter(e -> showDetails(!showingDetails)));
+		Button detailsButton = new Button(buttonParent, SWT.PUSH);
+		detailsButton.setText(IDialogConstants.SHOW_DETAILS_LABEL);
+		detailsButton.addSelectionListener(widgetSelectedAdapter(e -> showDetails()));
 
-		GridData gd = new GridData(SWT.BEGINNING, SWT.FILL, false, false);
-		detailsButton.setLayoutData(gd);
+		detailsButton.setLayoutData(new GridData(
+			SWT.BEGINNING, SWT.FILL, false, false));
 		detailsButton.setVisible(reason.getException() != null);
 
 		createShowLogButton(buttonParent);
 		createGoToErrorButton(buttonParent);
-
-		updateDetailsText();
-
-		detailsArea = new Composite(parent, SWT.NONE);
-		detailsArea.setBackground(bgColor);
-		detailsArea.setForeground(fgColor);
-		GridData data = new GridData(GridData.FILL_BOTH);
-		data.horizontalSpan = 3;
-		data.verticalSpan = 1;
-		detailsArea.setLayoutData(data);
-		detailsArea.setLayout(new FillLayout());
-		parent.layout(true);
 	}
 
 	/**
@@ -136,43 +140,20 @@ class ErrorDetailsPart {
 	 * @return the image
 	 */
 	private Image getImage() {
-		Display d = Display.getCurrent();
-
-		switch (reason.getSeverity()) {
-		case IStatus.ERROR:
-			return DBeaverIcons.getImage(DBIcon.STATUS_ERROR);
-		case IStatus.WARNING:
-			return DBeaverIcons.getImage(DBIcon.STATUS_WARNING);
-		default:
-			return DBeaverIcons.getImage(DBIcon.STATUS_INFO);
-		}
+        return switch (reason.getSeverity()) {
+            case IStatus.ERROR -> DBeaverIcons.getImage(DBIcon.STATUS_ERROR);
+            case IStatus.WARNING -> DBeaverIcons.getImage(DBIcon.STATUS_WARNING);
+            default -> DBeaverIcons.getImage(DBIcon.STATUS_INFO);
+        };
 	}
 
-	private void showDetails(boolean shouldShow) {
-		if (shouldShow == showingDetails) {
-			return;
-		}
-		this.showingDetails = shouldShow;
-		updateDetailsText();
-	}
-
-	private void updateDetailsText() {
-		if (details != null) {
-			details.dispose();
-			details = null;
-		}
-
-		if (showingDetails) {
-			detailsButton.setText("    " + IDialogConstants.HIDE_DETAILS_LABEL + "    ");
-			Text detailsText = new Text(detailsArea,
-					SWT.BORDER | SWT.H_SCROLL | SWT.V_SCROLL | SWT.MULTI | SWT.READ_ONLY | SWT.LEFT_TO_RIGHT);
-			detailsText.setText(getDetails(reason));
-			detailsText.setBackground(detailsText.getDisplay().getSystemColor(SWT.COLOR_LIST_BACKGROUND));
-			details = detailsText;
-			detailsArea.layout(true);
-		} else {
-			detailsButton.setText("    " + IDialogConstants.SHOW_DETAILS_LABEL + "    ");
-		}
+	private void showDetails() {
+		EditTextDialog dialog = new EditTextDialog(
+			parent.getShell(),
+			"Error details",
+			getDetails(reason),
+			true);
+		dialog.open();
 	}
 
 	private String getDetails(IStatus status) {

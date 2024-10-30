@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,11 +21,11 @@ import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Status;
 import org.jkiss.code.NotNull;
 import org.jkiss.dbeaver.Log;
+import org.jkiss.dbeaver.model.impl.app.BaseWorkspaceImpl;
 import org.jkiss.dbeaver.model.runtime.AbstractJob;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.features.DBRFeature;
 import org.jkiss.dbeaver.model.runtime.features.DBRFeatureTracker;
-import org.jkiss.dbeaver.registry.BaseWorkspaceImpl;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 
@@ -98,9 +98,6 @@ public class FeatureStatisticsCollector implements DBRFeatureTracker {
     }
 
     FeatureStatisticsCollector() {
-        if (UIStatisticsActivator.isTrackingEnabled()) {
-            startMonitor();
-        }
     }
 
     void startMonitor() {
@@ -191,6 +188,7 @@ public class FeatureStatisticsCollector implements DBRFeatureTracker {
     @Override
     public void startTracking() {
         if (UIStatisticsActivator.isTrackingEnabled()) {
+            startMonitor();
             sendCollectedStatistics(true);
         }
     }
@@ -214,7 +212,7 @@ public class FeatureStatisticsCollector implements DBRFeatureTracker {
 
     private void sendCollectedStatistics(boolean detached) {
         log.debug("send collected statistics");
-        String workspaceId = BaseWorkspaceImpl.readWorkspaceId();
+        String workspaceId = BaseWorkspaceImpl.readWorkspaceIdProperty() + "-" + BaseWorkspaceImpl.getLocalHostId();
         new StatisticsTransmitter(workspaceId).send(detached);
     }
 

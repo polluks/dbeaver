@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -97,7 +97,8 @@ class ConnectionPageDriver extends ActiveWizardPage implements ISelectionChanged
                 }
             };
             GridData gd = new GridData(GridData.FILL_BOTH);
-            gd.heightHint = 200;
+            gd.heightHint = 300;
+            gd.widthHint = 400;
             driverSelectViewer.getControl().setLayoutData(gd);
 
             ((GridData)filterIndentLabel.getLayoutData()).widthHint =

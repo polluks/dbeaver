@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Status;
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
+import org.jkiss.dbeaver.DBDatabaseException;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ModelPreferences;
@@ -28,6 +29,7 @@ import org.jkiss.dbeaver.model.DBPDataSourceContainer;
 import org.jkiss.dbeaver.model.DBPErrorAssistant;
 import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.connection.DBPConnectionConfiguration;
+import org.jkiss.dbeaver.model.connection.DBPConnectionType;
 import org.jkiss.dbeaver.model.data.*;
 import org.jkiss.dbeaver.model.edit.DBECommand;
 import org.jkiss.dbeaver.model.edit.DBECommandContext;
@@ -41,10 +43,10 @@ import org.jkiss.dbeaver.model.net.DBWHandlerConfiguration;
 import org.jkiss.dbeaver.model.net.DBWHandlerType;
 import org.jkiss.dbeaver.model.net.DBWNetworkHandler;
 import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
-import org.jkiss.dbeaver.model.runtime.AbstractJob;
-import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
-import org.jkiss.dbeaver.model.runtime.DBRRunnableParametrized;
-import org.jkiss.dbeaver.model.runtime.VoidProgressMonitor;
+import org.jkiss.dbeaver.model.qm.QMUtils;
+import org.jkiss.dbeaver.model.qm.meta.QMMConnectionInfo;
+import org.jkiss.dbeaver.model.qm.meta.QMMStatementExecuteInfo;
+import org.jkiss.dbeaver.model.runtime.*;
 import org.jkiss.dbeaver.model.sql.SQLDialect;
 import org.jkiss.dbeaver.model.sql.SQLQuery;
 import org.jkiss.dbeaver.model.sql.SQLSelectItem;
@@ -58,6 +60,7 @@ import org.jkiss.dbeaver.model.virtual.DBVEntity;
 import org.jkiss.dbeaver.model.virtual.DBVEntityConstraint;
 import org.jkiss.dbeaver.model.virtual.DBVUtils;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
+import org.jkiss.dbeaver.runtime.jobs.DefaultInvalidationFeedbackHandler;
 import org.jkiss.dbeaver.runtime.jobs.InvalidateJob;
 import org.jkiss.dbeaver.runtime.net.GlobalProxyAuthenticator;
 import org.jkiss.utils.CommonUtils;
@@ -104,7 +107,7 @@ public class DBExecUtils {
             ACTIVE_CONTEXTS.add(context);
         }
         // Set proxy auth (if required)
-        // Note: authenticator may be changed by Eclipse frameword on startup or later.
+        // Note: authenticator may be changed by Eclipse framework on startup or later.
         // That's why we set new default authenticator on connection initiation
         boolean hasProxy = false;
         for (DBWHandlerConfiguration handler : context.getConnectionConfiguration().getHandlers()) {
@@ -230,7 +233,8 @@ public class DBExecUtils {
                                 dataSource,
                                 false,
                                 true,
-                                () -> DBWorkbench.getPlatformUI().openConnectionEditor(dataSource.getContainer()));
+                                new DefaultInvalidationFeedbackHandler()
+                            );
                             if (i < tryCount - 1) {
                                 log.error("Operation failed. Retry count remains = " + (tryCount - i - 1), lastError);
                             }
@@ -243,10 +247,10 @@ public class DBExecUtils {
             }
             if (lastError != null) {
                 recoveryState.recoveryFailed = true;
-                if (lastError instanceof DBException) {
-                    throw (DBException) lastError;
+                if (lastError instanceof DBException dbe) {
+                    throw dbe;
                 } else {
-                    throw new DBException(lastError, dataSource);
+                    throw new DBDatabaseException(lastError, dataSource);
                 }
             }
             return true;
@@ -369,26 +373,28 @@ public class DBExecUtils {
         }
     }
 
-    public static void checkSmartAutoCommit(DBCSession session, String queryText) {
+    public static boolean checkSmartAutoCommit(DBCSession session, String queryText) {
         DBCTransactionManager txnManager = DBUtils.getTransactionManager(session.getExecutionContext());
         if (txnManager != null) {
             try {
                 if (!txnManager.isAutoCommit()) {
-                    return;
+                    return false;
                 }
 
                 SQLDialect sqlDialect = SQLUtils.getDialectFromDataSource(session.getDataSource());
                 if (!sqlDialect.isTransactionModifyingQuery(queryText)) {
-                    return;
+                    return false;
                 }
 
                 if (txnManager.isAutoCommit()) {
                     txnManager.setAutoCommit(session.getProgressMonitor(), false);
+                    return true;
                 }
             } catch (DBCException e) {
                 log.warn(e);
             }
         }
+        return false;
     }
 
     public static void setExecutionContextDefaults(DBRProgressMonitor monitor, DBPDataSource dataSource, DBCExecutionContext executionContext, @Nullable String newInstanceName, @Nullable String curInstanceName, @Nullable String newObjectName) throws DBException {
@@ -450,8 +456,20 @@ public class DBExecUtils {
     }
 
     public static void recoverSmartCommit(DBCExecutionContext executionContext) {
-        DBPPreferenceStore preferenceStore = executionContext.getDataSource().getContainer().getPreferenceStore();
-        if (preferenceStore.getBoolean(ModelPreferences.TRANSACTIONS_SMART_COMMIT) && preferenceStore.getBoolean(ModelPreferences.TRANSACTIONS_SMART_COMMIT_RECOVER)) {
+        DBPDataSourceContainer container = executionContext.getDataSource().getContainer();
+        DBPPreferenceStore preferenceStore = container.getPreferenceStore();
+        DBPConnectionType connectionType = container.getConnectionConfiguration().getConnectionType();
+        // First check specific datasource settings
+        // Or use settings from the connection type
+        boolean isSmartCommitEnable = preferenceStore.contains(ModelPreferences.TRANSACTIONS_SMART_COMMIT) ?
+            preferenceStore.getBoolean(ModelPreferences.TRANSACTIONS_SMART_COMMIT) : connectionType.isSmartCommit();
+        if (!isSmartCommitEnable) {
+            return;
+        }
+        boolean isRecoverSmartCommitEnable = preferenceStore.contains(ModelPreferences.TRANSACTIONS_SMART_COMMIT_RECOVER) ?
+            preferenceStore.getBoolean(ModelPreferences.TRANSACTIONS_SMART_COMMIT_RECOVER)
+            : connectionType.isSmartCommitRecover();
+        if (isRecoverSmartCommitEnable) {
             DBCTransactionManager transactionManager = DBUtils.getTransactionManager(executionContext);
             if (transactionManager != null) {
                 new AbstractJob("Recover smart commit mode") {
@@ -478,7 +496,7 @@ public class DBExecUtils {
         }
     }
 
-    public static DBSEntityConstraint getBestIdentifier(@NotNull DBRProgressMonitor monitor, @NotNull DBSEntity table, DBDAttributeBinding[] bindings, boolean readMetaData)
+    public static DBSEntityConstraint getBestIdentifier(@Nullable DBRProgressMonitor monitor, @NotNull DBSEntity table, DBDAttributeBinding[] bindings)
         throws DBException
     {
         if (table instanceof DBSDocumentContainer) {
@@ -487,7 +505,7 @@ public class DBExecUtils {
         List<DBSEntityConstraint> identifiers = new ArrayList<>(2);
         //List<DBSEntityConstraint> nonIdentifyingConstraints = null;
 
-        if (readMetaData) {
+        {
             if (table instanceof DBSTable && ((DBSTable) table).isView()) {
                 // Skip physical identifiers for views. There are nothing anyway
 
@@ -515,10 +533,10 @@ public class DBExecUtils {
                     } catch (Exception e) {
                         // Indexes are not supported or not available
                         // Just skip them
-                        log.debug(e);
+                        log.debug("Error reading table indexes: " + e.getMessage());
                     }
                 }
-                {
+                try {
                     // Check constraints
                     Collection<? extends DBSEntityConstraint> constraints = table.getConstraints(monitor);
                     if (constraints != null) {
@@ -531,6 +549,8 @@ public class DBExecUtils {
                             }*/
                         }
                     }
+                } catch (Exception e) {
+                    log.debug("Error reading table constraints: " + e.getMessage());
                 }
 
             }
@@ -653,14 +673,11 @@ public class DBExecUtils {
         @NotNull DBDAttributeBinding[] bindings,
         @Nullable List<Object[]> rows) throws DBException
     {
-        final DBRProgressMonitor monitor = session.getProgressMonitor();
-        final DBPDataSource dataSource = session.getDataSource();
-        boolean readMetaData = dataSource.getContainer().getPreferenceStore().getBoolean(ModelPreferences.RESULT_SET_READ_METADATA);
-        if (!readMetaData && sourceEntity == null) {
-            // Do not read metadata if source entity is not known
-            return;
-        }
-        boolean readReferences = dataSource.getContainer().getPreferenceStore().getBoolean(ModelPreferences.RESULT_SET_READ_REFERENCES);
+        DBRProgressMonitor monitor = session.getProgressMonitor();
+        DBPDataSource dataSource = session.getDataSource();
+        DBPDataSourceContainer container = dataSource.getContainer();
+        DBRProgressMonitor mdMonitor = container.isExtraMetadataReadEnabled() ?
+            monitor : new LocalCacheProgressMonitor(monitor);
 
         final Map<DBCEntityMetaData, DBSEntity> entityBindingMap = new IdentityHashMap<>();
 
@@ -690,7 +707,7 @@ public class DBExecUtils {
                             entityMeta = sqlQuery.getEntityMetadata(false);
                         }
                         if (entityMeta != null) {
-                            entity = DBUtils.getEntityFromMetaData(monitor, session.getExecutionContext(), entityMeta);
+                            entity = DBUtils.getEntityFromMetaData(mdMonitor, session.getExecutionContext(), entityMeta);
                             if (entity != null) {
                                 queryEntityMetaScore = entityMeta.getCompleteScore();
                                 entityBindingMap.put(entityMeta, entity);
@@ -736,9 +753,9 @@ public class DBExecUtils {
                                 // MySQL returns source table name instead of view name. That's crazy.
                                 attrEntity = entity;
                             } else {
-                                attrEntity = DBUtils.getEntityFromMetaData(monitor, session.getExecutionContext(), attrEntityMeta);
+                                attrEntity = DBUtils.getEntityFromMetaData(mdMonitor, session.getExecutionContext(), attrEntityMeta);
 
-                                if (attrEntity == null) {
+                                if (attrEntity == null && !mdMonitor.isForceCacheUsage()) {
                                     log.debug("Table '" + DBUtils.getSimpleQualifiedName(attrEntityMeta.getCatalogName(), attrEntityMeta.getSchemaName(), attrEntityMeta.getEntityName()) + "' not found in metadata catalog");
                                 }
                             }
@@ -751,9 +768,7 @@ public class DBExecUtils {
                 if (attrEntity == null) {
                     attrEntity = entity;
                 }
-                if (attrEntity != null && binding instanceof DBDAttributeBindingMeta) {
-                    DBDAttributeBindingMeta bindingMeta = (DBDAttributeBindingMeta) binding;
-
+                if (attrEntity != null && binding instanceof DBDAttributeBindingMeta bindingMeta) {
                     // Table column can be found from results metadata or from SQL query parser
                     // If datasource supports table names in result metadata then table name must present in results metadata.
                     // Otherwise it is an expression.
@@ -802,11 +817,11 @@ public class DBExecUtils {
                         tableColumn = bindingMeta.getPseudoAttribute().createFakeAttribute(attrEntity, attrMeta);
                     } else if (columnName != null) {
                         if (sqlQuery == null) {
-                            tableColumn = attrEntity.getAttribute(monitor, columnName);
+                            tableColumn = attrEntity.getAttribute(mdMonitor, columnName);
                         } else {
                             boolean isAllColumns = sqlQuery.getSelectItemAsteriskIndex() != -1;
                             if (isAllColumns || (selectItem != null && (selectItem.isPlainColumn() || selectItem.getName().equals("*")))) {
-                                tableColumn = attrEntity.getAttribute(monitor, columnName);
+                                tableColumn = attrEntity.getAttribute(mdMonitor, columnName);
                             }
                         }
                     }
@@ -824,6 +839,7 @@ public class DBExecUtils {
                             // Probably it is an alias which conflicts with column name
                             // Do not update entity attribute.
                             // It is a silly workaround for PG-like databases
+                            log.debug("Cannot bind attribute '" + bindingMeta.getName() + "'");
                         } else if (bindingMeta.setEntityAttribute(tableColumn, updateColumnHandler) && rows != null) {
                             // We have new type and new value handler.
                             // We have to fix already fetched values.
@@ -846,10 +862,9 @@ public class DBExecUtils {
                 // Init row identifiers
                 monitor.subTask("Detect unique identifiers");
                 for (DBDAttributeBinding binding : bindings) {
-                    if (!(binding instanceof DBDAttributeBindingMeta)) {
+                    if (!(binding instanceof DBDAttributeBindingMeta bindingMeta)) {
                         continue;
                     }
-                    DBDAttributeBindingMeta bindingMeta = (DBDAttributeBindingMeta) binding;
                     //monitor.subTask("Find attribute '" + binding.getName() + "' identifier");
                     DBSEntityAttribute attr = binding.getEntityAttribute();
                     if (attr == null) {
@@ -860,7 +875,7 @@ public class DBExecUtils {
                     if (attrEntity != null) {
                         DBDRowIdentifier rowIdentifier = locatorMap.get(attrEntity);
                         if (rowIdentifier == null) {
-                            DBSEntityConstraint entityIdentifier = getBestIdentifier(monitor, attrEntity, bindings, readMetaData);
+                            DBSEntityConstraint entityIdentifier = getBestIdentifier(mdMonitor, attrEntity, bindings);
                             if (entityIdentifier != null) {
                                 rowIdentifier = new DBDRowIdentifier(
                                     attrEntity,
@@ -876,7 +891,7 @@ public class DBExecUtils {
                 monitor.worked(1);
             }
 
-            if (readMetaData && readReferences && rows != null) {
+            if (rows != null && !mdMonitor.isForceCacheUsage()) {
                 monitor.subTask("Read results metadata");
                 // Read nested bindings
                 for (DBDAttributeBinding binding : bindings) {
@@ -892,10 +907,12 @@ public class DBExecUtils {
             }
 */
 
-            monitor.subTask("Complete metadata load");
-            // Reload attributes in row identifiers
-            for (DBDRowIdentifier rowIdentifier : locatorMap.values()) {
-                rowIdentifier.reloadAttributes(monitor, bindings);
+            {
+                monitor.subTask("Complete metadata load");
+                // Reload attributes in row identifiers
+                for (DBDRowIdentifier rowIdentifier : locatorMap.values()) {
+                    rowIdentifier.reloadAttributes(mdMonitor, bindings);
+                }
             }
         }
         finally {
@@ -906,7 +923,9 @@ public class DBExecUtils {
     private static boolean isSameDataTypes(@NotNull DBSEntityAttribute tableColumn, @NotNull DBCAttributeMetaData resultSetAttributeMeta) {
         if (tableColumn instanceof DBSTypedObjectEx) {
             DBSDataType columnDataType = ((DBSTypedObjectEx) tableColumn).getDataType();
-            return columnDataType != null && columnDataType.isStructurallyConsistentTypeWith(resultSetAttributeMeta);
+            if (columnDataType != null) {
+                return columnDataType.isStructurallyConsistentTypeWith(resultSetAttributeMeta);
+            }
         }
         return tableColumn.getDataKind().isComplex() == resultSetAttributeMeta.getDataKind().isComplex();
     }
@@ -924,6 +943,10 @@ public class DBExecUtils {
     }
 
     public static String getAttributeReadOnlyStatus(@NotNull DBDAttributeBinding attribute) {
+        return getAttributeReadOnlyStatus(attribute, true);
+    }
+
+    public static String getAttributeReadOnlyStatus(@NotNull DBDAttributeBinding attribute, boolean checkValidKey) {
         if (attribute == null || attribute.getMetaAttribute() == null) {
             return "Null meta attribute";
         }
@@ -934,6 +957,11 @@ public class DBExecUtils {
         if (rowIdentifier == null) {
             String status = attribute.getRowIdentifierStatus();
             return status != null ? status : "No row identifier found";
+        }
+        if (checkValidKey) {
+            if (rowIdentifier.isIncomplete()) {
+                return "No valid row identifier found";
+            }
         }
         DBSEntity dataContainer = rowIdentifier.getEntity();
         if (!(dataContainer instanceof DBSDataManipulator)) {
@@ -976,5 +1004,24 @@ public class DBExecUtils {
             }
         }
         return sourceTable;
+    }
+
+    /**
+     * Checks if the data source has pending statements that are still executing.
+     */
+    public static boolean isExecutionInProgress(@NotNull DBPDataSource dataSource) {
+        for (DBSInstance instance : dataSource.getAvailableInstances()) {
+            for (DBCExecutionContext context : instance.getAllContexts()) {
+                QMMConnectionInfo qmConnection = QMUtils.getCurrentConnection(context);
+                if (qmConnection != null) {
+                    QMMStatementExecuteInfo lastExec = qmConnection.getExecutionStack();
+                    if (lastExec != null && !lastExec.isClosed()) {
+                        // It is in progress
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 }

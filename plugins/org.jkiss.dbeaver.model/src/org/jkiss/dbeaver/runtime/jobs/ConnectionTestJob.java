@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -109,7 +109,7 @@ public class ConnectionTestJob extends ConnectJob {
                 return Status.CANCEL_STATUS;
             }
 
-            // Start monitor task here becaue actual connection makes its own begin/end sequence
+            // Start monitor task here because actual connection makes its own begin/end sequence
             monitor.beginTask(ModelMessages.dialog_connection_wizard_start_connection_monitor_start, 3);
 
             DBPDataSource dataSource = container.getDataSource();

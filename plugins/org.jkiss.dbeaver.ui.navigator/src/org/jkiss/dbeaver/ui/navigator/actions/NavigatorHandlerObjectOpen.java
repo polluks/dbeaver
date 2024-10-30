@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,7 +50,6 @@ import org.jkiss.dbeaver.ui.editors.*;
 import org.jkiss.dbeaver.ui.editors.entity.EntityEditor;
 import org.jkiss.dbeaver.ui.editors.entity.EntityEditorDescriptor;
 import org.jkiss.dbeaver.ui.editors.entity.FolderEditor;
-import org.jkiss.dbeaver.ui.editors.object.ObjectEditorInput;
 import org.jkiss.dbeaver.ui.internal.UINavigatorMessages;
 import org.jkiss.dbeaver.ui.navigator.NavigatorPreferences;
 import org.jkiss.dbeaver.ui.navigator.NavigatorUtils;
@@ -77,8 +76,10 @@ public class NavigatorHandlerObjectOpen extends NavigatorHandlerObjectBase imple
         if (selection instanceof IStructuredSelection) {
             final IStructuredSelection structSelection = (IStructuredSelection)selection;
             if (structSelection.size() > MAX_OBJECT_SIZE_NO_CONFIRM) {
-                if (!UIUtils.confirmAction(HandlerUtil.getActiveShell(event), "Open " + structSelection.size() + " editors",
-                    "You are about to open " + structSelection.size() + " editors. Are you sure?")) {
+                if (!UIUtils.confirmAction(HandlerUtil.getActiveShell(event),
+                    NLS.bind(UINavigatorMessages.actions_navigator_open_editors_title, structSelection.size()),
+                    NLS.bind(UINavigatorMessages.actions_navigator_open_editors_question,
+                        structSelection.size()))) {
                     return null;
                 }
             }
@@ -154,7 +155,7 @@ public class NavigatorHandlerObjectOpen extends NavigatorHandlerObjectBase imple
         try {
             if (selectedNode instanceof DBNDatabaseFolder && !(selectedNode.getParentNode() instanceof DBNDatabaseFolder) && selectedNode.getParentNode() instanceof DBNDatabaseNode) {
                 if (defaultFolderId == null) {
-                    defaultFolderId = selectedNode.getNodeType();
+                    defaultFolderId = selectedNode.getNodeTypeLabel();
                 }
                 selectedNode = selectedNode.getParentNode();
             }
@@ -234,7 +235,10 @@ public class NavigatorHandlerObjectOpen extends NavigatorHandlerObjectBase imple
                     FolderEditor.class.getName());
             }
         } catch (Exception ex) {
-            DBWorkbench.getPlatformUI().showError(UINavigatorMessages.actions_navigator_error_dialog_open_entity_title, "Can't open entity '" + selectedNode.getNodeName() + "'", ex);
+            DBWorkbench.getPlatformUI()
+                .showError(UINavigatorMessages.actions_navigator_error_dialog_open_entity_title,
+                    "Can't open entity '" + selectedNode.getNodeDisplayName() + "'",
+                    ex);
             return null;
         }
     }
@@ -255,7 +259,7 @@ public class NavigatorHandlerObjectOpen extends NavigatorHandlerObjectBase imple
                 if (editorInput instanceof INavigatorEditorInput) {
                     boolean matches;
                     if (editorInput instanceof DatabaseLazyEditorInput) {
-                        matches = node.getNodeItemPath().equals(((DatabaseLazyEditorInput) editorInput).getNodePath());
+                        matches = node.getNodeUri().equals(((DatabaseLazyEditorInput) editorInput).getNodePath());
                     } else {
                         matches = ((INavigatorEditorInput) editorInput).getNavigatorNode() == node;
                     }
@@ -338,12 +342,18 @@ public class NavigatorHandlerObjectOpen extends NavigatorHandlerObjectBase imple
                         //actionName = objectManager == null || !objectManager.canEditObject(object) ? UINavigatorMessages.actions_navigator_view : UINavigatorMessages.actions_navigator_edit;
                         actionName = UINavigatorMessages.actions_navigator_view;
                     }
+                } else if (node.getAdapter(IResource.class) != null) {
+                    actionName = UINavigatorMessages.actions_navigator_error_dialog_open_resource_title;
                 }
                 String label;
                 if (selection instanceof IStructuredSelection && ((IStructuredSelection) selection).size() > 1) {
                     label = NLS.bind(actionName, UINavigatorMessages.actions_navigator__objects);
                 } else {
-                    label = NLS.bind(actionName, node.getNodeType()); //$NON-NLS-1$
+                    if (node.getAdapter(IResource.class) != null) {
+                        label = actionName + " '" + node.getNodeDisplayName() + "'"; //$NON-NLS-1$
+                    } else {
+                        label = NLS.bind(actionName, node.getNodeTypeLabel()); //$NON-NLS-1$
+                    }
                 }
                 element.setText(label);
             }

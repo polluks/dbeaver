@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -92,6 +92,7 @@ public class DatabaseTasksView extends ViewPart implements DBTTaskListener {
     private TreeViewer taskRunViewer;
     private ViewerColumnController<?,?> taskRunColumnController;
     private DBPProjectListener projectListener;
+    private transient DBTTask currentTask;
 
     public DatabaseTasksView() {
     }
@@ -117,7 +118,7 @@ public class DatabaseTasksView extends ViewPart implements DBTTaskListener {
         createTaskRunTable(sashForm);
         getSite().setSelectionProvider(tasksTree.getViewer());
 
-        sashForm.setWeights(new int[]{700, 300});
+        sashForm.setWeights(700, 300);
 
         loadViewConfig();
         loadTasks();
@@ -125,7 +126,7 @@ public class DatabaseTasksView extends ViewPart implements DBTTaskListener {
 
         projectListener = new DBPProjectListener() {
             @Override
-            public void handleActiveProjectChange(DBPProject oldValue, DBPProject newValue) {
+            public void handleActiveProjectChange(@NotNull DBPProject oldValue, @NotNull DBPProject newValue) {
                 refresh();
             }
         };
@@ -146,7 +147,7 @@ public class DatabaseTasksView extends ViewPart implements DBTTaskListener {
                 ActionUtils.runCommand(EDIT_TASK_CMD_ID, getSite().getSelectionProvider().getSelection(), getSite());
             }
         });
-        tasksTree.getViewer().addSelectionChangedListener(event -> loadTaskRuns());
+        tasksTree.getViewer().addSelectionChangedListener(event -> loadTaskRuns(false));
 
         DatabaseTasksTree.addDragAndDropSourceSupport(tasksTree.getViewer());
     }
@@ -157,7 +158,7 @@ public class DatabaseTasksView extends ViewPart implements DBTTaskListener {
         taskrunTree.setHeaderVisible(true);
         taskrunTree.setLayoutData(new GridData(GridData.FILL_BOTH));
 
-        taskRunColumnController = new ViewerColumnController("taskruns", taskRunViewer);
+        taskRunColumnController = new ViewerColumnController<>("taskruns", taskRunViewer);
         taskRunColumnController.addColumn(TaskUIViewMessages.db_tasks_view_column_controller_add_name_time, TaskUIViewMessages.db_tasks_view_column_controller_add_descr_start_time, SWT.LEFT, true, true, new TaskRunLabelProvider() {
             @Override
             protected void update(ViewerCell cell, DBTTaskRun taskRun) {
@@ -168,20 +169,22 @@ public class DatabaseTasksView extends ViewPart implements DBTTaskListener {
             @Override
             public String getText(Object element, boolean forUI) {
                 DBTTaskRun taskRun = (DBTTaskRun) element;
-                return forUI ? RuntimeUtils.formatExecutionTime(taskRun.getRunDuration()) : String.valueOf(taskRun.getRunDuration());
+                return !taskRun.isFinished() ? "N/A" :
+                    (forUI ? RuntimeUtils.formatExecutionTime(taskRun.getRunDuration()) : String.valueOf(taskRun.getRunDuration()));
             }
 
             @Override
             protected void update(ViewerCell cell, DBTTaskRun taskRun) {
-                cell.setText(RuntimeUtils.formatExecutionTime(taskRun.getRunDuration()));
+                cell.setText(!taskRun.isFinished() ? "N/A" : RuntimeUtils.formatExecutionTime(taskRun.getRunDuration()));
             }
         }, null);
         taskRunColumnController.addColumn(TaskUIViewMessages.db_tasks_view_column_controller_add_name_result, TaskUIViewMessages.db_tasks_view_column_controller_add_descr_task_result, SWT.LEFT, true, false, new TaskRunLabelProvider() {
             @Override
             protected void update(ViewerCell cell, DBTTaskRun taskRun) {
-                String resultMessage = taskRun.isRunSuccess()
-                                     ? TaskUIViewMessages.db_tasks_view_cell_text_success
-                                     : CommonUtils.notEmpty(taskRun.getErrorMessage());
+                String resultMessage =
+                    taskRun.isFinished() ?
+                        (taskRun.isRunSuccess() ? TaskUIViewMessages.db_tasks_view_cell_text_success : CommonUtils.notEmpty(taskRun.getErrorMessage())) :
+                        "In progress";
 
                 String extraMessage = taskRun.getExtraMessage();
                 if (CommonUtils.isNotEmpty(extraMessage)) {
@@ -342,22 +345,18 @@ public class DatabaseTasksView extends ViewPart implements DBTTaskListener {
         UIUtils.asyncExec(() -> {
             DBTTask task = event.getTask();
             switch (event.getAction()) {
-                case TASK_ADD:
+                case TASK_ADD -> {
                     refresh();
                     tasksTree.getViewer().setSelection(new StructuredSelection(task), true);
-                    break;
-                case TASK_REMOVE:
-                    refresh();
-                    break;
-                case TASK_UPDATE:
+                }
+                case TASK_REMOVE -> refresh();
+                case TASK_UPDATE -> {
                     tasksTree.getViewer().refresh(task);
                     if (task == tasksTree.getSelectedTask()) {
-                        loadTaskRuns();
+                        loadTaskRuns(true);
                     }
-                    break;
-                case TASK_EXECUTE:
-                    refresh();
-                    break;
+                }
+                case TASK_EXECUTE -> refresh();
             }
         });
     }
@@ -367,16 +366,12 @@ public class DatabaseTasksView extends ViewPart implements DBTTaskListener {
         UIUtils.asyncExec(() -> {
             DBTTaskFolder taskFolder = event.getTaskFolder();
             switch (event.getAction()) {
-                case TASK_FOLDER_ADD:
+                case TASK_FOLDER_ADD -> {
                     refresh();
                     tasksTree.getViewer().setSelection(new StructuredSelection(taskFolder), true);
-                    break;
-                case TASK_FOLDER_UPDATE:
-                    tasksTree.getViewer().refresh(taskFolder);
-                    break;
-                case TASK_FOLDER_REMOVE:
-                    refresh();
-                    break;
+                }
+                case TASK_FOLDER_UPDATE -> tasksTree.getViewer().refresh(taskFolder);
+                case TASK_FOLDER_REMOVE -> refresh();
             }
         });
     }
@@ -395,7 +390,7 @@ public class DatabaseTasksView extends ViewPart implements DBTTaskListener {
             tasksTree.refresh();
         }
 
-        loadTaskRuns();
+        loadTaskRuns(true);
     }
 
     private void updateViewTitle() {
@@ -412,11 +407,15 @@ public class DatabaseTasksView extends ViewPart implements DBTTaskListener {
         tasksTree.loadTasks();
     }
 
-    private void loadTaskRuns() {
+    private void loadTaskRuns(boolean force) {
         if (tasksTree == null) {
             return;
         }
         DBTTask selectedTask = tasksTree.getSelectedTask();
+        if (!force && selectedTask == currentTask) {
+            return;
+        }
+        currentTask = selectedTask;
         if (selectedTask == null) {
             taskRunViewer.setInput(EMPTY_TASK_RUN_LIST);
         } else {
@@ -431,7 +430,7 @@ public class DatabaseTasksView extends ViewPart implements DBTTaskListener {
         }
     }
 
-    private class TreeRunContentProvider implements ITreeContentProvider {
+    private static class TreeRunContentProvider implements ITreeContentProvider {
         @Override
         public Object[] getElements(Object inputElement) {
             return ((Collection<?>) inputElement).toArray();
@@ -453,7 +452,7 @@ public class DatabaseTasksView extends ViewPart implements DBTTaskListener {
         }
     }
 
-    public class NamedObjectPatternFilter extends PatternFilter {
+    public static class NamedObjectPatternFilter extends PatternFilter {
         NamedObjectPatternFilter() {
             setIncludeLeadingWildcard(true);
         }

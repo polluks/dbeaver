@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,10 @@ package org.jkiss.dbeaver.ui;
 
 import org.eclipse.swt.widgets.Composite;
 import org.jkiss.code.NotNull;
+import org.jkiss.code.Nullable;
+import org.jkiss.dbeaver.registry.configurator.DBPConnectionEditIntention;
+
+import java.util.function.BiConsumer;
 
 /**
  * IObjectPropertyConfigurator
@@ -38,4 +42,40 @@ public interface IObjectPropertyConfigurator<OBJECT, SETTINGS> {
 
     boolean isComplete();
 
+    @Nullable
+    default String getErrorMessage() {
+        return null;
+    }
+
+    default DBPConnectionEditIntention getEditIntention() {
+        return DBPConnectionEditIntention.DEFAULT;
+    }
+
+    static <OBJECT, SETTINGS>  IObjectPropertyConfigurator<OBJECT, SETTINGS> createPlaceholdingConfigurator(
+        BiConsumer<Composite, OBJECT> uiBuilder
+    ) {
+        return new IObjectPropertyConfigurator<>() {
+            @Override
+            public void createControl(@NotNull Composite parent, OBJECT object, @NotNull Runnable propertyChangeListener) {
+                uiBuilder.accept(parent, object);
+            }
+
+            @Override
+            public void loadSettings(@NotNull SETTINGS settings) {
+            }
+
+            @Override
+            public void saveSettings(@NotNull SETTINGS settings) {
+            }
+
+            @Override
+            public void resetSettings(@NotNull SETTINGS settings) {
+            }
+
+            @Override
+            public boolean isComplete() {
+                return true;
+            }
+        };
+    }
 }

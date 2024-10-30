@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package org.jkiss.dbeaver.ext.oracle.model;
 
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
+import org.jkiss.dbeaver.DBDatabaseException;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.DBConstants;
@@ -51,6 +52,7 @@ public class OracleStructureAssistant implements DBSStructureAssistant<OracleExe
         this.dataSource = dataSource;
     }
 
+    @NotNull
     @Override
     public DBSObjectType[] getSupportedObjectTypes()
     {
@@ -66,6 +68,7 @@ public class OracleStructureAssistant implements DBSStructureAssistant<OracleExe
             };
     }
 
+    @NotNull
     @Override
     public DBSObjectType[] getSearchObjectTypes() {
         return new DBSObjectType[] {
@@ -79,6 +82,7 @@ public class OracleStructureAssistant implements DBSStructureAssistant<OracleExe
         };
     }
 
+    @NotNull
     @Override
     public DBSObjectType[] getHyperlinkObjectTypes()
     {
@@ -89,6 +93,7 @@ public class OracleStructureAssistant implements DBSStructureAssistant<OracleExe
         };
     }
 
+    @NotNull
     @Override
     public DBSObjectType[] getAutoCompleteObjectTypes()
     {
@@ -141,7 +146,7 @@ public class OracleStructureAssistant implements DBSStructureAssistant<OracleExe
             return objects;
         }
         catch (SQLException ex) {
-            throw new DBException(ex, dataSource);
+            throw new DBDatabaseException(ex, dataSource);
         }
     }
 
@@ -216,6 +221,8 @@ public class OracleStructureAssistant implements DBSStructureAssistant<OracleExe
                 } else if (objectType == OracleObjectType.TABLE) {
                     oracleObjectTypes.add(OracleObjectType.VIEW);
                     searchViewsByDefinition = params.isSearchInDefinitions();
+                } else if (objectType == OracleObjectType.PACKAGE) {
+                    oracleObjectTypes.add(OracleObjectType.PACKAGE_BODY);
                 }
             } else if (DBSProcedure.class.isAssignableFrom(objectType.getTypeClass())) {
                 oracleObjectTypes.add(OracleObjectType.FUNCTION);
@@ -308,7 +315,11 @@ public class OracleStructureAssistant implements DBSStructureAssistant<OracleExe
                     final String schemaName = JDBCUtils.safeGetString(dbResult, OracleConstants.COL_OWNER);
                     final String objectName = JDBCUtils.safeGetString(dbResult, OracleConstants.COLUMN_OBJECT_NAME);
                     final String objectTypeName = JDBCUtils.safeGetString(dbResult, OracleConstants.COLUMN_OBJECT_TYPE);
-                    final OracleObjectType objectType = OracleObjectType.getByType(objectTypeName);
+                    OracleObjectType objectType = OracleObjectType.getByType(objectTypeName);
+                    if (objectType == OracleObjectType.PACKAGE_BODY) {
+                        // We do not store bodies as separate objects
+                        objectType = OracleObjectType.PACKAGE;
+                    }
                     if (objectType != null && objectType.isBrowsable() && oracleObjectTypes.contains(objectType)) {
                         OracleSchema objectSchema = this.dataSource.getSchema(session.getProgressMonitor(), schemaName);
                         if (objectSchema == null) {

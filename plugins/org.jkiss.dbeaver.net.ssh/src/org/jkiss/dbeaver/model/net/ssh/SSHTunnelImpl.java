@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,23 +16,30 @@
  */
 package org.jkiss.dbeaver.model.net.ssh;
 
+import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ModelPreferences;
 import org.jkiss.dbeaver.model.DBPDataSource;
+import org.jkiss.dbeaver.model.DBPDataSourceContainer;
 import org.jkiss.dbeaver.model.connection.DBPConnectionConfiguration;
+import org.jkiss.dbeaver.model.exec.DBCInvalidatePhase;
 import org.jkiss.dbeaver.model.net.DBWHandlerConfiguration;
 import org.jkiss.dbeaver.model.net.DBWTunnel;
-import org.jkiss.dbeaver.model.net.ssh.registry.SSHImplementationDescriptor;
-import org.jkiss.dbeaver.model.net.ssh.registry.SSHImplementationRegistry;
+import org.jkiss.dbeaver.model.net.DBWUtils;
+import org.jkiss.dbeaver.model.net.ssh.config.SSHAuthConfiguration;
+import org.jkiss.dbeaver.model.net.ssh.config.SSHHostConfiguration;
+import org.jkiss.dbeaver.model.net.ssh.config.SSHPortForwardConfiguration;
+import org.jkiss.dbeaver.model.net.ssh.registry.SSHSessionControllerDescriptor;
+import org.jkiss.dbeaver.model.net.ssh.registry.SSHSessionControllerRegistry;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
-import org.jkiss.dbeaver.registry.RegistryConstants;
-import org.jkiss.dbeaver.utils.RuntimeUtils;
 import org.jkiss.utils.Base64;
 import org.jkiss.utils.CommonUtils;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * SSH tunnel
@@ -43,51 +50,55 @@ public class SSHTunnelImpl implements DBWTunnel {
     private static final String DEF_IMPLEMENTATION = "sshj";
 
     private DBWHandlerConfiguration configuration;
-    private SSHImplementation implementation;
+    private SSHSessionController controller;
+    private SSHSession session;
+    private final List<Runnable> listeners = new ArrayList<>();
 
-    public SSHImplementation getImplementation() {
-        return implementation;
+    @Nullable
+    @Override
+    public SSHSession getImplementation() {
+        return session;
     }
 
     @Override
-    public DBPConnectionConfiguration initializeHandler(DBRProgressMonitor monitor, DBWHandlerConfiguration configuration, DBPConnectionConfiguration connectionInfo)
-        throws DBException, IOException
-    {
+    public void addCloseListener(@NotNull Runnable listener) {
+        this.listeners.add(listener);
+    }
+
+    @NotNull
+    @Override
+    public DBPConnectionConfiguration initializeHandler(
+        @NotNull DBRProgressMonitor monitor,
+        @NotNull DBWHandlerConfiguration configuration,
+        @NotNull DBPConnectionConfiguration connectionInfo
+    ) throws DBException, IOException {
         this.configuration = configuration;
+
         String implId = configuration.getStringProperty(SSHConstants.PROP_IMPLEMENTATION);
         if (CommonUtils.isEmpty(implId)) {
             // Backward compatibility
             implId = DEF_IMPLEMENTATION;
         }
 
+        SSHSessionControllerDescriptor descriptor = SSHSessionControllerRegistry.getInstance().getDescriptor(implId);
+        if (descriptor == null) {
+            descriptor = SSHSessionControllerRegistry.getInstance().getDescriptor(DEF_IMPLEMENTATION);
+        }
+        if (descriptor == null) {
+            throw new DBException("Can't find SSH tunnel implementation '" + implId + "'");
+        }
+
         try {
-            SSHImplementationDescriptor implDesc = SSHImplementationRegistry.getInstance().getDescriptor(implId);
-            if (implDesc == null) {
-                implDesc = SSHImplementationRegistry.getInstance().getDescriptor(DEF_IMPLEMENTATION);
-            }
-            if (implDesc == null) {
-                throw new DBException("Can't find SSH tunnel implementation '" + implId + "'");
-            }
-            if (implementation == null || implementation.getClass() != implDesc.getImplClass().getObjectClass()) {
-                implementation = implDesc.createImplementation();
-            }
-        } catch (Throwable e) {
+            controller = descriptor.getInstance();
+        } catch (DBException e) {
             throw new DBException("Can't create SSH tunnel implementation '" + implId + "'", e);
         }
-        return implementation.initTunnel(monitor, configuration, connectionInfo);
+
+        return initTunnel(monitor, configuration, connectionInfo, controller);
     }
 
     @Override
-    public void closeTunnel(DBRProgressMonitor monitor) throws DBException, IOException
-    {
-        if (implementation != null) {
-            implementation.closeTunnel(monitor);
-            // Do not nullify tunnel to keep saved tunnel port number (#7952)
-        }
-    }
-
-    @Override
-    public boolean matchesParameters(String host, int port) {
+    public boolean matchesParameters(@NotNull String host, int port) {
         if (host.equals(configuration.getStringProperty(DBWHandlerConfiguration.PROP_HOST))) {
             int sshPort = configuration.getIntProperty(DBWHandlerConfiguration.PROP_PORT);
             return sshPort == port;
@@ -95,70 +106,138 @@ public class SSHTunnelImpl implements DBWTunnel {
         return false;
     }
 
-    public AuthCredentials getRequiredCredentials(DBWHandlerConfiguration configuration) {
-        return getRequiredCredentials(configuration, null);
-    }
-
+    @NotNull
     @Override
-    public AuthCredentials getRequiredCredentials(DBWHandlerConfiguration configuration, @Nullable String prefix) {
-        String start = prefix;
-        if (start == null) {
-            start = "";
-        }
+    public AuthCredentials getRequiredCredentials(@NotNull DBWHandlerConfiguration configuration) throws DBException {
         if (!configuration.isEnabled() || !configuration.isSecured()) {
             return AuthCredentials.NONE;
         }
-        if (configuration.getBooleanProperty(start + RegistryConstants.ATTR_SAVE_PASSWORD)) {
-            return AuthCredentials.NONE;
-        }
 
-        String sshAuthType = configuration.getStringProperty(start + SSHConstants.PROP_AUTH_TYPE);
-        SSHConstants.AuthType authType = SSHConstants.AuthType.PASSWORD;
-        if (sshAuthType != null) {
-            authType = SSHConstants.AuthType.valueOf(sshAuthType);
-        }
-        if (authType == SSHConstants.AuthType.PUBLIC_KEY) {
-            String privKeyValue = configuration.getSecureProperty(start + SSHConstants.PROP_KEY_VALUE);
-            if (privKeyValue != null) {
-                byte[] pkBinary = Base64.decode(privKeyValue);
-                if (SSHUtils.isKeyEncrypted(pkBinary)) {
-                    return AuthCredentials.PASSWORD;
-                }
-            }
-            // Check whether this key is encrypted
-            String privKeyPath = configuration.getStringProperty(start + SSHConstants.PROP_KEY_PATH);
-            if (!CommonUtils.isEmpty(privKeyPath) && SSHUtils.isKeyFileEncrypted(privKeyPath)) {
-                return AuthCredentials.PASSWORD;
-            }
+        // TODO: Check jump hosts as well
+        final SSHHostConfiguration[] hosts = SSHUtils.loadHostConfigurations(configuration, false);
+        final SSHHostConfiguration host = hosts[hosts.length - 1];
+
+        if (host.auth() instanceof SSHAuthConfiguration.WithPassword password && password.savePassword()) {
             return AuthCredentials.NONE;
-        }
-        if (authType == SSHConstants.AuthType.AGENT) {
+        } else if (host.auth() instanceof SSHAuthConfiguration.KeyFile key) {
+            return SSHUtils.isKeyFileEncrypted(key.path()) ? AuthCredentials.PASSWORD : AuthCredentials.NONE;
+        } else if (host.auth() instanceof SSHAuthConfiguration.KeyData key) {
+            return SSHUtils.isKeyEncrypted(Base64.decode(key.data())) ? AuthCredentials.PASSWORD : AuthCredentials.NONE;
+        } else if (host.auth() instanceof SSHAuthConfiguration.Agent) {
             return AuthCredentials.NONE;
+        } else {
+            return AuthCredentials.CREDENTIALS;
         }
-        return AuthCredentials.CREDENTIALS;
     }
 
     @Override
-    public void invalidateHandler(DBRProgressMonitor monitor, DBPDataSource dataSource) throws DBException, IOException {
-        if (implementation != null) {
-            RuntimeUtils.runTask(monitor1 -> {
-                monitor1.beginTask("Invalidate SSH tunnel", 1);
-                try {
-                    implementation.invalidateTunnel(monitor1);
-                } catch (Exception e) {
-                    log.debug("Error invalidating SSH tunnel. Closing.", e);
-                    try {
-                        closeTunnel(monitor);
-                    } catch (Exception e1) {
-                        log.error("Error closing broken tunnel", e1);
-                    }
-                } finally {
-                    monitor.done();
-                }
-            },
-            "Ping SSH tunnel " + dataSource.getContainer().getName(),
-            dataSource.getContainer().getPreferenceStore().getInt(ModelPreferences.CONNECTION_VALIDATION_TIMEOUT));
+    public void invalidateHandler(
+        @NotNull DBRProgressMonitor monitor,
+        @NotNull DBPDataSource dataSource,
+        @NotNull DBCInvalidatePhase phase
+    ) throws DBException {
+        if (session == null) {
+            return;
+        }
+        try {
+            monitor.subTask("Invalidate SSH tunnel");
+            controller.invalidate(
+                monitor,
+                session,
+                phase,
+                configuration,
+                dataSource.getContainer().getPreferenceStore().getInt(ModelPreferences.CONNECTION_VALIDATION_TIMEOUT)
+            );
+        } catch (DBException e) {
+            log.debug("Error invalidating SSH tunnel. Closing.", e);
+            try {
+                closeTunnel(monitor);
+            } catch (Exception e1) {
+                log.error("Error closing broken tunnel", e1);
+            }
+            throw new DBException("Error invalidating SSH tunnel", e);
+        } finally {
+            monitor.done();
         }
     }
 
+    @Override
+    public void closeTunnel(@NotNull DBRProgressMonitor monitor) throws DBException {
+        if (session != null) {
+            final DBPDataSourceContainer container = configuration.getDataSource();
+            final int timeout = container != null
+                ? container.getPreferenceStore().getInt(ModelPreferences.CONNECTION_VALIDATION_TIMEOUT)
+                : 0;
+            controller.release(monitor, session, configuration, timeout);
+        }
+        for (Runnable listener : this.listeners) {
+            listener.run();
+        }
+        this.listeners.clear();
+    }
+
+    @NotNull
+    @Override
+    public DBPDataSourceContainer[] getDependentDataSources() {
+        return controller.getDependentDataSources(session);
+    }
+
+    @NotNull
+    private DBPConnectionConfiguration initTunnel(
+        @NotNull DBRProgressMonitor monitor,
+        @NotNull DBWHandlerConfiguration configuration,
+        @NotNull DBPConnectionConfiguration connectionInfo,
+        @NotNull SSHSessionController controller
+    ) throws DBException {
+        final SSHHostConfiguration[] hosts = SSHUtils.loadHostConfigurations(configuration, true);
+        final SSHPortForwardConfiguration portForward = loadPortForwardConfiguration(configuration, connectionInfo);
+        final SSHSession[] sessions = new SSHSession[hosts.length];
+
+        for (int index = 0; index < hosts.length; index++) {
+            // NOTE: If acquireSession fails, all previously acquired sessions will not be released. Not sure if it's a problem.
+            sessions[index] = controller.acquireSession(
+                monitor,
+                configuration,
+                hosts[index],
+                index != 0 ? sessions[index - 1] : null,
+                index == hosts.length - 1 ? portForward : null
+            );
+        }
+
+        session = sessions[sessions.length - 1];
+
+        connectionInfo = new DBPConnectionConfiguration(connectionInfo);
+        DBWUtils.updateConfigWithTunnelInfo(configuration, connectionInfo, portForward.localHost(), portForward.localPort());
+        return connectionInfo;
+    }
+
+    @Nullable
+    public SSHSessionController getController() {
+        return controller;
+    }
+
+    @NotNull
+    private static SSHPortForwardConfiguration loadPortForwardConfiguration(
+        @NotNull DBWHandlerConfiguration configuration,
+        @NotNull DBPConnectionConfiguration connectionInfo
+    ) {
+        String sshLocalHost = CommonUtils.toString(configuration.getProperty(SSHConstants.PROP_LOCAL_HOST));
+
+        int sshLocalPort = configuration.getIntProperty(SSHConstants.PROP_LOCAL_PORT);
+        if (sshLocalPort == 0) {
+            sshLocalPort = SSHUtils.findFreePort();
+        }
+
+        String sshRemoteHost = CommonUtils.toString(configuration.getProperty(SSHConstants.PROP_REMOTE_HOST));
+        if (CommonUtils.isEmpty(sshRemoteHost)) {
+            sshRemoteHost = CommonUtils.notEmpty(connectionInfo.getHostName());
+        }
+
+        int sshRemotePort = configuration.getIntProperty(SSHConstants.PROP_REMOTE_PORT);
+        if (sshRemotePort == 0 && configuration.getDriver() != null) {
+            sshRemotePort = CommonUtils.toInt(connectionInfo.getHostPort());
+        }
+
+        return new SSHPortForwardConfiguration(sshLocalHost, sshLocalPort, sshRemoteHost, sshRemotePort);
+    }
 }

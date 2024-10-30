@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import org.eclipse.core.runtime.IExtension;
 import org.eclipse.core.runtime.Platform;
 import org.eclipse.jface.action.*;
 import org.eclipse.jface.resource.ImageDescriptor;
+import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.SWT;
 import org.eclipse.ui.*;
 import org.eclipse.ui.actions.ActionFactory;
@@ -29,6 +30,7 @@ import org.eclipse.ui.actions.ContributionItemFactory;
 import org.eclipse.ui.application.ActionBarAdvisor;
 import org.eclipse.ui.application.IActionBarConfigurer;
 import org.eclipse.ui.commands.ICommandImageService;
+import org.eclipse.ui.commands.ICommandService;
 import org.eclipse.ui.ide.IDEActionFactory;
 import org.eclipse.ui.internal.WorkbenchPlugin;
 import org.eclipse.ui.internal.commands.CommandImageManager;
@@ -38,6 +40,7 @@ import org.eclipse.ui.internal.registry.IActionSetDescriptor;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ModelPreferences;
 import org.jkiss.dbeaver.core.CoreMessages;
+import org.jkiss.dbeaver.core.ui.services.ApplicationPolicyService;
 import org.jkiss.dbeaver.model.DBIcon;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.ui.*;
@@ -155,6 +158,7 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor
     protected void makeActions(final IWorkbenchWindow window)
     {
         removeUnWantedActions();
+        log.debug("Create workbench actions");
 
         register(ActionFactory.SAVE.create(window));
         register(ActionFactory.SAVE_AS.create(window));
@@ -173,9 +177,10 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor
         newWindowAction = ActionFactory.OPEN_NEW_WINDOW.create(window);
         register(newWindowAction);
 
-        openWorkspaceAction = IDEActionFactory.OPEN_WORKSPACE.create(window);
-        register(openWorkspaceAction);
-
+        if (DBWorkbench.getPlatform().getApplication().isWorkspaceSwitchingAllowed()) {
+            openWorkspaceAction = IDEActionFactory.OPEN_WORKSPACE.create(window);
+            register(openWorkspaceAction);
+        }
 
 //        historyBackAction = ActionFactory.BACKWARD_HISTORY.create(window);
 //        register(historyBackAction);
@@ -183,6 +188,7 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor
 //        register(historyForwardAction);
 
         CheckForUpdateAction.deactivateStandardHandler(window);
+        ApplicationPolicyService.getInstance().disableStandardProductModification(window.getService(ICommandService.class));
     }
 
 
@@ -260,7 +266,9 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor
             }
             fileMenu.add(new GroupMarker(IWorkbenchActionConstants.MB_ADDITIONS));
 
-            fileMenu.add(openWorkspaceAction);
+            if (openWorkspaceAction != null) {
+                fileMenu.add(openWorkspaceAction);
+            }
 
             fileMenu.add(new Separator());
             fileMenu.add(new EmergentExitAction(workbenchWindow));
@@ -359,14 +367,19 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor
 
             DBWorkbench.getPlatform().getPreferenceStore().addPropertyChangeListener(event -> {
                 if (event.getProperty().equals(ModelPreferences.CLIENT_TIMEZONE)) {
-                    updateTimezoneItem(tzItem);
+                    UIUtils.syncExec(() -> updateTimezoneItem(tzItem));
                 }
             });
 
             tzItem.setDoubleClickListener(() -> {
-                UIUtils.showMessageBox(null, "Time zone", "You can change time zone by changing 'client timezone' in 'Settings' -> 'User Interface' or by adding parameter:\n" +
-                        "-D" + StandardConstants.ENV_USER_TIMEZONE + "=<TimeZone>\n" +
-                        "in the end of file'\n" + DBWorkbench.getPlatform().getApplicationConfiguration().toAbsolutePath().toString() + "'\n" , SWT.ICON_INFORMATION
+                UIUtils.showMessageBox(
+                    null,
+                    CoreApplicationMessages.timezone_change_info_title,
+                    NLS.bind(
+                        CoreApplicationMessages.timezone_change_info_message,
+                        StandardConstants.ENV_USER_TIMEZONE,
+                        DBWorkbench.getPlatform().getApplicationConfiguration().toAbsolutePath()),
+                    SWT.ICON_INFORMATION
                 );
             });
             statusLine.add(tzItem);
@@ -376,10 +389,13 @@ public class ApplicationActionBarAdvisor extends ActionBarAdvisor
             localeItem.setText(Locale.getDefault().toString());
             localeItem.setToolTip(Locale.getDefault().getDisplayName());
             localeItem.setDoubleClickListener(() -> {
-                UIUtils.showMessageBox(null, "Locale", "You can change locale by adding parameters\n" +
-                    "-nl\n<language_iso_code>\n" +
-                    "in file '" + DBWorkbench.getPlatform().getApplicationConfiguration().toAbsolutePath().toString() + "'.\n" +
-                    "Or by passing command line parameter -nl <language_iso_code>", SWT.ICON_INFORMATION);
+                UIUtils.showMessageBox(
+                    null,
+                    CoreApplicationMessages.locale_change_info_title,
+                    NLS.bind(
+                        CoreApplicationMessages.locale_change_info_message,
+                        DBWorkbench.getPlatform().getApplicationConfiguration().toAbsolutePath()),
+                    SWT.ICON_INFORMATION);
             });
             statusLine.add(localeItem);
         }

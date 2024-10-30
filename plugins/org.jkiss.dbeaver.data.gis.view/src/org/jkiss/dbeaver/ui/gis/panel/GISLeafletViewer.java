@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,19 +30,24 @@ import org.eclipse.swt.dnd.Clipboard;
 import org.eclipse.swt.dnd.ImageTransfer;
 import org.eclipse.swt.dnd.TextTransfer;
 import org.eclipse.swt.dnd.Transfer;
-import org.eclipse.swt.graphics.*;
+import org.eclipse.swt.graphics.GC;
+import org.eclipse.swt.graphics.Image;
+import org.eclipse.swt.graphics.ImageData;
+import org.eclipse.swt.graphics.ImageLoader;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.widgets.*;
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
+import org.jkiss.dbeaver.data.gis.handlers.WKGUtils;
 import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.data.DBDAttributeBinding;
 import org.jkiss.dbeaver.model.data.DBDContent;
 import org.jkiss.dbeaver.model.exec.DBCException;
 import org.jkiss.dbeaver.model.gis.*;
 import org.jkiss.dbeaver.model.preferences.DBPPreferenceListener;
+import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
 import org.jkiss.dbeaver.model.runtime.VoidProgressMonitor;
 import org.jkiss.dbeaver.model.virtual.DBVEntity;
 import org.jkiss.dbeaver.model.virtual.DBVEntityAttribute;
@@ -52,6 +57,7 @@ import org.jkiss.dbeaver.ui.*;
 import org.jkiss.dbeaver.ui.controls.lightgrid.GridPos;
 import org.jkiss.dbeaver.ui.controls.resultset.AbstractPresentation;
 import org.jkiss.dbeaver.ui.controls.resultset.IResultSetPresentation;
+import org.jkiss.dbeaver.ui.controls.resultset.spreadsheet.SpreadsheetPresentation;
 import org.jkiss.dbeaver.ui.css.CSSUtils;
 import org.jkiss.dbeaver.ui.css.DBStyles;
 import org.jkiss.dbeaver.ui.dialogs.DialogUtils;
@@ -60,6 +66,7 @@ import org.jkiss.dbeaver.ui.gis.GeometryViewerConstants;
 import org.jkiss.dbeaver.ui.gis.IGeometryValueEditor;
 import org.jkiss.dbeaver.ui.gis.internal.GISMessages;
 import org.jkiss.dbeaver.ui.gis.internal.GISViewerActivator;
+import org.jkiss.dbeaver.ui.gis.panel.actions.ToggleLabelsAction;
 import org.jkiss.dbeaver.ui.gis.registry.GeometryViewerRegistry;
 import org.jkiss.dbeaver.ui.gis.registry.LeafletTilesDescriptor;
 import org.jkiss.dbeaver.utils.ContentUtils;
@@ -85,6 +92,7 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
 
     private static final String PROP_FLIP_COORDINATES = "gis.flipCoords";
     private static final String PROP_SRID = "gis.srid";
+    private static final int UNDEFINED_SRID = -1;
 
     private volatile boolean browserCreating = false;
 
@@ -92,20 +100,25 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
             .registerTypeHierarchyAdapter(DBDContent.class, new DBDContentAdapter()).create();
 
     private final DBDAttributeBinding[] bindings;
+    private final IResultSetPresentation presentation;
+
     private Browser browser;
     private DBGeometry[] lastValue;
-    private int sourceSRID; // Explicitly set SRID
+    private int sourceSRID = UNDEFINED_SRID; // Explicitly set SRID
     private int actualSourceSRID; // SRID taken from geometry value
     private Path scriptFile;
+    private final Composite statusBar;
     private final ToolBarManager toolBarManager;
     private int defaultSRID; // Target SRID used to render map
 
     private boolean toolsVisible = true;
+    private boolean showLabels;
     private boolean flipCoordinates = false;
     private final Composite composite;
 
     public GISLeafletViewer(Composite parent, @NotNull DBDAttributeBinding[] bindings, @Nullable SpatialDataProvider spatialDataProvider, @Nullable IResultSetPresentation presentation) {
         this.bindings = bindings;
+        this.presentation = presentation;
 
         this.flipCoordinates = spatialDataProvider != null && spatialDataProvider.isFlipCoordinates();
 
@@ -140,7 +153,7 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
                 }
             };
 
-            if (presentation instanceof AbstractPresentation) {
+            if (presentation instanceof SpreadsheetPresentation) {
                 new BrowserFunction(browser, "setPresentationSelection") {
                     @Override
                     public Object function(Object[] arguments) {
@@ -162,17 +175,19 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
         }
 
         {
-            Composite bottomPanel = UIUtils.createPlaceholder(composite, 1);//new Composite(composite, SWT.NONE);
-            bottomPanel.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
-            CSSUtils.setCSSClass(bottomPanel, DBStyles.COLORED_BY_CONNECTION_TYPE);
+            statusBar = UIUtils.createPlaceholder(composite, 1);//new Composite(composite, SWT.NONE);
+            statusBar.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
+            CSSUtils.setCSSClass(statusBar, DBStyles.COLORED_BY_CONNECTION_TYPE);
 
-            ToolBar bottomToolbar = new ToolBar(bottomPanel, SWT.FLAT | SWT.HORIZONTAL | SWT.RIGHT);
+            ToolBar bottomToolbar = new ToolBar(statusBar, SWT.FLAT | SWT.HORIZONTAL | SWT.RIGHT);
 
             toolBarManager = new ToolBarManager(bottomToolbar);
         }
 
+        final DBPPreferenceStore preferences = GISViewerActivator.getDefault().getPreferences();
+
         {
-            String recentSRIDString = GISViewerActivator.getDefault().getPreferences().getString(PREF_RECENT_SRID_LIST);
+            String recentSRIDString = preferences.getString(PREF_RECENT_SRID_LIST);
             if (!CommonUtils.isEmpty(recentSRIDString)) {
                 for (String sridStr : recentSRIDString.split(",")) {
                     int recentSRID = CommonUtils.toInt(sridStr);
@@ -204,7 +219,9 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
             }
         }
 
-        GISViewerActivator.getDefault().getPreferences().addPropertyChangeListener(this);
+        showLabels = preferences.getBoolean(GeometryViewerConstants.PREF_SHOW_LABELS);
+
+        preferences.addPropertyChangeListener(this);
     }
 
     @Override
@@ -257,6 +274,10 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
 
     @Override
     public void preferenceChange(PreferenceChangeEvent event) {
+        if (GeometryViewerConstants.PREF_SHOW_LABELS.equals(event.getProperty())) {
+            return;
+        }
+
         refresh();
     }
 
@@ -292,7 +313,7 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
             }
         }
         lastValue = values;
-        updateToolbar();
+        populateToolbar();
     }
 
     private Path generateViewScript(DBGeometry[] values, @Nullable Bounds bounds) throws IOException {
@@ -303,7 +324,7 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
             scriptFile = Files.createTempFile(tempDir, "view", "gis.html");
         }
 
-        int attributeSrid = GisConstants.SRID_SIMPLE;
+        int attributeSrid = UNDEFINED_SRID;
         if (bindings[0].getAttribute() instanceof GisAttribute) {
             try {
                 attributeSrid = ((GisAttribute) bindings[0].getAttribute())
@@ -334,11 +355,17 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
                 log.error("Error forcing geometry to 2D", e);
             }
             Object targetValue = value.getRawValue();
-            int srid = sourceSRID == 0 ? value.getSRID() : sourceSRID;
-            if (srid == GisConstants.SRID_SIMPLE) {
+            if (WKGUtils.isCurve(targetValue)) {
+                targetValue = WKGUtils.linearize((org.cugos.wkg.Geometry) targetValue);
+            }
+            int srid = sourceSRID;
+            if (srid == UNDEFINED_SRID && value.getSRID() != 0) {
+                srid = value.getSRID();
+            }
+            if (srid == UNDEFINED_SRID) {
                 srid = attributeSrid;
             }
-            if (srid == 0) {
+            if (srid == UNDEFINED_SRID) {
                 srid = GeometryDataUtils.getDefaultSRID();
             }
             if (srid == GisConstants.SRID_SIMPLE) {
@@ -348,7 +375,7 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
                 showMap = true;
                 actualSourceSRID = srid;
             } else {
-                Geometry geometry = value.getGeometry();
+                Geometry geometry = GisTransformUtils.getJtsGeometry(targetValue);
                 if (geometry != null) {
                     try {
                         GisTransformRequest request = new GisTransformRequest(geometry, srid, GisConstants.SRID_4326);
@@ -405,6 +432,8 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
                         return String.valueOf(isShowMap);
                     case "showTools":
                         return String.valueOf(toolsVisible);
+                    case "showLabels":
+                        return String.valueOf(showLabels);
                     case "geomCRS":
                         return geomCRS;
                     case "geomBounds":
@@ -466,6 +495,11 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
     }
 
     @Nullable
+    public IResultSetPresentation getPresentation() {
+        return presentation;
+    }
+
+    @Nullable
     public Browser getBrowser() {
         return browser;
     }
@@ -478,7 +512,7 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
         return lastValue;
     }
 
-    void updateToolbar() {
+    void populateToolbar() {
         if (browser == null) {
             return;
         }
@@ -493,7 +527,7 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
             @Override
             public void run() {
                 ImageTransfer imageTransfer = ImageTransfer.getInstance();
-                ImageData imageData = captureBrowserImage(); 
+                ImageData imageData = captureBrowserImage();
                 Clipboard clipboard = new Clipboard(Display.getCurrent());
                 clipboard.setContents(new Object[] { imageData }, new Transfer[]{imageTransfer});
             }
@@ -585,7 +619,7 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
                     DBWorkbench.getPlatformUI().showError("Render error", "Error rendering geometry", e);
                 }
                 saveAttributeSettings();
-                updateToolbar();
+                populateToolbar();
             }
         });
 
@@ -605,11 +639,23 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
             public void run() {
                 toolsVisible = !toolsVisible;
                 updateControlsVisibility();
-                updateToolbar();
+                populateToolbar();
             }
         });
 
+        toolBarManager.add(ActionUtils.makeActionContribution(new ToggleLabelsAction(this), true));
+
         toolBarManager.update(true);
+    }
+
+    public void updateToolbar() {
+        try {
+            statusBar.setRedraw(false);
+            UIUtils.updateContributionItems(toolBarManager);
+            statusBar.layout(true, true);
+        } finally {
+            statusBar.setRedraw(true);
+        }
     }
 
     private void saveAttributeSettings() {
@@ -637,6 +683,25 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
         } finally {
             gc.dispose();
         }
+    }
+
+    public boolean isShowLabels() {
+        return showLabels;
+    }
+
+    public void setShowLabels(boolean value) {
+        if (showLabels == value) {
+            return;
+        }
+
+        final Browser browser = getBrowser();
+
+        if (browser != null) {
+            browser.execute("javascript:showLabels(" + value + ")");
+        }
+
+        showLabels = value;
+        GISViewerActivator.getDefault().getPreferences().setValue(GeometryViewerConstants.PREF_SHOW_LABELS, value);
     }
 
     private static class Bounds {
@@ -687,8 +752,20 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
     }
 
     private ImageData captureBrowserImage() {
-        ImageData imageData; 
+        boolean toolsVisibility = toolsVisible;
+        if (toolsVisible) {
+            toolsVisible = false;
+        }
+        updateControlsVisibility();
+
+        ImageData imageData;
         if (RuntimeUtils.isWindows()) {
+            try {
+                // Some controls overlapping the map may be still in a disappearing process, so let's wait a little #20921
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                // ignore
+            }
             imageData = GISBrowserImageUtils.getControlScreenshotOnWindows(browser);
         } else {
             Image image = new Image(Display.getDefault(), browser.getBounds());
@@ -700,6 +777,9 @@ public class GISLeafletViewer implements IGeometryValueEditor, DBPPreferenceList
             }
             imageData = image.getImageData();
         }
+
+        toolsVisible = toolsVisibility;
+        updateControlsVisibility();
         return imageData;
     }
 

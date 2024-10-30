@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@ public class MySQLConstants {
     public static final String DRIVER_ID_MYSQL8 = "mysql8";
     public static final String DRIVER_ID_MARIA_DB = "mariaDB";
     public static final String DRIVER_CLASS_MARIA_DB = "org.mariadb.jdbc.Driver";
+    public static final String DRIVER_PARAM_CLIENTS = "supportsClients";
 
     public static final String HANDLER_SSL = "mysql_ssl";
 
@@ -53,6 +54,8 @@ public class MySQLConstants {
     @Deprecated
     public static final String PROP_SSL_CA_CERT = "ssl.ca.cert";
     public static final String PROP_SSL_DEBUG = "ssl.debug";
+
+    public static final String PROP_CACHE_META_DATA = "cache-meta-data";
 
     public static final String[] TABLE_TYPES = new String[]{"TABLE", "VIEW", "LOCAL TEMPORARY"};
 
@@ -143,6 +146,7 @@ public class MySQLConstants {
     public static final String COL_ROUTINE_COMMENT = "ROUTINE_COMMENT";
     public static final String COL_DEFINER = "DEFINER";
     public static final String COL_CHARACTER_SET_CLIENT = "CHARACTER_SET_CLIENT";
+    public static final String COL_SRS_ID = "SRS_ID";
 
     public static final String COL_TRIGGER_SCHEMA = "TRIGGER_SCHEMA";
     public static final String COL_TRIGGER_NAME = "TRIGGER_NAME";

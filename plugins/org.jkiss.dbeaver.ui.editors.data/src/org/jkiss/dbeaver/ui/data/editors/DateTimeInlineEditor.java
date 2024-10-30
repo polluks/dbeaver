@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -85,7 +85,7 @@ public class DateTimeInlineEditor extends BaseValueEditor<Control> {
                 }
             }
             editor.setToTextComposite();
-            ModelPreferences.getPreferences().setValue(ModelPreferences.RESULT_SET_USE_DATETIME_EDITOR, false);
+            DBWorkbench.getPlatform().getPreferenceStore().setValue(ModelPreferences.RESULT_SET_USE_DATETIME_EDITOR, false);
         }
     }
 
@@ -130,12 +130,12 @@ public class DateTimeInlineEditor extends BaseValueEditor<Control> {
                         ResultSetMessages.dialog_value_view_error_parsing_date_title,
                         ResultSetMessages.dialog_value_view_error_parsing_date_message
                     );
-                ModelPreferences.getPreferences().setValue(ModelPreferences.RESULT_SET_USE_DATETIME_EDITOR, false);
+                DBWorkbench.getPlatform().getPreferenceStore().setValue(ModelPreferences.RESULT_SET_USE_DATETIME_EDITOR, false);
                 this.setChecked(false);
                 parent.textMode.setChecked(true);
                 return;
             }
-            ModelPreferences.getPreferences().setValue(ModelPreferences.RESULT_SET_USE_DATETIME_EDITOR, true);
+            DBWorkbench.getPlatform().getPreferenceStore().setValue(ModelPreferences.RESULT_SET_USE_DATETIME_EDITOR, true);
         }
 
     }
@@ -186,7 +186,7 @@ public class DateTimeInlineEditor extends BaseValueEditor<Control> {
     }
 
     private boolean isCalendarMode() {
-        return ModelPreferences.getPreferences().getBoolean(ModelPreferences.RESULT_SET_USE_DATETIME_EDITOR);
+        return DBWorkbench.getPlatform().getPreferenceStore().getBoolean(ModelPreferences.RESULT_SET_USE_DATETIME_EDITOR);
     }
 
     @Override

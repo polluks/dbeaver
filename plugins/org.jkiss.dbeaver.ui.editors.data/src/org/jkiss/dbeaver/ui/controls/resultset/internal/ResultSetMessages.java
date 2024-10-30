@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,7 +31,9 @@ public class ResultSetMessages extends NLS {
     public static String controls_resultset_filter_column_criteria;
     public static String controls_resultset_filter_column_order;
     public static String controls_resultset_filter_group_columns;
+    public static String controls_resultset_filter_group_columns_tooltip_text;
     public static String controls_resultset_filter_group_custom;
+    public static String controls_resultset_filter_group_custom_tooltip_text;
     public static String controls_resultset_filter_label_orderby;
     public static String controls_resultset_filter_label_where;
     public static String controls_resultset_filter_title;
@@ -42,11 +44,37 @@ public class ResultSetMessages extends NLS {
     public static String controls_resultset_grouping_clear;
     public static String controls_resultset_grouping_default_sorting;
     public static String controls_resultset_grouping_show_duplicates_only;
-
+    
+    public static String controls_resultset_virtual_edit_action;
+    public static String controls_resultset_virtual_add_virtual_foreign_key;
+    public static String controls_resultset_virtual_define_virtual_unique_key;
+    public static String controls_resultset_virtual_clear_virtual_unique_key;
+    public static String controls_resultset_virtual_add_virtual_column;
+    public static String controls_resultset_virtual_foreignkey_page_remove_confirmation_question;
+    public static String controls_resultset_virtual_foreignkey_page_remove_confirmation_title;
+    public static String controls_resultset_virtual_foreignkey_page_remove;
+    public static String controls_resultset_virtual_foreignkey_page_add;
+    public static String controls_resultset_virtual_foreignkey_page_ref_datasource;
+    public static String controls_resultset_virtual_foreignkey_page_columns;
+    public static String controls_resultset_virtual_foreignkey_page_ref_table;
+    public static String controls_resultset_virtual_foreignkey_page_text;
+    public static String controls_resultset_virtual_columns_page_text;
+    public static String controls_resultset_virtual_dictionary_page_text;
+    public static String controls_resultset_virtual_keys_info_label;
+    public static String controls_resultset_viewer_frequent_refresh_hint;
+    public static String controls_resultset_viewer_switch_autocommit_hint;
+    public static String controls_resultset_viewer_action_show_selected_row_count;
+    public static String controls_resultset_viewer_action_show_selected_column_count;
+    public static String controls_resultset_viewer_action_show_selected_cell_count;
+    public static String controls_resultset_viewer_action_open_value_editor_column_readonly;
     public static String controls_resultset_viewer_action_edit;
     public static String controls_resultset_viewer_action_order_filter;
     public static String controls_resultset_viewer_action_order;
     public static String controls_resultset_viewer_action_filter;
+    public static String controls_resultset_viewer_action_reset_all_colors;
+    public static String controls_resultset_viewer_action_reset_all_transformers;
+    public static String controls_resultset_viewer_action_reset_all_pins;
+    public static String controls_resultset_viewer_action_reset_all_settings;
     public static String controls_resultset_viewer_action_filter_clipboard;
     public static String controls_resultset_viewer_action_filter_value;
     public static String controls_resultset_viewer_action_filter_input;
@@ -98,12 +126,17 @@ public class ResultSetMessages extends NLS {
     public static String controls_resultset_ref_menu_no_associations;
     public static String controls_resultset_ref_menu_associations;
 
+    public static String controls_resultset_results_read_only;
+    public static String controls_resultset_results_read_only_status;
+    public static String controls_resultset_results_edit_key;
+
     public static String controls_rs_pump_job_context_name;
     public static String controls_rs_pump_job_name;
 
     public static String controls_resultset_edit_save;
     public static String controls_resultset_edit_cancel;
     public static String controls_resultset_edit_script;
+    public static String controls_resultset_edit_logical_structure;
     public static String controls_resultset_config_panels;
     public static String controls_resultset_config_record;
 
@@ -147,6 +180,8 @@ public class ResultSetMessages extends NLS {
     public static String dialog_row_colors_group_settings_background_color_label;
     public static String dialog_row_colors_group_settings_foreground_color_label;
     public static String dialog_row_colors_group_settings_tip;
+    public static String dialog_row_colors_error_message_title;
+    public static String dialog_row_colors_error_message_text;
 
     public static String dialog_value_view_button_cancel;
     public static String dialog_value_view_button_sat_null;
@@ -209,10 +244,13 @@ public class ResultSetMessages extends NLS {
     public static String dialog_paste_as_title;
     public static String dialog_paste_as_insert_multiple_rows_text;
     public static String dialog_paste_as_insert_multiple_rows_tip;
+    public static String dialog_paste_as_ignore_quotes_text;
+    public static String dialog_paste_as_ignore_quotes_tip;
     public static String dialog_paste_as_insert_nulls_text;
     public static String dialog_paste_as_insert_nulls_tip;
     public static String dialog_paste_as_null_value_mark_text;
     public static String dialog_paste_as_null_value_mark_tip;
+
 
     // Pref pages
     public static String pref_page_content_editor_checkbox_commit_on_content_apply;
@@ -279,7 +317,7 @@ public class ResultSetMessages extends NLS {
     public static String dialog_save_script_button_delete_cascade_tip;
     public static String dialog_save_script_button_delete_deep_cascade;
     public static String dialog_save_script_button_delete_deep_cascade_tip;
-    public static String dialog_save_script_button_bar_button_persist;
+    public static String dialog_save_script_button_bar_button_execute;
     public static String dialog_save_script_button_bar_button_copy;
 
     //Preference/Properties
@@ -293,6 +331,8 @@ public class ResultSetMessages extends NLS {
     public static String pref_page_database_resultsets_label_binary_strings_max_length;
     public static String pref_page_database_resultsets_label_auto_fetch_segment;
     public static String pref_page_database_resultsets_label_auto_fetch_segment_tip;
+    public static String pref_page_database_resultsets_label_automatic_row_count;
+    public static String pref_page_database_resultsets_label_automatic_row_count_tip;
     public static String pref_page_database_resultsets_label_reread_on_scrolling;
     public static String pref_page_database_resultsets_label_reread_on_scrolling_tip;
     public static String pref_page_database_resultsets_label_use_sql;
@@ -341,6 +381,8 @@ public class ResultSetMessages extends NLS {
     public static String results_decorator_grouping_is_not_supported;
     public static String results_decorator_no_connected_to_db;
     public static String results_decorator_no_groupings;
+    public static String results_goto_column_dialog_title;
+    public static String results_goto_column_dialog_message;
     
     public static String virtual_edit_columns_page_add;
     public static String virtual_edit_columns_page_table_column_name;
@@ -375,6 +417,7 @@ public class ResultSetMessages extends NLS {
     public static String panel_editor_text_auto_format_name;
     public static String panel_editor_text_encoding_name;
     public static String panel_editor_text_encoding_title;
+    public static String panel_editor_text_content_limitation_lbl;
 
     public static String error_part_button_go_to_error;
 
@@ -424,6 +467,7 @@ public class ResultSetMessages extends NLS {
     public static String copy_special_force_quote_cell_values_tip;
     public static String copy_special_copy_as_html_text;
     public static String copy_special_copy_as_html_tip;
+    public static String copy_special_hint_for_hotkey;
 
     public static String filter_panel_filters_history_text;
     public static String filter_panel_expand_panel_text;
@@ -432,6 +476,19 @@ public class ResultSetMessages extends NLS {
     public static String generate_ddl_by_result_set_tip;
     public static String meta_data_panel_action_copy_column_text;
     public static String result_set_viewer_selection_stat_tooltip;
+
+    public static String panel_metadata_filter_label;
+    public static String panel_metadata_filter_hint;
+
+
+    public static String reference_value_editor_value_label;
+    public static String reference_value_editor_current_page_value;
+    public static String reference_value_editor_current_pagination_value;
+    public static String reference_value_editor_define_description_value;
+    public static String reference_value_editor_search_hint_value;
+
+    public static String dialog_policy_data_export_msg;
+    public static String dialog_policy_data_export_title;
 
     static {
         // initialize resource bundle

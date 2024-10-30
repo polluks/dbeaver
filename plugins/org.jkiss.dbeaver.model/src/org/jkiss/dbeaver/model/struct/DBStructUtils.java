@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
+import org.jkiss.dbeaver.ModelPreferences;
 import org.jkiss.dbeaver.model.*;
 import org.jkiss.dbeaver.model.data.DBDAttributeBinding;
 import org.jkiss.dbeaver.model.data.DBDAttributeBindingMeta;
@@ -27,6 +28,7 @@ import org.jkiss.dbeaver.model.edit.DBEPersistAction;
 import org.jkiss.dbeaver.model.edit.DBERegistry;
 import org.jkiss.dbeaver.model.impl.sql.edit.SQLObjectEditor;
 import org.jkiss.dbeaver.model.impl.sql.edit.struct.SQLTableManager;
+import org.jkiss.dbeaver.model.messages.ModelMessages;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.SubTaskProgressMonitor;
 import org.jkiss.dbeaver.model.sql.SQLConstants;
@@ -74,8 +76,7 @@ public final class DBStructUtils {
         DBSEntityReferrer constraint = refs.isEmpty() ? null : refs.get(0);
         if (constraint != null) {
             DBSEntity associatedEntity = getAssociatedEntity(monitor, constraint);
-            if (associatedEntity instanceof DBSDictionary) {
-                final DBSDictionary dictionary = (DBSDictionary) associatedEntity;
+            if (associatedEntity instanceof DBSDictionary dictionary) {
                 if (dictionary.supportsDictionaryEnumeration()) {
                     return constraint;
                 }
@@ -86,10 +87,10 @@ public final class DBStructUtils {
 
     @Nullable
     public static DBSEntity getAssociatedEntity(@NotNull DBRProgressMonitor monitor, @NotNull DBSEntityConstraint constraint) throws DBException {
-        if (constraint instanceof DBSEntityAssociationLazy) {
-            return  ((DBSEntityAssociationLazy) constraint).getAssociatedEntity(monitor);
-        } else if (constraint instanceof DBSEntityAssociation) {
-            return  ((DBSEntityAssociation) constraint).getAssociatedEntity();
+        if (constraint instanceof DBSEntityAssociationLazy associationLazy) {
+            return associationLazy.getAssociatedEntity(monitor);
+        } else if (constraint instanceof DBSEntityAssociation association) {
+            return association.getAssociatedEntity();
         }
         return null;
     }
@@ -97,8 +98,8 @@ public final class DBStructUtils {
     public static String generateTableDDL(@NotNull DBRProgressMonitor monitor, @NotNull DBSEntity table, Map<String, Object> options, boolean addComments) throws DBException {
         final DBERegistry editorsRegistry = DBWorkbench.getPlatform().getEditorsRegistry();
         final SQLObjectEditor<?, ?> entityEditor = editorsRegistry.getObjectManager(table.getClass(), SQLObjectEditor.class);
-        if (entityEditor instanceof SQLTableManager) {
-            DBEPersistAction[] ddlActions = ((SQLTableManager) entityEditor).getTableDDL(monitor, table, options);
+        if (entityEditor instanceof SQLTableManager tableManager) {
+            DBEPersistAction[] ddlActions = tableManager.getTableDDL(monitor, table, options);
             return SQLUtils.generateScript(table.getDataSource(), ddlActions, addComments);
         }
         log.debug("Table editor not found for " + table.getClass().getName());
@@ -119,8 +120,8 @@ public final class DBStructUtils {
     }
 
     public static String getTableDDL(@NotNull DBRProgressMonitor monitor, @NotNull DBSEntity table, Map<String, Object> options, boolean addComments) throws DBException {
-        if (table instanceof DBPScriptObject) {
-            String definitionText = ((DBPScriptObject) table).getObjectDefinitionText(monitor, options);
+        if (table instanceof DBPScriptObject scriptObject) {
+            String definitionText = scriptObject.getObjectDefinitionText(monitor, options);
             if (!CommonUtils.isEmpty(definitionText)) {
                 return definitionText;
             }
@@ -128,7 +129,13 @@ public final class DBStructUtils {
         return generateTableDDL(monitor, table, options, addComments);
     }
 
-    public static <T extends DBSEntity> void generateTableListDDL(@NotNull DBRProgressMonitor monitor, @NotNull StringBuilder sql, @NotNull Collection<T> tablesOrViews, Map<String, Object> options, boolean addComments) throws DBException {
+    public static <T extends DBSEntity> void generateTableListDDL(
+        @NotNull DBRProgressMonitor monitor,
+        @NotNull StringBuilder sql,
+        @NotNull Collection<T> tablesOrViews,
+        Map<String, Object> options,
+        boolean addComments
+    ) throws DBException {
         List<T> goodTableList = new ArrayList<>();
         List<T> cycleTableList = new ArrayList<>();
         List<T> viewList = new ArrayList<>();
@@ -137,7 +144,7 @@ public final class DBStructUtils {
 
         // Good tables: generate full DDL
         for (T table : goodTableList) {
-            sql.append(getObjectNameComment(table, "definition"));
+            sql.append(getObjectNameComment(table, ModelMessages.struct_utils_object_ddl_definition));
             addDDLLine(sql, DBStructUtils.getTableDDL(monitor, table, options, addComments));
         }
         {
@@ -146,9 +153,9 @@ public final class DBStructUtils {
             List<T> goodCycleTableList = new ArrayList<>();
             for (T table : cycleTableList) {
                 if (
-                    table instanceof DBPScriptObjectExt2 &&
-                    ((DBPScriptObjectExt2) table).supportsObjectDefinitionOption(DBPScriptObject.OPTION_DDL_SKIP_FOREIGN_KEYS) &&
-                    ((DBPScriptObjectExt2) table).supportsObjectDefinitionOption(DBPScriptObject.OPTION_DDL_ONLY_FOREIGN_KEYS))
+                    table instanceof DBPScriptObjectExt2 so2 &&
+                    so2.supportsObjectDefinitionOption(DBPScriptObject.OPTION_DDL_SKIP_FOREIGN_KEYS) &&
+                    so2.supportsObjectDefinitionOption(DBPScriptObject.OPTION_DDL_ONLY_FOREIGN_KEYS))
                 {
                     goodCycleTableList.add(table);
                 }
@@ -157,41 +164,49 @@ public final class DBStructUtils {
 
             if (!CommonUtils.getOption(options, DBPScriptObject.OPTION_DDL_SEPARATE_FOREIGN_KEYS_STATEMENTS, true)) {
                 for (T table : goodCycleTableList) {
-                    sql.append(getObjectNameComment(table, "definition"));
+                    sql.append(getObjectNameComment(table, ModelMessages.struct_utils_object_ddl_definition));
                     addDDLLine(sql, DBStructUtils.getTableDDL(monitor, table, options, addComments));
                 }
             } else {
                 Map<String, Object> optionsNoFK = new HashMap<>(options);
                 optionsNoFK.put(DBPScriptObject.OPTION_DDL_SKIP_FOREIGN_KEYS, true);
                 for (T table : goodCycleTableList) {
-                    sql.append(getObjectNameComment(table, "definition"));
+                    sql.append(getObjectNameComment(table, ModelMessages.struct_utils_object_ddl_definition));
                     addDDLLine(sql, DBStructUtils.getTableDDL(monitor, table, optionsNoFK, addComments));
                 }
                 Map<String, Object> optionsOnlyFK = new HashMap<>(options);
                 optionsOnlyFK.put(DBPScriptObject.OPTION_DDL_ONLY_FOREIGN_KEYS, true);
                 for (T table : goodCycleTableList) {
-                    sql.append(getObjectNameComment(table, "foreign keys"));
+                    sql.append(getObjectNameComment(table, ModelMessages.struct_utils_object_ddl_foreign_keys));
                     addDDLLine(sql, DBStructUtils.getTableDDL(monitor, table, optionsOnlyFK, addComments));
                 }
             }
 
             // the rest - tables which can't split their DDL
             for (T table : cycleTableList) {
-                sql.append(getObjectNameComment(table, "definition"));
+                sql.append(getObjectNameComment(table, ModelMessages.struct_utils_object_ddl_definition));
                 addDDLLine(sql, DBStructUtils.getTableDDL(monitor, table, options, addComments));
             }
         }
         // Views: generate them after all tables.
         // TODO: find view dependencies and generate them in right order
         for (T table : viewList) {
-            sql.append(getObjectNameComment(table, "source"));
+            sql.append(getObjectNameComment(table, ModelMessages.struct_utils_object_ddl_source));
             addDDLLine(sql, DBStructUtils.getTableDDL(monitor, table, options, addComments));
         }
         monitor.done();
     }
 
-    private static String getObjectNameComment(DBSObject object, String comment) {
-        String[] singleLineComments = object.getDataSource().getSQLDialect().getSingleLineComments();
+    private static String getObjectNameComment(@NotNull DBSObject object, @NotNull String comment) {
+        DBPDataSource dataSource = object.getDataSource();
+        if (dataSource == null) {
+            return "";
+        }
+        if (!dataSource.getContainer().getPreferenceStore().getBoolean(ModelPreferences.META_EXTRA_DDL_INFO)) {
+            // Skip this step, then
+            return "";
+        }
+        String[] singleLineComments = dataSource.getSQLDialect().getSingleLineComments();
         if (ArrayUtils.isEmpty(singleLineComments)) {
             return "";
         }
@@ -216,7 +231,7 @@ public final class DBStructUtils {
         monitor.beginTask("Sorting table list", input.size());
         List<T> realTables = new ArrayList<>();
         for (T entity : input) {
-            if (entity instanceof DBSView || (entity instanceof DBSTable && ((DBSTable) entity).isView())) {
+            if (entity instanceof DBSView || (entity instanceof DBSTable table && table.isView())) {
                 views.add(entity);
             } else {
                 realTables.add(entity);
@@ -286,14 +301,13 @@ public final class DBStructUtils {
         boolean addModifiers
     ) {
         boolean isBindingWithEntityAttr = false;
-        if (srcTypedObject instanceof DBDAttributeBinding) {
-            DBDAttributeBinding attributeBinding = (DBDAttributeBinding) srcTypedObject;
+        if (srcTypedObject instanceof DBDAttributeBinding attributeBinding) {
             if (attributeBinding.getEntityAttribute() != null) {
                 isBindingWithEntityAttr = true;
             }
         }
         if (objectContainer != null && (srcTypedObject instanceof DBSEntityAttribute || isBindingWithEntityAttr || (
-                srcTypedObject instanceof DBSObject &&  objectContainer.getDataSource() == ((DBSObject) srcTypedObject).getDataSource()))) {
+                srcTypedObject instanceof DBSObject dbsObject &&  objectContainer.getDataSource() == dbsObject.getDataSource()))) {
             // If source and target datasources have the same type then just return the same type name
             DBPDataSource srcDataSource = ((DBSObject) srcTypedObject).getDataSource();
             assert srcDataSource != null;
@@ -307,8 +321,8 @@ public final class DBStructUtils {
         {
             SQLDataTypeConverter dataTypeConverter = objectContainer == null || objectContainer.getDataSource() == null ? null :
                 DBUtils.getAdapter(SQLDataTypeConverter.class, objectContainer.getDataSource().getSQLDialect());
-            if (dataTypeConverter != null && srcTypedObject instanceof DBSObject) {
-                DBPDataSource srcDataSource = ((DBSObject) srcTypedObject).getDataSource();
+            if (dataTypeConverter != null && srcTypedObject instanceof DBSObject dbsObject) {
+                DBPDataSource srcDataSource = dbsObject.getDataSource();
                 assert srcDataSource != null;
                 DBPDataSource tgtDataSource = objectContainer.getDataSource();
                 String targetTypeName = dataTypeConverter.convertExternalDataType(
@@ -449,8 +463,9 @@ public final class DBStructUtils {
 
         // Get type modifiers from target datasource
         if (addModifiers && objectContainer != null) {
-            SQLDialect dialect = objectContainer.getDataSource().getSQLDialect();
-            String modifiers = dialect.getColumnTypeModifiers((DBPDataSource)objectContainer, srcTypedObject, typeName, dataKind);
+            DBPDataSource dataSource = objectContainer.getDataSource();
+            SQLDialect dialect = dataSource.getSQLDialect();
+            String modifiers = dialect.getColumnTypeModifiers(dataSource, srcTypedObject, typeName, dataKind);
             if (modifiers != null) {
                 typeName += modifiers;
             } else if (VARCHAR_DATA_TYPE.equals(typeNameLower) || VARCHAR2_DATA_TYPE.equals(typeNameLower)) {
@@ -480,13 +495,13 @@ public final class DBStructUtils {
      * @return attribute name
      */
     public static String getAttributeName(@NotNull DBSAttributeBase attribute, DBPAttributeReferencePurpose purpose) {
-        if (attribute instanceof DBDAttributeBindingMeta) {
+        if (attribute instanceof DBDAttributeBindingMeta bindingMeta) {
             // For top-level query bindings we need to use table columns name instead of alias.
             // For nested attributes we should use aliases
 
             // Entity attribute obtain commented because it broke complex attributes full name construction
             // We can't use entity attr because only particular query metadata contains real structure
-            DBSEntityAttribute entityAttribute = ((DBDAttributeBindingMeta) attribute).getEntityAttribute();
+            DBSEntityAttribute entityAttribute = bindingMeta.getEntityAttribute();
             if (entityAttribute != null) {
                 attribute = entityAttribute;
             }
@@ -495,5 +510,9 @@ public final class DBStructUtils {
         return DBUtils.isPseudoAttribute(attribute)
             ? attribute.getName()
             : DBUtils.getObjectFullName(attribute, DBPEvaluationContext.DML);
+    }
+
+    public static boolean isConnectedContainer(DBPObject parent) {
+        return !(parent instanceof DBSInstanceLazy il) || il.isInstanceConnected();
     }
 }

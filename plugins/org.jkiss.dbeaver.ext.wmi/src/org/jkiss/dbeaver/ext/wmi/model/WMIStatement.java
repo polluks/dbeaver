@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -84,18 +84,6 @@ public class WMIStatement implements DBCStatement {
         }
     }
 
-    @Override
-    public void addToBatch() throws DBCException
-    {
-        throw new DBCException("Batches not supported");
-    }
-
-    @Override
-    public int[] executeStatementBatch() throws DBCException
-    {
-        throw new DBCException("Batches not supported");
-    }
-
     @Nullable
     @Override
     public DBCResultSet openResultSet() throws DBCException
@@ -108,13 +96,6 @@ public class WMIStatement implements DBCStatement {
         } catch (WMIException e) {
             throw new DBCException(e, session.getExecutionContext());
         }
-    }
-
-    @Nullable
-    @Override
-    public DBCResultSet openGeneratedKeysResultSet() throws DBCException
-    {
-        throw new DBCException("Not Implemented");
     }
 
     @Override

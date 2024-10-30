@@ -1,7 +1,7 @@
 
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.branding.IProductConstants;
 import org.eclipse.ui.splash.BasicSplashHandler;
 import org.jkiss.dbeaver.utils.GeneralUtils;
+import org.jkiss.dbeaver.utils.RuntimeUtils;
 
 /**
  * @since 3.3
@@ -63,6 +64,11 @@ public class DBeaverSplashHandler extends BasicSplashHandler {
     public void init(Shell splash) {
         super.init(splash);
 
+        // https://github.com/eclipse-platform/eclipse.platform.swt/issues/772
+        if (RuntimeUtils.isMacOS() && RuntimeUtils.isOSVersionAtLeast(14, 0, 0)) {
+            return;
+        }
+
         try {
             initVisualization();
 
@@ -71,6 +77,15 @@ public class DBeaverSplashHandler extends BasicSplashHandler {
             e.printStackTrace(System.err);
         }
 
+    }
+    
+    @Override
+    public IProgressMonitor getBundleProgressMonitor() {
+        // https://github.com/eclipse-platform/eclipse.platform.swt/issues/772
+        if (RuntimeUtils.isMacOS() && RuntimeUtils.isOSVersionAtLeast(14, 0, 0)) {
+            return null;
+        }
+        return super.getBundleProgressMonitor();
     }
 
     private void initVisualization() {

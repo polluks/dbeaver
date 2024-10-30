@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package org.jkiss.dbeaver.ui.editors;
 
 import org.eclipse.jface.dialogs.IDialogConstants;
 import org.eclipse.jface.resource.ImageDescriptor;
+import org.eclipse.osgi.util.NLS;
 import org.eclipse.ui.IMemento;
 import org.eclipse.ui.IPersistableElement;
 import org.jkiss.code.NotNull;
@@ -25,10 +26,7 @@ import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ModelPreferences;
-import org.jkiss.dbeaver.model.DBIcon;
-import org.jkiss.dbeaver.model.DBPDataSource;
-import org.jkiss.dbeaver.model.DBPDataSourceContainer;
-import org.jkiss.dbeaver.model.DBUtils;
+import org.jkiss.dbeaver.model.*;
 import org.jkiss.dbeaver.model.app.DBPProject;
 import org.jkiss.dbeaver.model.edit.DBECommandContext;
 import org.jkiss.dbeaver.model.exec.DBCExecutionContext;
@@ -48,6 +46,7 @@ import org.jkiss.dbeaver.ui.DBeaverIcons;
 import org.jkiss.dbeaver.ui.UITask;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.dialogs.ConnectionLostDialog;
+import org.jkiss.dbeaver.ui.editors.internal.EditorsMessages;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.dbeaver.utils.RuntimeUtils;
 import org.jkiss.utils.CommonUtils;
@@ -60,7 +59,7 @@ import java.util.Objects;
 /**
  * Lazy input. Use by entity editors which are created during DBeaver startup (from memo by factory).
  */
-public class DatabaseLazyEditorInput implements IDatabaseEditorInput, ILazyEditorInput, IPersistableElement
+public class DatabaseLazyEditorInput implements IDatabaseEditorInput, ILazyEditorInput, IPersistableElement, DBPDataSourceContainerProvider
 {
     private static final Log log = Log.getLog(DatabaseLazyEditorInput.class);
 
@@ -236,6 +235,12 @@ public class DatabaseLazyEditorInput implements IDatabaseEditorInput, ILazyEdito
         return Objects.hash(nodePath, activePageId, activeFolderId, dataSourceId);
     }
 
+    @NotNull
+    @Override
+    public DBPProject getProject() {
+        return project;
+    }
+
     public IDatabaseEditorInput initializeRealInput(@NotNull DBRProgressMonitor monitor) throws DBException
     {
         // Get the node path.
@@ -250,9 +255,6 @@ public class DatabaseLazyEditorInput implements IDatabaseEditorInput, ILazyEdito
             project = dataSourceContainer.getRegistry().getProject();
         }
         final DBNModel navigatorModel = DBWorkbench.getPlatform().getNavigatorModel();
-        navigatorModel.ensureProjectLoaded(project);
-        //dataSourceContainer, project, nodePath, nodeName, activePageId, activeFolderId
-
         long connectionTimeout = dataSourceContainer.getPreferenceStore().getInt(ModelPreferences.CONNECTION_VALIDATION_TIMEOUT);
         long connectionStart = System.currentTimeMillis();
         while (!dataSourceContainer.isConnected()) {
@@ -292,6 +294,8 @@ public class DatabaseLazyEditorInput implements IDatabaseEditorInput, ILazyEdito
             final DBNNode[] editorNodeResult = new DBNNode[1];
             DBExecUtils.tryExecuteRecover(monitor, dataSource, param -> {
                 try {
+                    // FIXME: DBNModel#getNodeByObject should ensure that the project is loaded, not the caller
+                    navigatorModel.ensureProjectLoaded(project);
                     DBNDataSource dsNode = (DBNDataSource) navigatorModel.getNodeByObject(monitor, this.dataSourceContainer, true);
                     if (dsNode == null) {
                         throw new DBException("Datasource '" + this.dataSourceContainer.getName() + "' navigator node not found");
@@ -307,7 +311,7 @@ public class DatabaseLazyEditorInput implements IDatabaseEditorInput, ILazyEdito
             });
             DBNNode node = editorNodeResult[0];
             if (node == null) {
-                throw new DBException("Navigator node '" + nodePath + "' not found");
+                throw new DBException(NLS.bind(EditorsMessages.lazy_editor_input_cant_find_node, nodePath));
             }
             if (node instanceof DBNDatabaseNode) {
                 DBSObject object = ((DBNDatabaseNode) node).getObject();
@@ -369,4 +373,15 @@ public class DatabaseLazyEditorInput implements IDatabaseEditorInput, ILazyEdito
         if (!CommonUtils.isEmpty(activeFolderId)) memento.putString(DatabaseEditorInputFactory.TAG_ACTIVE_FOLDER, activeFolderId);
     }
 
+    @Nullable
+    @Override
+    public DBPDataSourceContainer getDataSourceContainer() {
+        if (dataSourceContainer != null) {
+            return dataSourceContainer;
+        }
+        if (project != null) {
+            return project.getDataSourceRegistry().getDataSource(dataSourceId);
+        }
+        return null;
+    }
 }

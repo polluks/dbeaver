@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,7 +43,7 @@ public class PostgrePartitionManager extends PostgreTableManager {
         PostgreIndex.class
     );
 
-    protected PostgreTablePartition createDatabaseObject(DBRProgressMonitor monitor, DBECommandContext context, Object container, Object copyFrom, Map<String, Object> options) {
+    protected PostgreTablePartition createDatabaseObject(@NotNull DBRProgressMonitor monitor, @NotNull DBECommandContext context, Object container, Object copyFrom, @NotNull Map<String, Object> options) {
         return new PostgreTablePartition((PostgreTable) container);
     }
 
@@ -79,7 +79,7 @@ public class PostgrePartitionManager extends PostgreTableManager {
 
     @Override
     protected boolean excludeFromDDL(NestedObjectCommand command, Collection<NestedObjectCommand> orderedCommands) {
-        return !(command.getObject() instanceof PostgreTableConstraint);
+        return !(command.getObject() instanceof PostgreTableConstraint) && !(command.getObject() instanceof PostgreIndex);
     }
 
     @Override
@@ -88,12 +88,12 @@ public class PostgrePartitionManager extends PostgreTableManager {
     }
 
     @Override
-    public boolean canCreateObject(Object container) {
+    public boolean canCreateObject(@NotNull Object container) {
         return container instanceof PostgreTable;
     }
 
     @Override
-    public boolean canDeleteObject(PostgreTableBase object) {
+    public boolean canDeleteObject(@NotNull PostgreTableBase object) {
         return true;
     }
 

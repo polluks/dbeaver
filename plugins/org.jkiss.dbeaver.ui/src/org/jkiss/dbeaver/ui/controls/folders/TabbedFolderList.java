@@ -11,7 +11,7 @@
  *     Amit Joglekar <joglekar@us.ibm.com> - Support for dynamic images (bug 385795)
  *
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -722,14 +722,14 @@ public class TabbedFolderList extends Composite {
         Color widgetBackground;
         if (UIStyles.isDarkTheme()) {
             // By some reason E4 sets white background in dark theme.
-            widgetBackground = UIStyles.getDefaultTextBackground();
+            widgetBackground = UIStyles.getDefaultWidgetBackground();
             super.setBackground(widgetBackground);
             topNavigationElement.setBackground(widgetBackground);
             bottomNavigationElement.setBackground(widgetBackground);
         } else {
             widgetBackground = getBackground();
         }
-        widgetForeground = UIStyles.getDefaultTextForeground();
+        widgetForeground = UIStyles.isDarkHighContrastTheme() ? UIUtils.COLOR_WHITE : UIStyles.getDefaultTextForeground();
         widgetDarkShadow = display.getSystemColor(SWT.COLOR_WIDGET_DARK_SHADOW);
         widgetNormalShadow = display.getSystemColor(SWT.COLOR_WIDGET_NORMAL_SHADOW);
 
@@ -1021,7 +1021,7 @@ public class TabbedFolderList extends Composite {
 
     public void handleTraverse(TraverseEvent e) {
         if (e.detail == SWT.TRAVERSE_PAGE_PREVIOUS || e.detail == SWT.TRAVERSE_PAGE_NEXT) {
-            if ((e.stateMask & SWT.ALT) != SWT.ALT) {
+            if ((e.stateMask & SWT.CTRL) != SWT.CTRL && (e.stateMask & SWT.ALT) != SWT.ALT) {
                 // Only in case of CTRL+ALT+PG
                 return;
             }

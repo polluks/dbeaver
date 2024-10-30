@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,10 @@ package org.jkiss.dbeaver.ui.controls.finder;
 import org.eclipse.jface.viewers.ILabelProvider;
 import org.eclipse.jface.viewers.IToolTipProvider;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.accessibility.ACC;
+import org.eclipse.swt.accessibility.Accessible;
+import org.eclipse.swt.accessibility.AccessibleAdapter;
+import org.eclipse.swt.accessibility.AccessibleEvent;
 import org.eclipse.swt.events.*;
 import org.eclipse.swt.graphics.*;
 import org.eclipse.swt.layout.GridData;
@@ -73,9 +77,7 @@ public class AdvancedList extends Canvas {
         setFont(smallFont);
         addDisposeListener(e -> {
             smallFont.dispose();
-            for (AdvancedListItem item : items) {
-                item.dispose();
-            }
+            cleanupItems();
         });
 
         if (parent.getLayout() instanceof GridLayout) {
@@ -165,6 +167,14 @@ public class AdvancedList extends Canvas {
             }
         });
         toolTipHandler = new CustomToolTipHandler(this);
+
+        initAccessible();
+    }
+
+    private void cleanupItems() {
+        for (AdvancedListItem item : items) {
+            item.dispose();
+        }
     }
 
     public void refreshFilters() {
@@ -403,6 +413,11 @@ public class AdvancedList extends Canvas {
         notifyListeners(SWT.Selection, event);
 
         redraw();
+
+        if (isFocusControl() && item != null) {
+            //getAccessible().sendEvent(ACC.EVENT_SELECTION_CHANGED, new Object[]{null, item.getData()});
+            getAccessible().sendEvent(ACC.EVENT_NAME_CHANGED, new Object[]{null, item.getData()});
+        }
     }
 
     void notifyDefaultSelection() {
@@ -424,6 +439,7 @@ public class AdvancedList extends Canvas {
     public void removeAll() {
         checkWidget ();
         setSelection(null);
+        cleanupItems();
         items.clear();
     }
 
@@ -455,6 +471,19 @@ public class AdvancedList extends Canvas {
                 }
             }
         }
+    }
+
+    private void initAccessible() {
+        final Accessible accessible = getAccessible();
+        accessible.addAccessibleListener(new AccessibleAdapter() {
+
+            public void getName(AccessibleEvent e) {
+                AdvancedListItem item = getSelectedItem();
+                if (item != null) {
+                    e.result = item.getLabelProvider().getText(item.getData());
+                }
+            }
+        });
     }
 
 }

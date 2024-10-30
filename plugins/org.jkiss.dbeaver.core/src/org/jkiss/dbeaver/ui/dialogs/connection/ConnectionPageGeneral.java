@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
+import org.eclipse.swt.events.SelectionListener;
 import org.eclipse.swt.graphics.Font;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
@@ -44,6 +45,7 @@ import org.jkiss.dbeaver.model.struct.rdb.DBSTable;
 import org.jkiss.dbeaver.registry.DataSourceDescriptor;
 import org.jkiss.dbeaver.registry.DataSourceNavigatorSettings;
 import org.jkiss.dbeaver.registry.DataSourceProviderRegistry;
+import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.ui.IHelpContextIds;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.contentassist.ContentAssistUtils;
@@ -59,6 +61,7 @@ import org.jkiss.utils.CommonUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * General connection page (common for all connection types)
@@ -66,16 +69,6 @@ import java.util.List;
 public class ConnectionPageGeneral extends ConnectionWizardPage implements NavigatorSettingsStorage {
 
     static final String PAGE_NAME = ConnectionPageGeneral.class.getSimpleName();
-
-    @Override
-    public DBNBrowseSettings getNavigatorSettings() {
-        return navigatorSettings;
-    }
-
-    @Override
-    public void setNavigatorSettings(DBNBrowseSettings settings) {
-        this.navigatorSettings = settings;
-    }
 
     private static class FilterInfo {
         final Class<?> type;
@@ -97,6 +90,7 @@ public class ConnectionPageGeneral extends ConnectionWizardPage implements Navig
     private ConnectionFolderSelector folderSelector;
     private DBPDataSourceFolder curDataSourceFolder;
     private Text descriptionText;
+    private Button showVirtualModelCheck;
 
     private boolean connectionNameChanged = false;
     private boolean activated = false;
@@ -106,7 +100,7 @@ public class ConnectionPageGeneral extends ConnectionWizardPage implements Navig
     private DBNBrowseSettings navigatorSettings;
     private List<DBPDataSourcePermission> accessRestrictions;
 
-    private List<FilterInfo> filters = new ArrayList<>();
+    private final List<FilterInfo> filters = new ArrayList<>();
     private Group filtersGroup;
     private Font boldFont;
 
@@ -134,7 +128,20 @@ public class ConnectionPageGeneral extends ConnectionWizardPage implements Navig
         }
     }
 
-    
+    @Override
+    public DBNBrowseSettings getNavigatorSettings() {
+        return navigatorSettings;
+    }
+
+    @Override
+    public void setNavigatorSettings(DBNBrowseSettings settings) {
+        this.navigatorSettings = settings;
+
+        if (showVirtualModelCheck != null) {
+            showVirtualModelCheck.setSelection(!settings.isHideVirtualModel());
+        }
+    }
+
     protected boolean wasActivated() {
         return this.activated;
     }
@@ -160,7 +167,10 @@ public class ConnectionPageGeneral extends ConnectionWizardPage implements Navig
                 connectionNameText.setText(dataSourceDescriptor.getName());
             } else {
                 if (CommonUtils.isEmpty(connectionNameText.getText()) || !connectionNameChanged) {
-                    String newName = generateConnectionName(settings, ModelPreferences.getPreferences().getString(ModelPreferences.DEFAULT_CONNECTION_NAME_PATTERN));
+                    String newName = generateConnectionName(settings,
+                        DBWorkbench.getPlatform()
+                            .getPreferenceStore()
+                            .getString(ModelPreferences.DEFAULT_CONNECTION_NAME_PATTERN));
                     if (!newName.isEmpty()) {
                         connectionNameText.setText(newName);
                     }
@@ -196,14 +206,17 @@ public class ConnectionPageGeneral extends ConnectionWizardPage implements Navig
         }
 
         long features = getWizard().getSelectedDriver().getDataSourceProvider().getFeatures();
+        boolean isFeatureCatalogOnlyNeedToApply = (features & DBPDataSourceProvider.FEATURE_CATALOGS_ONLY) != 0;
 
         for (FilterInfo filterInfo : filters) {
             if (DBSCatalog.class.isAssignableFrom(filterInfo.type)) {
-                enableFilter(filterInfo, (features & DBPDataSourceProvider.FEATURE_CATALOGS) != 0);
+                enableFilter(filterInfo,
+                    (features & DBPDataSourceProvider.FEATURE_CATALOGS) != 0 || isFeatureCatalogOnlyNeedToApply);
             } else if (DBSSchema.class.isAssignableFrom(filterInfo.type)) {
-                enableFilter(filterInfo, (features & DBPDataSourceProvider.FEATURE_SCHEMAS) != 0);
+                enableFilter(filterInfo,
+                    (features & DBPDataSourceProvider.FEATURE_SCHEMAS) != 0 && !isFeatureCatalogOnlyNeedToApply);
             } else {
-                enableFilter(filterInfo, true);
+                enableFilter(filterInfo, !isFeatureCatalogOnlyNeedToApply);
             }
         }
         filtersGroup.layout();
@@ -282,6 +295,11 @@ public class ConnectionPageGeneral extends ConnectionWizardPage implements Navig
     {
         boldFont = UIUtils.makeBoldFont(parent.getFont());
 
+        if (navigatorSettings == null) {
+            navigatorSettings = new DataSourceNavigatorSettings(getWizard().getSelectedNavigatorSettings());
+        }
+
+        initializeDialogUnits(parent);
         Composite group = UIUtils.createComposite(parent, 1);
 
         {
@@ -401,9 +419,56 @@ public class ConnectionPageGeneral extends ConnectionWizardPage implements Navig
         }
 
         {
+            // Filters
+            Composite vmGroup = UIUtils.createControlGroup(
+                refsGroup,
+                "Virtual model",
+                1, GridData.VERTICAL_ALIGN_BEGINNING | GridData.HORIZONTAL_ALIGN_BEGINNING, 0);
+            showVirtualModelCheck = UIUtils.createCheckbox(
+                vmGroup,
+                "Show virtual model editor",
+                "Show virtual model pages in table editor",
+                !navigatorSettings.isHideVirtualModel(),
+                1);
+            showVirtualModelCheck.addSelectionListener(SelectionListener.widgetSelectedAdapter(e -> {
+                final DataSourceNavigatorSettings settings = new DataSourceNavigatorSettings(navigatorSettings);
+                settings.setHideVirtualModel(!showVirtualModelCheck.getSelection());
+                updateNavigatorSettingsPreset(navigatorSettingsCombo, settings);
+                setNavigatorSettings(settings);
+            }));
+            Button resetVM = UIUtils.createDialogButton(
+                vmGroup,
+                "Reset configuration",
+                null,
+                "Delete all colorings, transformers and virtual table constraints for all tables in this data source",
+                new SelectionAdapter() {
+                    @Override
+                    public void widgetSelected(SelectionEvent e) {
+                        if (UIUtils.confirmAction(
+                            getShell(),
+                            "Reset virtual model settings",
+                            "You are about to reset all virtual model configuration.\n It includes:\n" +
+                                "\t- All virtual constraints and foreign keys\n" +
+                                "\t- All column transformers\n" +
+                                "\t- All table row colorings"
+                            )
+                        ) {
+                            dataSourceDescriptor.getVirtualModel().resetData();
+                            DataSourceDescriptor originalDataSource = getWizard().getOriginalDataSource();
+                            originalDataSource.getVirtualModel().resetData();
+                            originalDataSource.persistConfiguration();
+                        }
+                    }
+                });
+            resetVM.setEnabled(dataSourceDescriptor != null && dataSourceDescriptor.getVirtualModel().hasValuableData());
+//            UIUtils.createInfoLabel(vmGroup, "Virtual model is a logical database structure on the client side (not in a real database).\n" +
+//                "It also contains information about\nrow coloring and columns transformations", GridData.FILL_HORIZONTAL, 1);
+        }
+
+        {
             Composite linkGroup = UIUtils.createComposite(refsGroup, 1);
             gd = new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING);
-            gd.horizontalSpan = 2;
+            gd.horizontalSpan = 3;
             linkGroup.setLayoutData(gd);
 
             Link initConfigLink = new Link(linkGroup, SWT.NONE);
@@ -566,7 +631,9 @@ public class ConnectionPageGeneral extends ConnectionWizardPage implements Navig
             name = dataSourceDescriptor.getName();
         } else {
             name = generateConnectionName(getWizard().getPageSettings(),
-                ModelPreferences.getPreferences().getString(ModelPreferences.DEFAULT_CONNECTION_NAME_PATTERN));
+                DBWorkbench.getPlatform()
+                    .getPreferenceStore()
+                    .getString(ModelPreferences.DEFAULT_CONNECTION_NAME_PATTERN));
         }
 
         dataSource.setName(name);
@@ -577,7 +644,11 @@ public class ConnectionPageGeneral extends ConnectionWizardPage implements Navig
         }
 
         if (connectionTypeCombo.getSelectionIndex() >= 0) {
-            confConfig.setConnectionType(connectionTypeCombo.getSelectedItem());
+            DBPConnectionType newConnectionType = connectionTypeCombo.getSelectedItem();
+            if (!Objects.equals(newConnectionType, confConfig.getConnectionType())) {
+                // Changing connection types also changes defaults
+                confConfig.setConnectionType(newConnectionType);
+            }
         }
 
         DataSourceDescriptor dsDescriptor = (DataSourceDescriptor) dataSource;

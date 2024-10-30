@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -82,7 +82,7 @@ public class VersionUpdateDialog extends Dialog {
         this.newVersion = newVersion;
         this.showConfig = showConfig;
 
-        earlyAccessURL = Platform.getProduct().getProperty("earlyAccessURL");
+        earlyAccessURL = GeneralUtils.getProductEarlyAccessURL();
     }
 
     @NotNull
@@ -153,7 +153,7 @@ public class VersionUpdateDialog extends Dialog {
             notesText.setText(releaseNotes);
             gd = new GridData(GridData.FILL_BOTH);
             gd.horizontalSpan = 2;
-            //gd.heightHint = notesText.getLineHeight() * 20;
+            gd.heightHint = CommonUtils.clamp(notesText.getLineCount(), 5, 20) * notesText.getLineHeight();
             notesText.setLayoutData(gd);
 
             final Label hintLabel = new Label(propGroup, SWT.NONE);

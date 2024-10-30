@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,6 +37,7 @@ import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.app.DBPProject;
 import org.jkiss.dbeaver.model.task.DBTTask;
 import org.jkiss.dbeaver.model.task.DBTTaskSettingsInput;
+import org.jkiss.dbeaver.registry.task.TaskConstants;
 import org.jkiss.dbeaver.registry.task.TaskRegistry;
 import org.jkiss.dbeaver.registry.task.TaskTypeDescriptor;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
@@ -45,8 +46,10 @@ import org.jkiss.dbeaver.tasks.ui.internal.TaskUIMessages;
 import org.jkiss.dbeaver.tasks.ui.registry.TaskUIRegistry;
 import org.jkiss.dbeaver.ui.dialogs.IWizardPageNavigable;
 import org.jkiss.dbeaver.ui.dialogs.MultiPageWizardDialog;
+import org.jkiss.dbeaver.utils.RuntimeUtils;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 
@@ -96,7 +99,7 @@ public class TaskConfigurationWizardDialog extends MultiPageWizardDialog {
 
     @Override
     protected boolean isModalWizard() {
-        return false;
+        return RuntimeUtils.isLinux();
     }
 
     @Override
@@ -104,9 +107,14 @@ public class TaskConfigurationWizardDialog extends MultiPageWizardDialog {
         return (TaskConfigurationWizard) super.getWizard();
     }
 
+    @NotNull
     @Override
-    protected boolean isNavigableWizard() {
-        return !getWizard().isCurrentTaskSaved();
+    protected EnumSet<PageCompletionMark> getShownCompletionMarks() {
+        if (getWizard().isCurrentTaskSaved()) {
+            return EnumSet.noneOf(PageCompletionMark.class);
+        } else {
+            return EnumSet.of(PageCompletionMark.COMPLETE);
+        }
     }
 
     @Override
@@ -235,6 +243,12 @@ public class TaskConfigurationWizardDialog extends MultiPageWizardDialog {
     public void updateButtons() {
         super.updateButtons();
         getWizard().updateSaveTaskButtons();
+        if (getTaskWizard().canFinish()) {
+            Button finishButton = getButton(IDialogConstants.OK_ID);
+            if (finishButton != null && !finishButton.isDisposed()) {
+                getShell().setDefaultButton(finishButton);
+            }
+        }
     }
 
     @Override
@@ -284,7 +298,49 @@ public class TaskConfigurationWizardDialog extends MultiPageWizardDialog {
         return getWizard().getStartingPage();
     }
 
-    public static int openNewTaskDialog(IWorkbenchWindow window, DBPProject project, String taskTypeId, IStructuredSelection selection) {
+    /**
+     * Opens new task dialog
+     *
+     * @param window - workbench window to get parent shell from
+     * @param project - project for task execution
+     * @param taskTypeId - task id
+     * @param selection - database objects to apply the task to
+     * @return the return code
+     */
+    public static int openNewTaskDialog(
+        @NotNull IWorkbenchWindow window,
+        @NotNull DBPProject project,
+        @NotNull String taskTypeId,
+        @NotNull IStructuredSelection selection
+    ) {
+        return openNewTaskDialogImpl(window, project, taskTypeId, selection, false);
+    }
+
+    /**
+     * Opens new task dialog for the tool
+     *
+     * @param window - workbench window to get parent shell from
+     * @param project - project for task execution
+     * @param taskTypeId - task id
+     * @param selection - database objects to apply the tool task to
+     * @return the return code
+     */
+    public static int openNewToolTaskDialog(
+        @NotNull IWorkbenchWindow window,
+        @NotNull DBPProject project,
+        @NotNull String taskTypeId,
+        @NotNull IStructuredSelection selection
+    ) {
+        return openNewTaskDialogImpl(window, project, taskTypeId, selection, true);
+    }
+
+    private static int openNewTaskDialogImpl(
+        @NotNull IWorkbenchWindow window,
+        @NotNull DBPProject project,
+        @NotNull String taskTypeId,
+        @NotNull IStructuredSelection selection,
+        boolean isToolTask
+    ) {
         TaskTypeDescriptor taskType = TaskRegistry.getInstance().getTaskType(taskTypeId);
         if (taskType == null) {
             DBWorkbench.getPlatformUI().showError("Bad task type", "Task type '" + taskTypeId + "' not found");
@@ -293,10 +349,13 @@ public class TaskConfigurationWizardDialog extends MultiPageWizardDialog {
         try {
             DBTTask task = project.getTaskManager().createTemporaryTask(taskType, taskType.getName());
             task.setProperties(new HashMap<>());
+            if (isToolTask) {
+                task.getProperties().put(TaskConstants.TOOL_TASK_PROP, true);
+            }
             DBTTaskConfigurator configurator = TaskUIRegistry.getInstance().createConfigurator(taskType);
-            TaskConfigurationWizard configWizard = configurator.createTaskConfigWizard(task);
+            TaskConfigurationWizard<?> configWizard = configurator.createTaskConfigWizard(task);
 
-            TaskConfigurationWizardDialog dialog = new TaskConfigurationWizardDialog(window, configWizard, selection);
+            TaskConfigurationWizardDialog dialog = configWizard.createWizardDialog(window, selection);
             return dialog.open();
         } catch (DBException e) {
             DBWorkbench.getPlatformUI().showError("Task create error", "Error creating task '" + taskTypeId + "'", e);

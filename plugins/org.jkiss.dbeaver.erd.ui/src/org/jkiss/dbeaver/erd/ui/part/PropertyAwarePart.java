@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,9 +19,7 @@ package org.jkiss.dbeaver.erd.ui.part;
 import org.eclipse.draw2d.IFigure;
 import org.eclipse.draw2d.geometry.Dimension;
 import org.eclipse.draw2d.geometry.Rectangle;
-import org.eclipse.gef.ConnectionEditPart;
-import org.eclipse.gef.EditPart;
-import org.eclipse.gef.GraphicalEditPart;
+import org.eclipse.gef.*;
 import org.eclipse.gef.editparts.AbstractGraphicalEditPart;
 import org.eclipse.ui.views.properties.IPropertySource;
 import org.jkiss.code.NotNull;
@@ -71,9 +69,14 @@ public abstract class PropertyAwarePart extends AbstractGraphicalEditPart implem
         return getDiagramPart().getDiagram();
     }
 
-    @NotNull
+    @Nullable
     public ERDEditorPart getEditor() {
-        return ((ERDGraphicalViewer)getViewer()).getEditor();
+        EditPartViewer viewer = getViewer();
+        if (viewer instanceof ERDGraphicalViewer erdGraphicalViewer) {
+            return erdGraphicalViewer.getEditor();
+        } else {
+            return null;
+        }
     }
 
     @Nullable

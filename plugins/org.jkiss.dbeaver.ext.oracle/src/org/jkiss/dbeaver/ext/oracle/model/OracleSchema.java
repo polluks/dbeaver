@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -63,7 +63,7 @@ public class OracleSchema extends OracleGlobalObject implements
 
     // Synonyms read is very expensive. Exclude them from children by default
     // Children are used in auto-completion which must be fast
-    private static boolean SYNONYMS_AS_CHILDREN = false;
+    private boolean synonymsAsChildren = false;
 
     final public TableCache tableCache = new TableCache();
     final public ConstraintCache constraintCache = new ConstraintCache();
@@ -90,15 +90,14 @@ public class OracleSchema extends OracleGlobalObject implements
     private Date createTime;
     private transient OracleUser user;
 
-    public OracleSchema(OracleDataSource dataSource, long id, String name)
-    {
+    public OracleSchema(OracleDataSource dataSource, long id, String name) {
         super(dataSource, id > 0);
         this.id = id;
         this.name = name;
+        synonymsAsChildren = CommonUtils.getBoolean(dataSource.getContainer().getConnectionConfiguration().getProviderProperty(OracleConstants.PROP_SEARCH_METADATA_IN_SYNONYMS));
     }
 
-    public OracleSchema(@NotNull OracleDataSource dataSource, @NotNull ResultSet dbResult)
-    {
+    public OracleSchema(@NotNull OracleDataSource dataSource, @NotNull ResultSet dbResult) {
         super(dataSource, true);
         this.id = JDBCUtils.safeGetLong(dbResult, "USER_ID");
         this.name = JDBCUtils.safeGetString(dbResult, "USERNAME");
@@ -107,7 +106,7 @@ public class OracleSchema extends OracleGlobalObject implements
             this.name = "? " + super.hashCode();
         }
         this.createTime = JDBCUtils.safeGetTimestamp(dbResult, "CREATED");
-        SYNONYMS_AS_CHILDREN = CommonUtils.getBoolean(dataSource.getContainer().getConnectionConfiguration().getProviderProperty(OracleConstants.PROP_SEARCH_METADATA_IN_SYNONYMS));
+        synonymsAsChildren = CommonUtils.getBoolean(dataSource.getContainer().getConnectionConfiguration().getProviderProperty(OracleConstants.PROP_SEARCH_METADATA_IN_SYNONYMS));
     }
 
     public boolean isPublic()
@@ -169,7 +168,7 @@ public class OracleSchema extends OracleGlobalObject implements
     }
 
     @Association
-    public Collection<OracleTable> getTables(DBRProgressMonitor monitor)
+    public Collection<? extends OracleTable> getTables(DBRProgressMonitor monitor)
         throws DBException
     {
         return tableCache.getTypedObjects(monitor, this, OracleTable.class);
@@ -217,6 +216,13 @@ public class OracleSchema extends OracleGlobalObject implements
         throws DBException
     {
         return dataTypeCache.getAllObjects(monitor, this);
+    }
+
+    /**
+     * OracleTable or its children classes can be created by this method.
+     */
+    public OracleTable createTableImpl(@NotNull DBRProgressMonitor monitor, @NotNull OracleSchema owner, @NotNull JDBCResultSet dbResult) {
+        return new OracleTable(monitor, owner, dbResult);
     }
 
     public OracleDataType getDataType(DBRProgressMonitor monitor, String name)
@@ -366,12 +372,9 @@ public class OracleSchema extends OracleGlobalObject implements
     }
 
     @Override
-    public Collection<DBSObject> getChildren(@NotNull DBRProgressMonitor monitor)
-        throws DBException
-    {
-        List<DBSObject> children = new ArrayList<>();
-        children.addAll(tableCache.getAllObjects(monitor, this));
-        if (SYNONYMS_AS_CHILDREN) {
+    public Collection<DBSObject> getChildren(@NotNull DBRProgressMonitor monitor) throws DBException {
+        List<DBSObject> children = new ArrayList<>(tableCache.getAllObjects(monitor, this));
+        if (synonymsAsChildren) {
             children.addAll(synonymCache.getAllObjects(monitor, this));
         }
         children.addAll(packageCache.getAllObjects(monitor, this));
@@ -386,7 +389,7 @@ public class OracleSchema extends OracleGlobalObject implements
         if (table != null) {
             return table;
         }
-        if (SYNONYMS_AS_CHILDREN) {
+        if (synonymsAsChildren) {
             OracleSynonym synonym = synonymCache.getObject(monitor, this, childName);
             if (synonym != null) {
                 return synonym;
@@ -661,7 +664,7 @@ public class OracleSchema extends OracleGlobalObject implements
         {
             final String tableType = JDBCUtils.safeGetString(dbResult, OracleConstants.COLUMN_OBJECT_TYPE);
             if ("TABLE".equals(tableType)) {
-                return new OracleTable(session.getProgressMonitor(), owner, dbResult);
+                return owner.createTableImpl(session.getProgressMonitor(), owner, dbResult);
             } else if ("MATERIALIZED VIEW".equals(tableType)) {
                 return new OracleMaterializedView(owner, dbResult);
             } else {
@@ -931,7 +934,7 @@ public class OracleSchema extends OracleGlobalObject implements
         @Override
         protected void cacheChildren(DBRProgressMonitor monitor, OracleTableConstraint constraint, List<OracleTableConstraintColumn> rows)
         {
-            constraint.setColumns(rows);
+            constraint.setAttributeReferences(rows);
         }
     }
     
@@ -1163,7 +1166,7 @@ public class OracleSchema extends OracleGlobalObject implements
         @SuppressWarnings("unchecked")
         protected void cacheChildren(DBRProgressMonitor monitor, OracleTableForeignKey foreignKey, List<OracleTableForeignKeyColumn> rows)
         {
-            foreignKey.setColumns((List)rows);
+            foreignKey.setAttributeReferences((List)rows);
         }
     }
 
@@ -1171,15 +1174,15 @@ public class OracleSchema extends OracleGlobalObject implements
     /**
      * Index cache implementation
      */
-    class IndexCache extends JDBCCompositeCache<OracleSchema, OracleTablePhysical, OracleTableIndex, OracleTableIndexColumn> {
+    class IndexCache extends JDBCCompositeCache<OracleSchema, OracleTableBase, OracleTableIndex, OracleTableIndexColumn> {
         IndexCache()
         {
-            super(tableCache, OracleTablePhysical.class, "TABLE_NAME", "INDEX_NAME");
+            super(tableCache, OracleTableBase.class, "TABLE_NAME", "INDEX_NAME");
         }
 
         @NotNull
         @Override
-        protected JDBCStatement prepareObjectsStatement(JDBCSession session, OracleSchema owner, OracleTablePhysical forTable)
+        protected JDBCStatement prepareObjectsStatement(JDBCSession session, OracleSchema owner, OracleTableBase forTable)
             throws SQLException
         {
             StringBuilder sql = new StringBuilder();
@@ -1211,9 +1214,13 @@ public class OracleSchema extends OracleGlobalObject implements
 
         @Nullable
         @Override
-        protected OracleTableIndex fetchObject(JDBCSession session, OracleSchema owner, OracleTablePhysical parent, String indexName, JDBCResultSet dbResult)
-            throws SQLException, DBException
-        {
+        protected OracleTableIndex fetchObject(
+            JDBCSession session,
+            OracleSchema owner,
+            OracleTableBase parent,
+            String indexName,
+            JDBCResultSet dbResult
+        ) throws SQLException, DBException {
             return new OracleTableIndex(owner, parent, indexName, dbResult);
         }
 
@@ -1221,9 +1228,10 @@ public class OracleSchema extends OracleGlobalObject implements
         @Override
         protected OracleTableIndexColumn[] fetchObjectRow(
             JDBCSession session,
-            OracleTablePhysical parent, OracleTableIndex object, JDBCResultSet dbResult)
-            throws SQLException, DBException
-        {
+            OracleTableBase parent,
+            OracleTableIndex object,
+            JDBCResultSet dbResult
+        ) throws DBException {
             String columnName = JDBCUtils.safeGetStringTrimmed(dbResult, "COLUMN_NAME");
             int ordinalPosition = JDBCUtils.safeGetInt(dbResult, "COLUMN_POSITION");
             boolean isAscending = "ASC".equals(JDBCUtils.safeGetStringTrimmed(dbResult, "DESCEND"));
@@ -1379,7 +1387,7 @@ public class OracleSchema extends OracleGlobalObject implements
     static class SynonymCache extends JDBCObjectLookupCache<OracleSchema, OracleSynonym> {
         @NotNull
         @Override
-        public JDBCStatement prepareLookupStatement(@NotNull JDBCSession session, @NotNull OracleSchema owner, OracleSynonym object, String objectName) throws SQLException
+        public JDBCStatement prepareLookupStatement(@NotNull JDBCSession session, @NotNull OracleSchema owner, @Nullable OracleSynonym object, @Nullable String objectName) throws SQLException
         {
             String synonymTypeFilter = (session.getDataSource().getContainer().getPreferenceStore().getBoolean(OracleConstants.PREF_DBMS_READ_ALL_SYNONYMS) ?
                 "" :

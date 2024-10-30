@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package org.jkiss.dbeaver.ext.clickhouse.model;
 
 import org.jkiss.code.NotNull;
+import org.jkiss.dbeaver.ext.clickhouse.ClickhouseConstants;
 import org.jkiss.dbeaver.ext.generic.model.GenericSQLDialect;
 import org.jkiss.dbeaver.model.DBPDataKind;
 import org.jkiss.dbeaver.model.DBPDataSource;
@@ -24,6 +25,7 @@ import org.jkiss.dbeaver.model.exec.jdbc.JDBCDatabaseMetaData;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCSession;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCDataSource;
 import org.jkiss.dbeaver.model.struct.DBSTypedObject;
+import org.jkiss.utils.CommonUtils;
 
 import java.util.Arrays;
 
@@ -61,6 +63,7 @@ public class ClickhouseSQLDialect extends GenericSQLDialect {
         "UUIDStringToNum",
         "visitParamHas",
         "IPv4StringToNum",
+        "IPv6StringToNum",
         "randConstant",
         "javaHash",
         "bitmapBuild",
@@ -268,5 +271,20 @@ public class ClickhouseSQLDialect extends GenericSQLDialect {
     @Override
     public char getStringEscapeCharacter() {
         return '\\';
+    }
+
+    @NotNull
+    @Override
+    public String getTypeCastClause(@NotNull DBSTypedObject attribute, String expression, boolean isInCondition) {
+        String typeName = attribute.getTypeName();
+        if (isInCondition && CommonUtils.isNotEmpty(typeName)) {
+            String lowerTypeName = typeName.toLowerCase();
+            if (ClickhouseConstants.DATA_TYPE_IPV4.equals(lowerTypeName)) {
+                return "IPv4StringToNum(" + expression + ")";
+            } else if (ClickhouseConstants.DATA_TYPE_IPV6.equals(lowerTypeName)) {
+                return "IPv6StringToNum(" + expression + ")";
+            }
+        }
+        return super.getTypeCastClause(attribute, expression, isInCondition);
     }
 }

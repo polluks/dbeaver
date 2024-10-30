@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -306,9 +306,12 @@ public class SQLContextInformer
                 if (!ArrayUtils.isEmpty(containerNames)) {
                     DBSObjectContainer dsContainer = DBUtils.getAdapter(DBSObjectContainer.class, getExecutionContext().getDataSource());
                     if (dsContainer != null) {
-                        DBCExecutionContextDefaults contextDefaults = getExecutionContext().getContextDefaults();
+                        DBCExecutionContextDefaults<?,?> contextDefaults = getExecutionContext().getContextDefaults();
 
                         DBSObject childContainer = dsContainer.getChild(monitor, containerNames[0]);
+                        if (!DBStructUtils.isConnectedContainer(childContainer)) {
+                            childContainer = null;
+                        }
                         if (childContainer == null) {
                              if (contextDefaults != null) {
                                  if (contextDefaults.getDefaultCatalog() != null) {
@@ -316,8 +319,8 @@ public class SQLContextInformer
                                  }
                              }
                         }
-                        if (childContainer instanceof DBSObjectContainer) {
-                            container = (DBSObjectContainer) childContainer;
+                        if (childContainer instanceof DBSObjectContainer objectContainer) {
+                            container = objectContainer;
                         } else {
                             // Check in selected object
                             if (childContainer == null && structureAssistant != null) {
@@ -383,7 +386,7 @@ public class SQLContextInformer
                 } else if (structureAssistant != null) {
                     DBSObjectType[] objectTypes = structureAssistant.getHyperlinkObjectTypes();
                     DBCExecutionContext executionContext = editor.getExecutionContext();
-                    if (executionContext != null) {
+                    if (executionContext != null && executionContext.getDataSource().getContainer().isExtraMetadataReadEnabled()) {
                         DBSStructureAssistant.ObjectsSearchParams params = new DBSStructureAssistant.ObjectsSearchParams(objectTypes, objectName);
                         params.setParentObject(container);
                         params.setCaseSensitive(caseSensitive);

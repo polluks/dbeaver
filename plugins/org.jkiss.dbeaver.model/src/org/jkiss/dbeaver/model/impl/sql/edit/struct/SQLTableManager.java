@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package org.jkiss.dbeaver.model.impl.sql.edit.struct;
 
 import org.jkiss.code.NotNull;
 import org.jkiss.dbeaver.DBException;
+import org.jkiss.dbeaver.ModelPreferences;
 import org.jkiss.dbeaver.model.DBPDataSource;
 import org.jkiss.dbeaver.model.DBPScriptObject;
 import org.jkiss.dbeaver.model.DBUtils;
@@ -51,7 +52,7 @@ public abstract class SQLTableManager<OBJECT_TYPE extends DBSEntity, CONTAINER_T
     public static final String BASE_MATERIALIZED_VIEW_NAME = "NewMView"; //$NON-NLS-1$
 
     @Override
-    public long getMakerOptions(DBPDataSource dataSource) {
+    public long getMakerOptions(@NotNull DBPDataSource dataSource) {
         long options = FEATURE_EDITOR_ON_CREATE;
         {
             if (dataSource.getSQLDialect().supportsTableDropCascade()) {
@@ -71,9 +72,11 @@ public abstract class SQLTableManager<OBJECT_TYPE extends DBSEntity, CONTAINER_T
 
     @Override
     protected void addStructObjectCreateActions(DBRProgressMonitor monitor, DBCExecutionContext executionContext, List<DBEPersistAction> actions, StructCreateCommand command, Map<String, Object> options) throws DBException {
+        // Make options modifiable
+        options = new HashMap<>(options);
         final OBJECT_TYPE table = command.getObject();
 
-        final NestedObjectCommand tableProps = command.getObjectCommands().get(table);
+        final NestedObjectCommand<?,?> tableProps = command.getObjectCommands().get(table);
         if (tableProps == null) {
             log.warn("Object change command not found"); //$NON-NLS-1$
             return;
@@ -86,14 +89,16 @@ public abstract class SQLTableManager<OBJECT_TYPE extends DBSEntity, CONTAINER_T
         createQuery.append(beginCreateTableStatement(monitor, table, tableName, options));
         boolean hasNestedDeclarations = false;
         final Collection<NestedObjectCommand> orderedCommands = getNestedOrderedCommands(command);
-        for (NestedObjectCommand nestedCommand : orderedCommands) {
+        for (NestedObjectCommand<?,?> nestedCommand : orderedCommands) {
             if (nestedCommand.getObject() == table) {
                 continue;
             }
             if (excludeFromDDL(nestedCommand, orderedCommands)) {
                 continue;
             }
+            options.put(DBPScriptObject.OPTION_COMPOSITE_OBJECT, table);
             final String nestedDeclaration = nestedCommand.getNestedDeclaration(monitor, table, options);
+            options.remove(DBPScriptObject.OPTION_COMPOSITE_OBJECT);
             if (!CommonUtils.isEmpty(nestedDeclaration)) {
                 // Insert nested declaration
                 if (hasNestedDeclarations) {
@@ -156,7 +161,7 @@ public abstract class SQLTableManager<OBJECT_TYPE extends DBSEntity, CONTAINER_T
     }
 
     @Override
-    protected void addObjectDeleteActions(DBRProgressMonitor monitor, DBCExecutionContext executionContext, List<DBEPersistAction> actions, ObjectDeleteCommand command, Map<String, Object> options)
+    protected void addObjectDeleteActions(@NotNull DBRProgressMonitor monitor, @NotNull DBCExecutionContext executionContext, @NotNull List<DBEPersistAction> actions, @NotNull ObjectDeleteCommand command, @NotNull Map<String, Object> options)
     {
         OBJECT_TYPE object = command.getObject();
         final String tableName = DBUtils.getEntityScriptName(object, options);
@@ -170,8 +175,13 @@ public abstract class SQLTableManager<OBJECT_TYPE extends DBSEntity, CONTAINER_T
         );
     }
 
-    protected void appendTableModifiers(DBRProgressMonitor monitor, OBJECT_TYPE table, NestedObjectCommand tableProps, StringBuilder ddl, boolean alter)
-    {
+    protected void appendTableModifiers(
+        DBRProgressMonitor monitor,
+        OBJECT_TYPE table,
+        NestedObjectCommand tableProps,
+        StringBuilder ddl,
+        boolean alter
+    ) throws DBException {
 
     }
 
@@ -220,7 +230,10 @@ public abstract class SQLTableManager<OBJECT_TYPE extends DBSEntity, CONTAINER_T
             return actions.toArray(new DBEPersistAction[0]);
         }
 
-        if (table.isPersisted() && isIncludeDropInDDL(table)) {
+        if (table.isPersisted() && isIncludeDropInDDL(table) &&
+            (table.getDataSource() == null ||
+                table.getDataSource().getContainer().getPreferenceStore().getBoolean(ModelPreferences.META_EXTRA_DDL_INFO))
+        ) {
             actions.add(new SQLDatabasePersistActionComment(table.getDataSource(), "Drop table"));
             for (DBEPersistAction delAction : new ObjectDeleteCommand(table, ModelMessages.model_jdbc_delete_object).getPersistActions(monitor, executionContext, options)) {
                 String script = delAction.getScript();
@@ -237,16 +250,17 @@ public abstract class SQLTableManager<OBJECT_TYPE extends DBSEntity, CONTAINER_T
 
         StructCreateCommand command = makeCreateCommand(table, options);
         if (tcm != null) {
+            final boolean skipNonPersisted = CommonUtils.getOption(options, DBPScriptObject.OPTION_DDL_ONLY_PERSISTED_ATTRIBUTES);
             // Aggregate nested column, constraint and index commands
             for (DBSEntityAttribute column : CommonUtils.safeCollection(table.getAttributes(monitor))) {
-                if (skipObject(column)) {
+                if (skipObject(column) || (skipNonPersisted && !column.isPersisted())) {
                     // Do not include hidden (pseudo?) and inherited columns in DDL
                     continue;
                 }
                 command.aggregateCommand(tcm.makeCreateCommand(column, options));
             }
         }
-        if (pkm != null) {
+        if (pkm != null && !CommonUtils.getOption(options, DBPScriptObject.OPTION_SKIP_UNIQUE_KEYS)) {
             try {
                 for (DBSEntityConstraint constraint : CommonUtils.safeCollection(table.getConstraints(monitor))) {
                     if (skipObject(constraint)) {
@@ -287,7 +301,7 @@ public abstract class SQLTableManager<OBJECT_TYPE extends DBSEntity, CONTAINER_T
                 log.debug(e);
             }
         }
-        if (im != null && table instanceof DBSTable) {
+        if (im != null && table instanceof DBSTable && !CommonUtils.getOption(options, DBPScriptObject.OPTION_SKIP_INDEXES)) {
             try {
                 for (DBSTableIndex index : CommonUtils.safeCollection(((DBSTable)table).getIndexes(monitor))) {
                     if (!isIncludeIndexInDDL(monitor, index)) {

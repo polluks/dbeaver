@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -55,7 +55,8 @@ public class SQLServerDialect extends JDBCSQLDialect implements TPRuleProvider, 
         "LOGIN",
         "TOP",
         "SYNONYM",
-        "PERSISTED"
+        "PERSISTED",
+        "NOLOCK"
     };
 
     private static final String[][] SQLSERVER_QUOTE_STRINGS = {
@@ -166,10 +167,11 @@ public class SQLServerDialect extends JDBCSQLDialect implements TPRuleProvider, 
     }
 
     public String[][] getIdentifierQuoteStrings() {
-        if (dataSource == null || (!isSqlServer && !dataSource.isServerVersionAtLeast(12, 6))) {
+        if (dataSource != null && !isSqlServer && !dataSource.isServerVersionAtLeast(12, 6)) {
             // Old Sybase doesn't support square brackets - #7755
             return SYBASE_LEGACY_QUOTE_STRINGS;
         }
+        // allow wider syntax by default
         return SQLSERVER_QUOTE_STRINGS;
     }
 
@@ -221,10 +223,15 @@ public class SQLServerDialect extends JDBCSQLDialect implements TPRuleProvider, 
                 case SQLServerConstants.TYPE_SQL_VARIANT:
                 case SQLServerConstants.TYPE_VARBINARY: {
                     long maxLength = column.getMaxLength();
+                    int maxStringLength = CommonUtils.toInt(dataSource.getDataSourceFeature(DBPDataSource.FEATURE_MAX_STRING_LENGTH));
                     if (maxLength == 0) {
                         return null;
-                    } else if (maxLength == -1 || maxLength > 8000) {
-                        return "(MAX)";
+                    } else if (maxLength == -1 || maxLength >= maxStringLength) {
+                        if (dataSource instanceof SQLServerDataSource) {
+                            return "(MAX)";
+                        } else {
+                            return "(" + maxStringLength + ")";
+                        }
                     } else {
                         return "(" + maxLength + ")";
                     }
@@ -341,19 +348,23 @@ public class SQLServerDialect extends JDBCSQLDialect implements TPRuleProvider, 
         }
     }
 
+    @NotNull
     @Override
-    public void extendRules(@Nullable DBPDataSourceContainer dataSource, @NotNull List<TPRule> rules, @NotNull RulePosition position) {
+    public TPRule[] extendRules(@Nullable DBPDataSourceContainer dataSource, @NotNull RulePosition position) {
         if (position == RulePosition.FINAL) {
-            rules.add(new SQLVariableRule(this));
+            return new TPRule[] { new SQLVariableRule(this) };
         }
         if (position == RulePosition.KEYWORDS) {
             final TPTokenDefault keywordToken = new TPTokenDefault(SQLTokenType.T_KEYWORD);
             // https://docs.microsoft.com/en-us/sql/t-sql/language-elements/transactions-transact-sql
-            rules.add(new SQLMultiWordRule(new String[]{"BEGIN", "DISTRIBUTED", "TRANSACTION"}, keywordToken));
-            rules.add(new SQLMultiWordRule(new String[]{"BEGIN", "DISTRIBUTED", "TRAN"}, keywordToken));
-            rules.add(new SQLMultiWordRule(new String[]{"BEGIN", "TRANSACTION"}, keywordToken));
-            rules.add(new SQLMultiWordRule(new String[]{"BEGIN", "TRAN"}, keywordToken));
+            return new TPRule[]{
+                new SQLMultiWordRule(new String[]{"BEGIN", "DISTRIBUTED", "TRANSACTION"}, keywordToken),
+                new SQLMultiWordRule(new String[]{"BEGIN", "DISTRIBUTED", "TRAN"}, keywordToken),
+                new SQLMultiWordRule(new String[]{"BEGIN", "TRANSACTION"}, keywordToken),
+                new SQLMultiWordRule(new String[]{"BEGIN", "TRAN"}, keywordToken)
+            };
         }
+        return new TPRule[0];
     }
 
     @Override
@@ -364,6 +375,11 @@ public class SQLServerDialect extends JDBCSQLDialect implements TPRuleProvider, 
     @Override
     public boolean supportsAliasInConditions() {
         return false;
+    }
+
+    @Override
+    public String getOffsetLimitQueryPart(int offset, int limit) {
+        return String.format("OFFSET %d ROWS FETCH NEXT %d ROWS ONLY", offset, limit);
     }
 
     @Nullable
@@ -397,6 +413,12 @@ public class SQLServerDialect extends JDBCSQLDialect implements TPRuleProvider, 
 
     @NotNull
     @Override
+    public String getBlobDataType() {
+        return SQLServerConstants.TYPE_IMAGE;
+    }
+
+    @NotNull
+    @Override
     public String getUuidDataType() {
         return SQLServerConstants.TYPE_UNIQUEIDENTIFIER;
     }
@@ -405,6 +427,27 @@ public class SQLServerDialect extends JDBCSQLDialect implements TPRuleProvider, 
     @Override
     public String getBooleanDataType() {
         return SQLServerConstants.TYPE_BIT;
+    }
+
+    @NotNull
+    @Override
+    public String getAlterColumnOperation() {
+        return SQLServerConstants.OPERATION_ALTER;
+    }
+
+    @Override
+    public boolean supportsAlterColumnSet() {
+        return false;
+    }
+
+    @Override
+    public boolean supportsAlterHasColumn() {
+        return true;
+    }
+
+    @Override
+    public boolean supportsNoActionIndex() {
+        return true;
     }
 
     @Override
@@ -423,5 +466,12 @@ public class SQLServerDialect extends JDBCSQLDialect implements TPRuleProvider, 
     @Override
     public String getCreateSchemaQuery(@NotNull String schemaName) {
         return "CREATE SCHEMA " + schemaName;
+    }
+
+    @Override
+    public EnumSet<ProjectionAliasVisibilityScope> getProjectionAliasVisibilityScope() {
+        return EnumSet.of(
+            ProjectionAliasVisibilityScope.ORDER_BY
+        );
     }
 }

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,15 +36,14 @@ public class DAICompletionSettings {
 
     private static final Log log = Log.getLog(DAICompletionSettings.class);
 
-    private final DBPDataSourceContainer dataSource;
+    private DBPDataSourceContainer dataSource;
     private boolean metaTransferConfirmed;
     private boolean allowMetaTransfer;
     private DAICompletionScope scope;
     private String[] customObjectIds;
 
     public DAICompletionSettings(DBPDataSourceContainer dataSource) {
-        this.dataSource = dataSource;
-        loadSettings();
+        setDataSource(dataSource);
     }
 
     public boolean isMetaTransferConfirmed() {
@@ -77,6 +76,11 @@ public class DAICompletionSettings {
 
     public void setCustomObjectIds(String[] customObjectIds) {
         this.customObjectIds = customObjectIds;
+    }
+
+    public void setDataSource(@NotNull DBPDataSourceContainer dataSource) {
+        this.dataSource = dataSource;
+        loadSettings();
     }
 
     @NotNull

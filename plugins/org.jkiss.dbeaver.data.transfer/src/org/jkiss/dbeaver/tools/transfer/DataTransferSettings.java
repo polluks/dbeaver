@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@ import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.DBPObject;
 import org.jkiss.dbeaver.model.app.DBPProject;
 import org.jkiss.dbeaver.model.data.json.JSONUtils;
-import org.jkiss.dbeaver.model.exec.DBCException;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.DBRRunnableContext;
 import org.jkiss.dbeaver.model.runtime.DBRRunnableWithResult;
@@ -32,6 +31,7 @@ import org.jkiss.dbeaver.model.struct.DBSEntity;
 import org.jkiss.dbeaver.model.struct.DBSObject;
 import org.jkiss.dbeaver.model.struct.DBStructUtils;
 import org.jkiss.dbeaver.model.task.DBTTask;
+import org.jkiss.dbeaver.model.task.DBTTaskInfoCollector;
 import org.jkiss.dbeaver.model.task.DBTTaskSettings;
 import org.jkiss.dbeaver.model.task.DBTaskUtils;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
@@ -428,23 +428,10 @@ public class DataTransferSettings implements DBTTaskSettings<DBPObject> {
         if (nodeSettingsLoaded) {
             return;
         }
-        // Load nodes' settings (key is impl class simple name, value is descriptor)
-        Map<String, DataTransferNodeDescriptor> nodeNames = new LinkedHashMap<>();
-        if (producer != null) {
-            nodeNames.put(producer.getNodeClass().getSimpleName(), producer);
-        }
-        if (consumer != null) {
-            nodeNames.put(consumer.getNodeClass().getSimpleName(), consumer);
-        }
 
         MonitorRunnableContext runnableContext = new MonitorRunnableContext(monitor);
-        for (Map.Entry<String, DataTransferNodeDescriptor> node : nodeNames.entrySet()) {
-            Map<String, Object> nodeSection = JSONUtils.getObject(configurationMap, node.getKey());
-            IDataTransferSettings nodeSettings = this.getNodeSettings(node.getValue());
-            if (nodeSettings != null) {
-                nodeSettings.loadSettings(runnableContext, this, nodeSection);
-            }
-        }
+        loadNodeSettings(runnableContext, producer);
+        loadNodeSettings(runnableContext, consumer);
 
         // Initialize pipes with loaded settings
         for (int i = 0; i < dataPipes.size(); i++) {
@@ -459,6 +446,19 @@ public class DataTransferSettings implements DBTTaskSettings<DBPObject> {
         }
 
         this.nodeSettingsLoaded = true;
+    }
+
+    private void loadNodeSettings(@NotNull MonitorRunnableContext runnableContext, @Nullable DataTransferNodeDescriptor node) {
+        if (node == null) {
+            return;
+        }
+
+        final IDataTransferSettings settings = getNodeSettings(node);
+        final Map<String, Object> rawSettings = getNodeSettingsMap(node);
+
+        if (settings != null && rawSettings != null) {
+            settings.loadSettings(runnableContext, this, rawSettings);
+        }
     }
 
     public boolean isConsumerOptional() {
@@ -480,6 +480,11 @@ public class DataTransferSettings implements DBTTaskSettings<DBPObject> {
 
     public List<DBSObject> getSourceObjects() {
         return initObjects;
+    }
+
+    @Nullable
+    public Map<String, Object> getNodeSettingsMap(@NotNull DataTransferNodeDescriptor node) {
+        return JSONUtils.getObject(configurationMap, node.getNodeClass().getSimpleName());
     }
 
     @Nullable
@@ -584,13 +589,8 @@ public class DataTransferSettings implements DBTTaskSettings<DBPObject> {
         CommonUtils.shiftRight(dataPipes, pipe);
     }
 
-    public synchronized DataTransferPipe acquireDataPipe(DBRProgressMonitor monitor) {
+    public synchronized DataTransferPipe acquireDataPipe(@NotNull DBRProgressMonitor monitor, @Nullable DBTTask task) {
         if (curPipeNum >= dataPipes.size()) {
-            // End of transfer
-            // Signal last pipe about it
-            if (!dataPipes.isEmpty()) {
-                dataPipes.get(dataPipes.size() - 1).getConsumer().finishTransfer(monitor, true);
-            }
             return null;
         }
 
@@ -699,7 +699,7 @@ public class DataTransferSettings implements DBTTaskSettings<DBPObject> {
         this.showFinalMessage = showFinalMessage;
     }
 
-    public static void saveNodesLocation(DBRRunnableContext runnableContext, DBTTask task, Map<String, Object> state, Collection<IDataTransferNode<?>> nodes, String nodeType) {
+    public static void saveNodesLocation(DBRRunnableContext runnableContext, DBTTask task, Map<String, Object> state, Collection<IDataTransferNode<?>> nodes, String nodeType)  throws DBException {
         if (nodes != null) {
             List<Map<String, Object>> inputObjects = new ArrayList<>();
             for (Object inputObject : nodes) {
@@ -725,7 +725,7 @@ public class DataTransferSettings implements DBTTaskSettings<DBPObject> {
                         if (nodeClass.isInstance(node)) {
                             result.add(nodeClass.cast(node));
                         }
-                    } catch (DBCException e) {
+                    } catch (Exception e) {
                         state.addError(e);
                         taskLog.error(e);
                     } finally {
@@ -789,4 +789,45 @@ public class DataTransferSettings implements DBTTaskSettings<DBPObject> {
     public DBPProject getProject() {
         return project;
     }
+
+    // Dirty code to examine DT configuration and extract all DS or IO references
+    public static void collectTaskInfo(DBTTask task, DBTTaskInfoCollector.TaskInformation information) {
+        Map<String, Object> config = task.getProperties();
+
+        String[] dtNodeTypes = { "producers", "consumers" };
+
+        Map<String, Object> dtConfig = JSONUtils.getObject(config, "configuration");
+
+        for (String dtNodeType : dtNodeTypes) {
+            List<Map<String, Object>> nodeList = JSONUtils.getObjectList(config, dtNodeType);
+            for (Map<String, Object> nodeObj : nodeList) {
+                String type = JSONUtils.getString(nodeObj, "type");
+                if (CommonUtils.isEmpty(type)) {
+                    continue;
+                }
+                Map<String, Object> nodeConfig = JSONUtils.getObject(dtConfig,
+                    Character.toUpperCase(type.charAt(0)) + type.substring(1));
+                switch (type) {
+                    case "databaseTransferProducer" -> {
+                        Map<String, Object> location = JSONUtils.getObject(nodeObj, "location");
+                        String entityId = JSONUtils.getString(location, "entityId");
+                        if (entityId != null) {
+                            String dsID = entityId.split("/")[0];
+                            information.addDataSource(task.getProject().getDataSourceRegistry().getDataSource(dsID));
+                        }
+                    }
+                    case "databaseTransferConsumer" -> {
+
+                    }
+                    case "streamTransferConsumer" -> {
+                        information.addLocation(JSONUtils.getString(nodeConfig, "outputFolder"));
+                    }
+                    case "streamTransferProducer" -> {
+
+                    }
+                }
+            }
+        }
+    }
+
 }

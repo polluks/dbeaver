@@ -31,13 +31,15 @@ buildNumber.properties
 
 *.iml
 /idea/
-.idea/
 
 ## Eclipse configs
 
 .project
 .classpath
 .settings/
+
+## Eclipse PDE
+*.product.launch
 
 # Dev executables
 

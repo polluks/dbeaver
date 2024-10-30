@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -371,17 +371,17 @@ class SpreadsheetFindReplaceTarget implements IFindReplaceTarget, IFindReplaceTa
 
         final Object originalValue = owner.getSpreadsheet().getContentProvider().getCellValue(
             cell.col, cell.row, false);
-        if (originalValue instanceof DBDContent) {
-            try {
+        try {
+            if (originalValue instanceof DBDContent) {
                 ((DBDContent) originalValue)
                     .updateContents(new VoidProgressMonitor(), new StringContentStorage(newValue));
                 new ResultSetValueController(owner.getController(), cellLocation, IValueController.EditType.NONE, null)
                     .updateValue(originalValue, true);
-            } catch (DBException e) {
-                log.error("Error updating LOB contents", e);
+            } else {
+                owner.getController().getModel().updateCellValue(cellLocation, newValue);
             }
-        } else {
-            owner.getController().getModel().updateCellValue(cellLocation, newValue);
+        } catch (DBException e) {
+            log.error("Error updating contents", e);
         }
 
         owner.getController().updatePanelsContent(false);

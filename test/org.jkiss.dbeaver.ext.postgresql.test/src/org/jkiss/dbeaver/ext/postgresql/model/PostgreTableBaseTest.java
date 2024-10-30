@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,6 +38,7 @@ import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnitRunner;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -99,11 +100,13 @@ public class PostgreTableBaseTest {
         };
         testTableRegular.setName("test_table_regular");
         testTableRegular.setPartition(false);
+        testTableRegular.setPersisted(true);
         PostgreTestUtils.addColumn(testTableRegular, "column1", "int4", 1);
 
         // Test View
         testView = new PostgreView(testSchema);
         testView.setName("testView");
+        testView.setPersisted(true);
     }
 
     // Tables DDL tests
@@ -176,6 +179,7 @@ public class PostgreTableBaseTest {
 
         PostgreTableForeign tableForeign = new PostgreTableForeign(testSchema);
         tableForeign.setName("testForeignTable");
+        tableForeign.setPersisted(true);
 
         PropertySourceEditable pse = new PropertySourceEditable(commandContext, tableForeign, tableForeign);
         pse.collectProperties();
@@ -211,6 +215,7 @@ public class PostgreTableBaseTest {
 
         PostgreMaterializedView testMView = new PostgreMaterializedView(testSchema);
         testMView.setName("testMView");
+        testMView.setPersisted(true);
 
         PropertySourceEditable pse = new PropertySourceEditable(commandContext, testMView, testMView);
         pse.collectProperties();
@@ -229,7 +234,7 @@ public class PostgreTableBaseTest {
     @Test
     public void generateChangeOwnerQuery_whenProvidedView_thenShouldGenerateQuerySuccessfully() {
         Assert.assertEquals("ALTER TABLE " + testSchema.getName() + ".\"" + testView.getName() + "\" OWNER TO someOwner",
-            testView.generateChangeOwnerQuery("someOwner"));
+            testView.generateChangeOwnerQuery("someOwner", new HashMap<>()));
     }
 
     @Test

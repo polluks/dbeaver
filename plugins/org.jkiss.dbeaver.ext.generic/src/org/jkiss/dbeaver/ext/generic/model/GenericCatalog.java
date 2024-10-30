@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -75,10 +75,10 @@ public class GenericCatalog extends GenericObjectContainer implements DBSCatalog
     }
 
     @Association
-    public Collection<GenericSchema> getSchemas(DBRProgressMonitor monitor)
+    public Collection<GenericSchema> getSchemas(@NotNull DBRProgressMonitor monitor)
         throws DBException
     {
-        if (schemas == null && !isInitialized) {
+        if (schemas == null && !isInitialized && !monitor.isForceCacheUsage()) {
             try (JDBCSession session = DBUtils.openMetaSession(monitor, this, "Load catalog schemas")) {
                 this.schemas = this.getDataSource().getMetaModel().loadSchemas(session, getDataSource(), this);
                 this.isInitialized = true;

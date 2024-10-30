@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,9 +41,11 @@ public class SQLCompletionProposalBase {
 
     public static final String PARAM_EXEC = "exec";
 
+    public static final String PARAM_NO_SPACE = "no-space";
+
     private static final Log log = Log.getLog(SQLCompletionProposalBase.class);
 
-    private final SQLCompletionContext context;
+    private final SQLCompletionRequest request;
 
     /**
      * The string to be displayed in the completion proposal popup.
@@ -79,8 +81,7 @@ public class SQLCompletionProposalBase {
     private int proposalScore;
 
     public SQLCompletionProposalBase(
-        SQLCompletionContext context,
-        SQLWordPartDetector wordPartDetector,
+        SQLCompletionRequest request,
         String displayString,
         String replacementString,
         int cursorPosition,
@@ -90,8 +91,8 @@ public class SQLCompletionProposalBase {
         DBPNamedObject object,
         Map<String, Object> params)
     {
-        this.context = context;
-        DBPDataSource dataSource = context.getDataSource();
+        this.request = request;
+        DBPDataSource dataSource = request.getContext().getDataSource();
 
         this.displayString = displayString;
         this.replacementString = replacementString;
@@ -101,20 +102,20 @@ public class SQLCompletionProposalBase {
         this.cursorPosition = cursorPosition;
         this.image = image;
         this.proposalType = proposalType;
-        this.additionalProposalInfo = object;
+        this.additionalProposalInfo = object != null ? object : description;
 
-        setPosition(wordPartDetector);
+        setPosition(request.getWordDetector());
 
         this.object = object;
         this.params = params;
     }
 
-    public SQLCompletionContext getContext() {
-        return context;
+    public SQLCompletionRequest getRequest() {
+        return this.request;
     }
 
     public DBPDataSource getDataSource() {
-        return context.getDataSource();
+        return request.getContext().getDataSource();
     }
 
     public DBPNamedObject getObject() {
@@ -124,11 +125,11 @@ public class SQLCompletionProposalBase {
     protected void setPosition(SQLWordPartDetector wordDetector) {
         final String fullWord = wordDetector.getFullWord();
         final int curOffset = wordDetector.getCursorOffset() - wordDetector.getStartOffset();
-        final char structSeparator = context.getSyntaxManager().getStructSeparator();
-        DBPDataSource dataSource = context.getDataSource();
+        final char structSeparator = request.getContext().getSyntaxManager().getStructSeparator();
+        DBPDataSource dataSource = request.getContext().getDataSource();
 
         final boolean proposalContainsStructSeparator = replacementString.indexOf(structSeparator) >= 0;
-        boolean useFQName = dataSource != null && context.isUseFQNames() && proposalContainsStructSeparator;
+        boolean useFQName = dataSource != null && request.getContext().isUseFQNames() && proposalContainsStructSeparator;
         if (useFQName) {
             replacementOffset = wordDetector.getStartOffset();
             replacementLength = wordDetector.getLength();
@@ -158,7 +159,7 @@ public class SQLCompletionProposalBase {
             }
             replacementOffset = wordDetector.getStartOffset() + startOffset;
             // If we are at the begin of word (curOffset == 0) then do not replace the word to the right.
-            boolean replaceWord = dataSource != null && context.isReplaceWords();
+            boolean replaceWord = dataSource != null && request.getContext().isReplaceWords();
             if (replaceWord) {
                 replacementLength = wordDetector.getEndOffset() - replacementOffset - endOffset;
             } else {
@@ -240,8 +241,11 @@ public class SQLCompletionProposalBase {
     }
 
     public Object getAdditionalInfo(DBRProgressMonitor monitor) {
+        if (!this.request.getActivityTracker().isAdditionalInfoExpected()) {
+            return this.additionalProposalInfo instanceof String s ? s : null;
+        }
         if (additionalProposalInfo == null && object == null) {
-            additionalProposalInfo = SQLCompletionHelper.readAdditionalProposalInfo(monitor, context, object, new String[]{displayString}, proposalType);
+                additionalProposalInfo = SQLCompletionHelper.readAdditionalProposalInfo(monitor, request.getContext(), object, new String[]{displayString}, proposalType);
         }
         return object != null ? object : additionalProposalInfo;
     }

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -80,9 +80,9 @@ public class SQLTokenPredicateEvaluator {
             for (var node = statementPrefixPredicates; node != null; node = node.next) {
                 Set<SQLTokenPredicate> currentlyMatchedHeads = node.data.getValues();
                 if (currentlyMatchedHeads.size() > 0) {
-                    // accumulating conditions consireded matched according to the already captured part of the statement prefix
+                    // accumulating conditions considered matched according to the already captured part of the statement prefix
                     // longer prefixes would be discovered only during the next token analysis among the reduced set of conditions
-                    for (SQLTokenPredicate matchedByPrefix: currentlyMatchedHeads) {
+                    for (SQLTokenPredicate matchedByPrefix : currentlyMatchedHeads) {
                         if (matchedByPrefix.getMaxSuffixLength() == 0) {
                             plausiblePrefixOnlyConditions.add(matchedByPrefix);
                         } else {

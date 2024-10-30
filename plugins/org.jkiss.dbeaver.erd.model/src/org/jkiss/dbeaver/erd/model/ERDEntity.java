@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,10 +28,9 @@ import org.jkiss.dbeaver.model.exec.DBCException;
 import org.jkiss.dbeaver.model.navigator.DBNDatabaseNode;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.VoidProgressMonitor;
-import org.jkiss.dbeaver.model.struct.DBSEntity;
-import org.jkiss.dbeaver.model.struct.DBSEntityAssociation;
-import org.jkiss.dbeaver.model.struct.DBSEntityAttribute;
-import org.jkiss.dbeaver.model.struct.DBSEntityReferrer;
+import org.jkiss.dbeaver.model.struct.*;
+import org.jkiss.dbeaver.model.struct.rdb.DBSTableForeignKey;
+import org.jkiss.dbeaver.model.struct.rdb.DBSTableForeignKeyColumn;
 import org.jkiss.dbeaver.model.virtual.DBVUtils;
 import org.jkiss.utils.CommonUtils;
 
@@ -58,7 +57,7 @@ public class ERDEntity extends ERDElement<DBSEntity> {
     private ERDAttributeVisibility attributeVisibility;
 
     /**
-     * Special constructore for creating lazy entities.
+     * Special constructor for creating lazy entities.
      * This entity will be initialized at the moment of creation within diagram.
      */
     public ERDEntity(DBPDataSource dataSource) {
@@ -137,6 +136,9 @@ public class ERDEntity extends ERDElement<DBSEntity> {
         if (attribute == null) {
             return null;
         }
+        if (attributes == null) {
+            return null;
+        }
         for (ERDEntityAttribute attr : attributes) {
             if (attr.getObject() == attribute) {
                 return attr;
@@ -204,50 +206,45 @@ public class ERDEntity extends ERDElement<DBSEntity> {
     /**
      * Resolve and create entity associations.
      * Also caches all unresolved associations (associations with entities which are not present in diagram yet)
+     *
      * @param diagram all diagram entities map
-     * @param create    if true then creates all found model association. Otherwise only saves unresolved ones.
-     * @param reflect   reflect UI
+     * @param create  if true then creates all found model association. Otherwise only saves unresolved ones.
+     * @param reflect reflect UI
+     * @throws DBException - exception
      */
-    public void addModelRelations(DBRProgressMonitor monitor, ERDContainer diagram, boolean create, boolean reflect) {
-        try {
-            Set<DBSEntityAttribute> fkAttrs = new HashSet<>();
-            // Make associations
-            Collection<? extends DBSEntityAssociation> fks = DBVUtils.getAllAssociations(monitor, getObject());
-            if (fks != null) {
-                for (DBSEntityAssociation fk : fks) {
-                    if (fk instanceof DBSEntityReferrer) {
-                        fkAttrs.addAll(DBUtils.getEntityAttributes(monitor, (DBSEntityReferrer) fk));
+    public void addModelRelations(DBRProgressMonitor monitor, ERDContainer diagram, boolean create, boolean reflect) throws DBException {
+        Set<DBSEntityAttribute> fkAttrs = new HashSet<>();
+        // Make associations
+        Collection<? extends DBSEntityAssociation> fks = DBVUtils.getAllAssociations(monitor, getObject());
+        if (fks != null) {
+            for (DBSEntityAssociation fk : fks) {
+                if (fk instanceof DBSEntityReferrer) {
+                    fkAttrs.addAll(DBUtils.getEntityAttributes(monitor, (DBSEntityReferrer) fk));
+                }
+                ERDEntity targetEntity = diagram.getEntityMap().get(DBVUtils.getRealEntity(monitor, fk.getAssociatedEntity()));
+                if (targetEntity == null) {
+                    if (unresolvedKeys == null) {
+                        unresolvedKeys = new ArrayList<>();
                     }
-                    ERDEntity entity2 = diagram.getEntityMap().get(
-                        DBVUtils.getRealEntity(monitor, fk.getAssociatedEntity()));
-                    if (entity2 == null) {
-                        //log.debug("Table '" + fk.getReferencedKey().getTable().getFullyQualifiedName() + "' not found in ERD");
-                        if (unresolvedKeys == null) {
-                            unresolvedKeys = new ArrayList<>();
+                    unresolvedKeys.add(fk);
+                } else {
+                    if (create) {
+                        if (DBUtils.isInheritedObject(fk)) {
+                            continue;
                         }
-                        unresolvedKeys.add(fk);
-                    } else {
-                        if (create) {
-                            if (DBUtils.isInheritedObject(fk)) {
-                                continue;
-                            }
-                            diagram.getContentProvider().createAutoAssociation(diagram, fk, this, entity2, reflect);
-                        }
+                        diagram.getContentProvider().createAutoAssociation(diagram, fk, this, targetEntity, reflect);
                     }
                 }
             }
+        }
 
-            // Mark attribute's fk flag
-            if (!fkAttrs.isEmpty()) {
-                for (ERDEntityAttribute attribute : this.getAttributes()) {
-                    if (fkAttrs.contains(attribute.getObject())) {
-                        attribute.setInForeignKey(true);
-                    }
+        // Mark attribute's fk flag
+        if (!fkAttrs.isEmpty()) {
+            for (ERDEntityAttribute attribute : this.getAttributes()) {
+                if (fkAttrs.contains(attribute.getObject())) {
+                    attribute.setInForeignKey(true);
                 }
             }
-
-        } catch (Throwable e) {
-            log.error("Can't load table '" + getObject().getName() + "' foreign keys", e);
         }
     }
 
@@ -308,7 +305,9 @@ public class ERDEntity extends ERDElement<DBSEntity> {
         entityMap.put("id", context.addElementInfo(this));
         DBNDatabaseNode node = context.getNavigatorModel().getNodeByObject(context.getMonitor(), dbsEntity, true);
         if (node != null) {
+            //TODO: use only node URI after finish migration to the new node path format
             entityMap.put("nodeId", node.getNodeItemPath());
+            entityMap.put("nodeUri", node.getNodeUri());
         }
         entityMap.put("name", this.getName());
         if (!CommonUtils.isEmpty(this.getAlias())) {

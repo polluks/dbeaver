@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -140,21 +140,21 @@ public class SelectDatabaseDialog extends ObjectListDialog<DBNDatabaseNode>
         instanceList.createProgressPanel();
         GridData gd = new GridData(GridData.FILL_BOTH);
         gd.heightHint = 300;
-        gd.minimumWidth = 300;
+        gd.minimumWidth = 500;
         instanceList.setLayoutData(gd);
         instanceList.getSelectionProvider().addSelectionChangedListener(event -> {
             IStructuredSelection selection = (IStructuredSelection) event.getSelection();
             selectedInstances.clear();
             selectedInstances.addAll(selection.toList());
             DBNDatabaseNode instance = selectedInstances.isEmpty() ? null : selectedInstances.get(0);
-            if (instance != null && !CommonUtils.equalObjects(instance.getNodeName(), currentInstanceName)) {
-                currentInstanceName = instance.getNodeName();
+            if (instance != null && !CommonUtils.equalObjects(instance.getNodeDisplayName(), currentInstanceName)) {
+                currentInstanceName = instance.getNodeDisplayName();
                 objectList.loadData();
             }
         });
 
         instanceList.loadData();
-        closeOnFocusLost(instanceList);
+        closeOnFocusLost(instanceList.getItemsViewer().getControl());
     }
 
     protected List<DBNDatabaseNode> getObjects(DBRProgressMonitor monitor) throws DBException {

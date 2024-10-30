@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,7 +39,7 @@ import java.util.Properties;
 import java.util.concurrent.Executor;
 
 /**
- * Managable connection
+ * Manageable connection
  */
 public class JDBCConnectionImpl extends AbstractSession implements JDBCSession, DBRBlockingObject {
 
@@ -57,7 +57,11 @@ public class JDBCConnectionImpl extends AbstractSession implements JDBCSession, 
     @Override
     public Connection getOriginal() throws SQLException
     {
-        return context.getConnection(getProgressMonitor());
+        return context.getConnection(getProgressMonitor(), true);
+    }
+
+    private Connection getOriginalOrNull() throws SQLException {
+        return context.getConnection(getProgressMonitor(), false);
     }
 
     @NotNull
@@ -322,7 +326,7 @@ public class JDBCConnectionImpl extends AbstractSession implements JDBCSession, 
         if (purpose.isUser()) {
             // Check for warnings
             try {
-                final Connection connection = getOriginal();
+                final Connection connection = getOriginalOrNull();
                 if (connection != null) {
                     JDBCUtils.reportWarnings(this, connection.getWarnings());
                     connection.clearWarnings();

@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -55,7 +55,7 @@ public class GroupingDataContainer implements DBSDataContainer {
         if (ArrayUtils.isEmpty(attributes)) {
             return "Grouping";
         } else {
-            return "GROUP BY " + String.join(",", attributes);
+            return String.join(",", attributes);
         }
     }
 
@@ -76,7 +76,16 @@ public class GroupingDataContainer implements DBSDataContainer {
 
     @NotNull
     @Override
-    public DBCStatistics readData(@NotNull DBCExecutionSource source, @NotNull DBCSession session, @NotNull DBDDataReceiver dataReceiver, DBDDataFilter dataFilter, long firstRow, long maxRows, long flags, int fetchSize) throws DBCException {
+    public DBCStatistics readData(
+        @Nullable DBCExecutionSource source,
+        @NotNull DBCSession session,
+        @NotNull DBDDataReceiver dataReceiver,
+        DBDDataFilter dataFilter,
+        long firstRow,
+        long maxRows,
+        long flags,
+        int fetchSize
+    ) throws DBCException {
         DBCStatistics statistics = new DBCStatistics();
         if (query == null) {
             statistics.addMessage("Empty query");

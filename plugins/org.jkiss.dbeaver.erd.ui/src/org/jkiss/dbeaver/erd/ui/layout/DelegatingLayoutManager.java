@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,9 +24,11 @@ import org.eclipse.draw2d.LayoutManager;
 import org.eclipse.draw2d.geometry.Dimension;
 import org.eclipse.draw2d.geometry.Rectangle;
 import org.eclipse.gef.EditPolicy;
+import org.jkiss.dbeaver.erd.ui.internal.ERDUIMessages;
 import org.jkiss.dbeaver.erd.ui.model.EntityDiagram;
 import org.jkiss.dbeaver.erd.ui.part.DiagramPart;
 import org.jkiss.dbeaver.erd.ui.policy.DiagramXYLayoutPolicy;
+import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 
 /**
  * Used to delegate between the GraphLayoutAuto and the GraphLayoutXY classes
@@ -54,10 +56,18 @@ public class DelegatingLayoutManager implements LayoutManager {
     //********************* layout manager methods methods
     // ****************************/
 
-    public void rearrange(IFigure container)
-    {
+    /**
+     * Rearrange figure on the diagram 
+     */
+    public void rearrange(DBRProgressMonitor monitor, IFigure container) {
+        if (monitor.isCanceled()) {
+            return;
+        }
+        monitor.beginTask(ERDUIMessages.erd_job_rearrange_diagram, 2);
         graphLayoutManager.layout(container);
+        monitor.worked(1);
         xyLayoutManager.cleanupConstraints();
+        monitor.worked(1);
     }
 
     @Override

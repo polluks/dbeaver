@@ -1,6 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
- * Copyright (C) 2010-2023 DBeaver Corp and others
+ * Copyright (C) 2010-2024 DBeaver Corp and others
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -47,6 +47,7 @@ public class MavenRepository
 
     public static final String ATTR_ID = "id";
     public static final String ATTR_NAME = "name";
+    public static final MavenRepository UnknownRepository = new MavenRepository("unknown", "unknown", "https://repo1.maven.org/maven2/", RepositoryType.GLOBAL);
 
     public enum RepositoryType {
         GLOBAL,     // Globally defined repositories (came from plugin.xml)
